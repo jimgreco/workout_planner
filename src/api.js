@@ -8,7 +8,7 @@
  * so App.jsx can sign the user out without prop-drilling an error callback.
  */
 
-import { getStoredCredential } from './auth.js';
+import { getStoredCredential, DEV_BYPASS } from './auth.js';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -59,6 +59,13 @@ async function request(method, path, body) {
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
 /** Fetch all three collections in parallel and populate the cache. */
 export async function initData() {
+  // In dev bypass mode with no real API configured, start with empty collections.
+  if (DEV_BYPASS && !BASE_URL) {
+    cache.exercises = [];
+    cache.templates = [];
+    cache.logs      = [];
+    return;
+  }
   const [exercises, templates, logs] = await Promise.all([
     request('GET', '/exercises'),
     request('GET', '/templates'),
@@ -74,7 +81,8 @@ export function getExercises() { return cache.exercises ?? []; }
 
 export async function saveExercise(exercise) {
   const id = exercise.id ?? crypto.randomUUID();
-  const saved = await request('PUT', `/exercises/${id}`, { ...exercise, id });
+  const item = { ...exercise, id };
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/exercises/${id}`, item);
   const list = cache.exercises ?? [];
   const idx = list.findIndex((e) => e.id === id);
   cache.exercises = idx >= 0
@@ -84,7 +92,7 @@ export async function saveExercise(exercise) {
 }
 
 export async function deleteExercise(id) {
-  await request('DELETE', `/exercises/${id}`);
+  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/exercises/${id}`);
   cache.exercises = (cache.exercises ?? []).filter((e) => e.id !== id);
   return cache.exercises;
 }
@@ -94,7 +102,8 @@ export function getTemplates() { return cache.templates ?? []; }
 
 export async function saveTemplate(template) {
   const id = template.id ?? crypto.randomUUID();
-  const saved = await request('PUT', `/templates/${id}`, { ...template, id });
+  const item = { ...template, id };
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/templates/${id}`, item);
   const list = cache.templates ?? [];
   const idx = list.findIndex((t) => t.id === id);
   cache.templates = idx >= 0
@@ -104,7 +113,7 @@ export async function saveTemplate(template) {
 }
 
 export async function deleteTemplate(id) {
-  await request('DELETE', `/templates/${id}`);
+  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/templates/${id}`);
   cache.templates = (cache.templates ?? []).filter((t) => t.id !== id);
   return cache.templates;
 }
@@ -114,7 +123,8 @@ export function getLogs() { return cache.logs ?? []; }
 
 export async function saveLog(log) {
   const id = log.id ?? crypto.randomUUID();
-  const saved = await request('PUT', `/logs/${id}`, { ...log, id });
+  const item = { ...log, id };
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/logs/${id}`, item);
   const list = cache.logs ?? [];
   const idx = list.findIndex((l) => l.id === id);
   cache.logs = idx >= 0
@@ -124,7 +134,7 @@ export async function saveLog(log) {
 }
 
 export async function deleteLog(id) {
-  await request('DELETE', `/logs/${id}`);
+  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/logs/${id}`);
   cache.logs = (cache.logs ?? []).filter((l) => l.id !== id);
   return cache.logs;
 }

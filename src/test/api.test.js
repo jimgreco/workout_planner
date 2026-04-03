@@ -17,7 +17,8 @@ import {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 vi.mock('../auth.js', () => ({
-  getStoredCredential: vi.fn(() => 'fake-token'),
+  getStoredCredential:  vi.fn(() => 'fake-token'),
+  DEV_BYPASS:           false,
   // other exports used elsewhere
   getStoredUser:        vi.fn(() => null),
   storeUser:            vi.fn(),
