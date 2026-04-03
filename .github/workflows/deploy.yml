@@ -12,6 +12,7 @@
 #   AWS_REGION               — e.g. us-east-1
 #   S3_BUCKET                — e.g. my-workout-planner-app
 #   CLOUDFRONT_DISTRIBUTION_ID — e.g. E1ABCDEFGHIJKL
+#   VITE_GOOGLE_CLIENT_ID    — OAuth 2.0 client ID from Google Cloud Console
 
 name: Build & Deploy to AWS
 
@@ -63,6 +64,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

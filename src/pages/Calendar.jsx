@@ -13,7 +13,7 @@ function toDateStr(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-export default function Calendar({ logs, exercises, onUpdate }) {
+export default function Calendar({ userId, logs, exercises, onUpdate }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -67,7 +67,7 @@ export default function Calendar({ logs, exercises, onUpdate }) {
   }
 
   function handleDeleteLog(id) {
-    const updated = deleteLog(id);
+    const updated = deleteLog(userId, id);
     onUpdate(updated);
     setConfirmDelete(null);
     if (viewLog?.id === id) setViewLog(null);

@@ -5,7 +5,7 @@ import { saveTemplate, deleteTemplate } from '../store';
 
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
 
-export default function Templates({ templates, exercises, onUpdate, onStartWorkout }) {
+export default function Templates({ userId, templates, exercises, onUpdate, onStartWorkout }) {
   const [modal, setModal] = useState(null); // null | 'add' | 'edit' | 'view'
   const [form, setForm] = useState(emptyTemplate());
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -27,13 +27,13 @@ export default function Templates({ templates, exercises, onUpdate, onStartWorko
 
   function handleSave() {
     if (!form.name.trim()) return;
-    const updated = saveTemplate(form);
+    const updated = saveTemplate(userId, form);
     onUpdate(updated);
     setModal(null);
   }
 
   function handleDelete(id) {
-    const updated = deleteTemplate(id);
+    const updated = deleteTemplate(userId, id);
     onUpdate(updated);
     setConfirmDelete(null);
   }

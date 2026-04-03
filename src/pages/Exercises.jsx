@@ -10,7 +10,7 @@ const MUSCLE_GROUPS = [
 
 const empty = () => ({ name: '', muscleGroup: 'Other', notes: '' });
 
-export default function Exercises({ exercises, onUpdate }) {
+export default function Exercises({ userId, exercises, onUpdate }) {
   const [modal, setModal] = useState(null); // null | 'add' | 'edit'
   const [form, setForm] = useState(empty());
   const [search, setSearch] = useState('');
@@ -34,13 +34,13 @@ export default function Exercises({ exercises, onUpdate }) {
 
   function handleSave() {
     if (!form.name.trim()) return;
-    const updated = saveExercise(form);
+    const updated = saveExercise(userId, form);
     onUpdate(updated);
     setModal(null);
   }
 
   function handleDelete(id) {
-    const updated = deleteExercise(id);
+    const updated = deleteExercise(userId, id);
     onUpdate(updated);
     setConfirmDelete(null);
   }

@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import './index.css';
+import { getStoredUser, storeUser, clearStoredUser } from './auth';
 import { getExercises, getTemplates, getLogs } from './store';
+import Login from './pages/Login';
 import Exercises from './pages/Exercises';
 import Templates from './pages/Templates';
 import WorkoutLog from './pages/WorkoutLog';
@@ -14,15 +16,43 @@ const PAGES = [
 ];
 
 export default function App() {
+  const [user, setUser] = useState(getStoredUser);
   const [page, setPage] = useState('log');
-  const [exercises, setExercises] = useState(getExercises);
-  const [templates, setTemplates] = useState(getTemplates);
-  const [logs, setLogs] = useState(getLogs);
+
+  // Data state is initialized from localStorage for the stored user (if any).
+  const [exercises, setExercises] = useState(() => user ? getExercises(user.sub) : []);
+  const [templates, setTemplates] = useState(() => user ? getTemplates(user.sub) : []);
+  const [logs, setLogs] = useState(() => user ? getLogs(user.sub) : []);
   const [pendingTemplate, setPendingTemplate] = useState(null);
+
+  const handleLogin = useCallback((profile) => {
+    storeUser(profile);
+    setUser(profile);
+    setExercises(getExercises(profile.sub));
+    setTemplates(getTemplates(profile.sub));
+    setLogs(getLogs(profile.sub));
+  }, []);
+
+  function handleSignOut() {
+    clearStoredUser();
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.disableAutoSelect();
+    }
+    setUser(null);
+    setExercises([]);
+    setTemplates([]);
+    setLogs([]);
+    setPendingTemplate(null);
+    setPage('log');
+  }
 
   function handleStartWorkout(template) {
     setPendingTemplate(template);
     setPage('log');
+  }
+
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
@@ -32,6 +62,7 @@ export default function App() {
           WrkPlnr
           <span className="logo-sub">Workout Planner</span>
         </div>
+
         {PAGES.map((p) => (
           <button
             key={p.id}
@@ -42,17 +73,31 @@ export default function App() {
             {p.label}
           </button>
         ))}
+
+        <div className="sidebar-spacer" />
+
+        <div className="sidebar-user">
+          {user.picture && (
+            <img src={user.picture} alt="" className="user-avatar" referrerPolicy="no-referrer" />
+          )}
+          <div className="user-info">
+            <span className="user-name">{user.name}</span>
+            <button className="btn-signout" onClick={handleSignOut}>Sign out</button>
+          </div>
+        </div>
       </nav>
 
       <main className="main">
         {page === 'exercises' && (
           <Exercises
+            userId={user.sub}
             exercises={exercises}
             onUpdate={setExercises}
           />
         )}
         {page === 'templates' && (
           <Templates
+            userId={user.sub}
             templates={templates}
             exercises={exercises}
             onUpdate={setTemplates}
@@ -61,6 +106,7 @@ export default function App() {
         )}
         {page === 'log' && (
           <WorkoutLog
+            userId={user.sub}
             exercises={exercises}
             templates={templates}
             onSaved={setLogs}
@@ -70,6 +116,7 @@ export default function App() {
         )}
         {page === 'calendar' && (
           <Calendar
+            userId={user.sub}
             logs={logs}
             exercises={exercises}
             onUpdate={setLogs}

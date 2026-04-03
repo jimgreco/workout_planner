@@ -1,10 +1,14 @@
-// LocalStorage-backed data store
+// LocalStorage-backed data store.
+// All keys are namespaced by userId (Google `sub`) so multiple accounts
+// on the same browser never collide.
 
-const KEYS = {
-  exercises: 'wp_exercises',
-  templates: 'wp_templates',
-  logs: 'wp_logs',
-};
+function getKeys(userId) {
+  return {
+    exercises: `wp_exercises_${userId}`,
+    templates: `wp_templates_${userId}`,
+    logs:      `wp_logs_${userId}`,
+  };
+}
 
 function load(key) {
   try {
@@ -20,12 +24,12 @@ function save(key, data) {
 }
 
 // ── Exercises ──────────────────────────────────────────────
-export function getExercises() {
-  return load(KEYS.exercises) || [];
+export function getExercises(userId) {
+  return load(getKeys(userId).exercises) || [];
 }
 
-export function saveExercise(exercise) {
-  const list = getExercises();
+export function saveExercise(userId, exercise) {
+  const list = getExercises(userId);
   if (exercise.id) {
     const idx = list.findIndex((e) => e.id === exercise.id);
     if (idx >= 0) list[idx] = exercise;
@@ -33,23 +37,23 @@ export function saveExercise(exercise) {
   } else {
     list.push({ ...exercise, id: crypto.randomUUID() });
   }
-  save(KEYS.exercises, list);
-  return getExercises();
+  save(getKeys(userId).exercises, list);
+  return getExercises(userId);
 }
 
-export function deleteExercise(id) {
-  const list = getExercises().filter((e) => e.id !== id);
-  save(KEYS.exercises, list);
+export function deleteExercise(userId, id) {
+  const list = getExercises(userId).filter((e) => e.id !== id);
+  save(getKeys(userId).exercises, list);
   return list;
 }
 
 // ── Templates ──────────────────────────────────────────────
-export function getTemplates() {
-  return load(KEYS.templates) || [];
+export function getTemplates(userId) {
+  return load(getKeys(userId).templates) || [];
 }
 
-export function saveTemplate(template) {
-  const list = getTemplates();
+export function saveTemplate(userId, template) {
+  const list = getTemplates(userId);
   if (template.id) {
     const idx = list.findIndex((t) => t.id === template.id);
     if (idx >= 0) list[idx] = template;
@@ -57,23 +61,23 @@ export function saveTemplate(template) {
   } else {
     list.push({ ...template, id: crypto.randomUUID() });
   }
-  save(KEYS.templates, list);
-  return getTemplates();
+  save(getKeys(userId).templates, list);
+  return getTemplates(userId);
 }
 
-export function deleteTemplate(id) {
-  const list = getTemplates().filter((t) => t.id !== id);
-  save(KEYS.templates, list);
+export function deleteTemplate(userId, id) {
+  const list = getTemplates(userId).filter((t) => t.id !== id);
+  save(getKeys(userId).templates, list);
   return list;
 }
 
 // ── Workout Logs ───────────────────────────────────────────
-export function getLogs() {
-  return load(KEYS.logs) || [];
+export function getLogs(userId) {
+  return load(getKeys(userId).logs) || [];
 }
 
-export function saveLog(log) {
-  const list = getLogs();
+export function saveLog(userId, log) {
+  const list = getLogs(userId);
   if (log.id) {
     const idx = list.findIndex((l) => l.id === log.id);
     if (idx >= 0) list[idx] = log;
@@ -81,16 +85,16 @@ export function saveLog(log) {
   } else {
     list.push({ ...log, id: crypto.randomUUID() });
   }
-  save(KEYS.logs, list);
-  return getLogs();
+  save(getKeys(userId).logs, list);
+  return getLogs(userId);
 }
 
-export function deleteLog(id) {
-  const list = getLogs().filter((l) => l.id !== id);
-  save(KEYS.logs, list);
+export function deleteLog(userId, id) {
+  const list = getLogs(userId).filter((l) => l.id !== id);
+  save(getKeys(userId).logs, list);
   return list;
 }
 
-export function getLogsByDate(dateStr) {
-  return getLogs().filter((l) => l.date === dateStr);
+export function getLogsByDate(userId, dateStr) {
+  return getLogs(userId).filter((l) => l.date === dateStr);
 }

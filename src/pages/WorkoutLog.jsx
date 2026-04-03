@@ -13,7 +13,7 @@ import { saveLog } from '../store';
  *   initialTemplate — optional template object to pre-populate
  *   onClearTemplate — callback to clear the pre-populated template
  */
-export default function WorkoutLog({ exercises, templates, onSaved, initialTemplate, onClearTemplate }) {
+export default function WorkoutLog({ userId, exercises, templates, onSaved, initialTemplate, onClearTemplate }) {
   const today = new Date().toISOString().slice(0, 10);
 
   const [name, setName] = useState(initialTemplate ? initialTemplate.name : '');
@@ -34,7 +34,7 @@ export default function WorkoutLog({ exercises, templates, onSaved, initialTempl
   function handleSave() {
     if (!name.trim()) return;
     const log = { name, date, notes, exerciseItems: items };
-    const updated = saveLog(log);
+    const updated = saveLog(userId, log);
     onSaved(updated);
     setSavedModal(true);
   }
