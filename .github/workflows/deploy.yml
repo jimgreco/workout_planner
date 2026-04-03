@@ -1,0 +1,91 @@
+# Deploy the React app to AWS S3 + CloudFront.
+#
+# Architecture:
+#   - S3 bucket serves as the static asset store (not a public website endpoint)
+#   - CloudFront distribution is the public CDN that serves the app
+#   - The action builds the React app, syncs to S3, then invalidates the
+#     CloudFront cache so the new version is served immediately
+#
+# Required GitHub repository secrets:
+#   AWS_ACCESS_KEY_ID        — IAM user key with S3 write + CloudFront invalidation access
+#   AWS_SECRET_ACCESS_KEY    — corresponding secret
+#   AWS_REGION               — e.g. us-east-1
+#   S3_BUCKET                — e.g. my-workout-planner-app
+#   CLOUDFRONT_DISTRIBUTION_ID — e.g. E1ABCDEFGHIJKL
+
+name: Build & Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - claude/workout-planner-app-gDLQX
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      id-token: write   # needed if you switch to OIDC instead of long-lived keys
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync dist/ to S3
+        run: |
+          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+
+          # index.html must not be cached aggressively so users always get the
+          # latest entry point even before a CloudFront invalidation completes.
+          aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
