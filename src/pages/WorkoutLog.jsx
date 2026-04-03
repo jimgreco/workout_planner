@@ -1,27 +1,18 @@
 import { useState } from 'react';
-import WorkoutBuilder from '../components/WorkoutBuilder';
-import Modal from '../components/Modal';
-import { saveLog } from '../store';
+import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
+import Modal from '../components/Modal.jsx';
+import { saveLog } from '../api.js';
 
-/**
- * WorkoutLog page — log a workout session, optionally from a template.
- *
- * Props:
- *   exercises      — full exercises list
- *   templates      — full templates list
- *   onSaved(logs)  — called after a workout is saved
- *   initialTemplate — optional template object to pre-populate
- *   onClearTemplate — callback to clear the pre-populated template
- */
-export default function WorkoutLog({ userId, exercises, templates, onSaved, initialTemplate, onClearTemplate }) {
+export default function WorkoutLog({ exercises, templates, onSaved, initialTemplate, onClearTemplate }) {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [name, setName] = useState(initialTemplate ? initialTemplate.name : '');
-  const [date, setDate] = useState(today);
+  const [name, setName]   = useState(initialTemplate ? initialTemplate.name : '');
+  const [date, setDate]   = useState(today);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState(
     initialTemplate ? JSON.parse(JSON.stringify(initialTemplate.exerciseItems || [])) : [],
   );
+  const [saving, setSaving]     = useState(false);
   const [savedModal, setSavedModal] = useState(false);
 
   function loadTemplate(templateId) {
@@ -31,12 +22,16 @@ export default function WorkoutLog({ userId, exercises, templates, onSaved, init
     setItems(JSON.parse(JSON.stringify(t.exerciseItems || [])));
   }
 
-  function handleSave() {
-    if (!name.trim()) return;
-    const log = { name, date, notes, exerciseItems: items };
-    const updated = saveLog(userId, log);
-    onSaved(updated);
-    setSavedModal(true);
+  async function handleSave() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    try {
+      const updated = await saveLog({ name, date, notes, exerciseItems: items });
+      onSaved(updated);
+      setSavedModal(true);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleReset() {
@@ -52,13 +47,13 @@ export default function WorkoutLog({ userId, exercises, templates, onSaved, init
       <div className="action-row">
         <h1 style={{ marginBottom: 0 }}>Log Workout</h1>
         <div className="flex gap-8">
-          <button className="btn btn-ghost btn-sm" onClick={handleReset}>Reset</button>
+          <button className="btn btn-ghost btn-sm" onClick={handleReset} disabled={saving}>Reset</button>
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!name.trim() || items.length === 0}
+            disabled={!name.trim() || items.length === 0 || saving}
           >
-            Save Workout
+            {saving ? 'Saving…' : 'Save Workout'}
           </button>
         </div>
       </div>
@@ -75,11 +70,7 @@ export default function WorkoutLog({ userId, exercises, templates, onSaved, init
         </div>
         <div className="form-group">
           <label>Date</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
       </div>
 
@@ -88,21 +79,14 @@ export default function WorkoutLog({ userId, exercises, templates, onSaved, init
           <label>Load from Template</label>
           <select value="" onChange={(e) => loadTemplate(e.target.value)}>
             <option value="" disabled>Select a template…</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
       )}
 
       <hr className="divider" />
       <h2>Exercises</h2>
-
-      <WorkoutBuilder
-        exercises={exercises}
-        items={items}
-        onChange={setItems}
-      />
+      <WorkoutBuilder exercises={exercises} items={items} onChange={setItems} />
 
       <hr className="divider" />
       <div className="form-group">
@@ -125,9 +109,7 @@ export default function WorkoutLog({ userId, exercises, templates, onSaved, init
             </button>
           }
         >
-          <p>
-            <strong>{name}</strong> on {date} has been saved successfully.
-          </p>
+          <p><strong>{name}</strong> on {date} has been saved.</p>
           <p className="text-muted" style={{ marginTop: 8 }}>
             {items.length} exercise{items.length !== 1 ? 's' : ''} ·{' '}
             {items.reduce((acc, i) => acc + i.sets.length, 0)} total sets

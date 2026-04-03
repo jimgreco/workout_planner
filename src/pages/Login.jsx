@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { parseJwt } from '../auth';
+import { parseJwt, storeCredential } from '../auth.js';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -20,6 +20,8 @@ export default function Login({ onLogin }) {
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID,
         callback: (response) => {
+          // Store the raw JWT so api.js can attach it to every request.
+          storeCredential(response.credential);
           const payload = parseJwt(response.credential);
           onLogin({
             sub:     payload.sub,

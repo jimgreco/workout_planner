@@ -1,18 +1,21 @@
-# Deploy the React app to AWS S3 + CloudFront.
+# Deploy the Workout Planner app to AWS.
 #
 # Architecture:
-#   - S3 bucket serves as the static asset store (not a public website endpoint)
-#   - CloudFront distribution is the public CDN that serves the app
-#   - The action builds the React app, syncs to S3, then invalidates the
-#     CloudFront cache so the new version is served immediately
+#   Frontend:  React SPA → Vite build → S3 sync → CloudFront invalidation
+#   Backend:   Lambda + API Gateway HTTP API + DynamoDB, managed via SAM
+#
+# Job order:
+#   test → deploy-backend → deploy-frontend
+#   The API URL is captured from the SAM stack outputs and injected into
+#   the Vite build so the frontend knows where to call.
 #
 # Required GitHub repository secrets:
-#   AWS_ACCESS_KEY_ID        — IAM user key with S3 write + CloudFront invalidation access
-#   AWS_SECRET_ACCESS_KEY    — corresponding secret
-#   AWS_REGION               — e.g. us-east-1
-#   S3_BUCKET                — e.g. my-workout-planner-app
-#   CLOUDFRONT_DISTRIBUTION_ID — e.g. E1ABCDEFGHIJKL
-#   VITE_GOOGLE_CLIENT_ID    — OAuth 2.0 client ID from Google Cloud Console
+#   AWS_ACCESS_KEY_ID          — IAM key (needs SAM + S3 + CloudFront + CF stack permissions)
+#   AWS_SECRET_ACCESS_KEY      — IAM secret
+#   AWS_REGION                 — e.g. us-east-1
+#   S3_BUCKET                  — frontend static assets bucket
+#   CLOUDFRONT_DISTRIBUTION_ID — CloudFront distribution ID
+#   VITE_GOOGLE_CLIENT_ID      — Google OAuth 2.0 Client ID
 
 name: Build & Deploy to AWS
 
@@ -24,6 +27,7 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ── 1. Tests ─────────────────────────────────────────────────────────────────
   test:
     name: Run Tests
     runs-on: ubuntu-latest
@@ -42,12 +46,68 @@ jobs:
       - name: Run tests
         run: npm test
 
-  deploy:
-    name: Build & Deploy
+  # ── 2. Backend (SAM → Lambda + API Gateway + DynamoDB) ───────────────────────
+  deploy-backend:
+    name: Deploy Backend (SAM)
     runs-on: ubuntu-latest
     needs: test
+    outputs:
+      api_url: ${{ steps.get-api-url.outputs.api_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Install SAM CLI
+        run: pip install aws-sam-cli
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: SAM build
+        run: sam build --template backend/template.yaml
+
+      - name: SAM deploy
+        run: |
+          sam deploy \
+            --template-file backend/template.yaml \
+            --stack-name workout-planner-backend \
+            --region ${{ secrets.AWS_REGION }} \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              GoogleClientId=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+
+      - name: Get API URL from stack outputs
+        id: get-api-url
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name workout-planner-backend \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+            --output text)
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+
+  # ── 3. Frontend (Vite build → S3 → CloudFront) ───────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: [test, deploy-backend]
     permissions:
-      id-token: write   # needed if you switch to OIDC instead of long-lived keys
+      id-token: write   # for future OIDC migration
       contents: read
 
     steps:
@@ -66,23 +126,24 @@ jobs:
         run: npm run build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_API_URL:          ${{ needs.deploy-backend.outputs.api_url }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
       - name: Sync dist/ to S3
         run: |
+          # JS/CSS assets are content-hashed by Vite — cache aggressively
           aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }}/ \
             --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html"
 
-          # index.html must not be cached aggressively so users always get the
-          # latest entry point even before a CloudFront invalidation completes.
+          # index.html must never be cached so clients always get the latest shell
           aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET }}/index.html \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "text/html"

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import Modal from '../components/Modal';
-import { saveExercise, deleteExercise } from '../store';
+import Modal from '../components/Modal.jsx';
+import { saveExercise, deleteExercise } from '../api.js';
 
 const MUSCLE_GROUPS = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
@@ -10,11 +10,12 @@ const MUSCLE_GROUPS = [
 
 const empty = () => ({ name: '', muscleGroup: 'Other', notes: '' });
 
-export default function Exercises({ userId, exercises, onUpdate }) {
-  const [modal, setModal] = useState(null); // null | 'add' | 'edit'
-  const [form, setForm] = useState(empty());
-  const [search, setSearch] = useState('');
+export default function Exercises({ exercises, onUpdate }) {
+  const [modal, setModal]               = useState(null); // null | 'add' | 'edit'
+  const [form, setForm]                 = useState(empty());
+  const [search, setSearch]             = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [saving, setSaving]             = useState(false);
 
   const filtered = exercises.filter(
     (e) =>
@@ -22,27 +23,30 @@ export default function Exercises({ userId, exercises, onUpdate }) {
       e.muscleGroup.toLowerCase().includes(search.toLowerCase()),
   );
 
-  function openAdd() {
-    setForm(empty());
-    setModal('add');
+  function openAdd() { setForm(empty()); setModal('add'); }
+  function openEdit(ex) { setForm({ ...ex }); setModal('edit'); }
+
+  async function handleSave() {
+    if (!form.name.trim() || saving) return;
+    setSaving(true);
+    try {
+      const updated = await saveExercise(form);
+      onUpdate(updated);
+      setModal(null);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function openEdit(ex) {
-    setForm({ ...ex });
-    setModal('edit');
-  }
-
-  function handleSave() {
-    if (!form.name.trim()) return;
-    const updated = saveExercise(userId, form);
-    onUpdate(updated);
-    setModal(null);
-  }
-
-  function handleDelete(id) {
-    const updated = deleteExercise(userId, id);
-    onUpdate(updated);
-    setConfirmDelete(null);
+  async function handleDelete(id) {
+    setSaving(true);
+    try {
+      const updated = await deleteExercise(id);
+      onUpdate(updated);
+      setConfirmDelete(null);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -84,12 +88,12 @@ export default function Exercises({ userId, exercises, onUpdate }) {
       {(modal === 'add' || modal === 'edit') && (
         <Modal
           title={modal === 'add' ? 'Add Exercise' : 'Edit Exercise'}
-          onClose={() => setModal(null)}
+          onClose={() => !saving && setModal(null)}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
-                {modal === 'add' ? 'Add Exercise' : 'Save Changes'}
+              <button className="btn btn-secondary" onClick={() => setModal(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim() || saving}>
+                {saving ? 'Saving…' : modal === 'add' ? 'Add Exercise' : 'Save Changes'}
               </button>
             </>
           }
@@ -106,13 +110,8 @@ export default function Exercises({ userId, exercises, onUpdate }) {
           </div>
           <div className="form-group">
             <label>Muscle Group</label>
-            <select
-              value={form.muscleGroup}
-              onChange={(e) => setForm({ ...form, muscleGroup: e.target.value })}
-            >
-              {MUSCLE_GROUPS.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
+            <select value={form.muscleGroup} onChange={(e) => setForm({ ...form, muscleGroup: e.target.value })}>
+              {MUSCLE_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
           <div className="form-group">
@@ -130,11 +129,13 @@ export default function Exercises({ userId, exercises, onUpdate }) {
       {confirmDelete && (
         <Modal
           title="Delete Exercise"
-          onClose={() => setConfirmDelete(null)}
+          onClose={() => !saving && setConfirmDelete(null)}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete.id)}>Delete</button>
+              <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete.id)} disabled={saving}>
+                {saving ? 'Deleting…' : 'Delete'}
+              </button>
             </>
           }
         >

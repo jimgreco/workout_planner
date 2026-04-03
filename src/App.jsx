@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import './index.css';
-import { getStoredUser, storeUser, clearStoredUser } from './auth';
-import { getExercises, getTemplates, getLogs } from './store';
-import Login from './pages/Login';
-import Exercises from './pages/Exercises';
-import Templates from './pages/Templates';
-import WorkoutLog from './pages/WorkoutLog';
-import Calendar from './pages/Calendar';
+import { getStoredUser, getStoredCredential, storeUser, clearStoredUser } from './auth.js';
+import { initData, resetData, getExercises, getTemplates, getLogs } from './api.js';
+import Login from './pages/Login.jsx';
+import Exercises from './pages/Exercises.jsx';
+import Templates from './pages/Templates.jsx';
+import WorkoutLog from './pages/WorkoutLog.jsx';
+import Calendar from './pages/Calendar.jsx';
 
 const PAGES = [
   { id: 'log',       label: 'Log Workout',  icon: '💪' },
@@ -16,25 +16,54 @@ const PAGES = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState(getStoredUser);
-  const [page, setPage] = useState('log');
+  // If the user has a stored profile AND a still-valid credential, skip the login screen.
+  const storedUser = getStoredUser();
+  const hasValidSession = !!storedUser && !!getStoredCredential();
 
-  // Data state is initialized from localStorage for the stored user (if any).
-  const [exercises, setExercises] = useState(() => user ? getExercises(user.sub) : []);
-  const [templates, setTemplates] = useState(() => user ? getTemplates(user.sub) : []);
-  const [logs, setLogs] = useState(() => user ? getLogs(user.sub) : []);
+  const [user, setUser]           = useState(hasValidSession ? storedUser : null);
+  const [loading, setLoading]     = useState(hasValidSession); // fetch data on first render
+  const [dataError, setDataError] = useState(null);
+  const [page, setPage]           = useState('log');
+
+  const [exercises, setExercises] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [logs, setLogs]           = useState([]);
   const [pendingTemplate, setPendingTemplate] = useState(null);
 
+  // ── Load data after login (or on first render with a valid session) ────────
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    setDataError(null);
+    initData()
+      .then(() => {
+        setExercises(getExercises());
+        setTemplates(getTemplates());
+        setLogs(getLogs());
+      })
+      .catch((err) => {
+        if (err.name !== 'AuthError') setDataError(err.message);
+        // AuthError is handled by the wp:auth-error event below
+      })
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  // ── Global auth-error handler (fired by api.js on 401 / missing credential) ──
+  useEffect(() => {
+    const onAuthError = () => handleSignOut();
+    window.addEventListener('wp:auth-error', onAuthError);
+    return () => window.removeEventListener('wp:auth-error', onAuthError);
+  }, []);
+
+  // ── Auth callbacks ─────────────────────────────────────────────────────────
   const handleLogin = useCallback((profile) => {
     storeUser(profile);
     setUser(profile);
-    setExercises(getExercises(profile.sub));
-    setTemplates(getTemplates(profile.sub));
-    setLogs(getLogs(profile.sub));
   }, []);
 
   function handleSignOut() {
     clearStoredUser();
+    resetData();
     if (window.google?.accounts?.id) {
       window.google.accounts.id.disableAutoSelect();
     }
@@ -51,10 +80,34 @@ export default function App() {
     setPage('log');
   }
 
+  // ── Not logged in ──────────────────────────────────────────────────────────
   if (!user) {
     return <Login onLogin={handleLogin} />;
   }
 
+  // ── Loading initial data ───────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="full-center">
+        <div className="spinner" />
+        <p className="loading-text">Loading your workouts…</p>
+      </div>
+    );
+  }
+
+  // ── Data load error ────────────────────────────────────────────────────────
+  if (dataError) {
+    return (
+      <div className="full-center">
+        <p style={{ color: 'var(--danger)', marginBottom: 12 }}>Failed to load data: {dataError}</p>
+        <button className="btn btn-secondary" onClick={() => { setDataError(null); setLoading(true); }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <div className="app">
       <nav className="sidebar">
@@ -89,15 +142,10 @@ export default function App() {
 
       <main className="main">
         {page === 'exercises' && (
-          <Exercises
-            userId={user.sub}
-            exercises={exercises}
-            onUpdate={setExercises}
-          />
+          <Exercises exercises={exercises} onUpdate={setExercises} />
         )}
         {page === 'templates' && (
           <Templates
-            userId={user.sub}
             templates={templates}
             exercises={exercises}
             onUpdate={setTemplates}
@@ -106,7 +154,6 @@ export default function App() {
         )}
         {page === 'log' && (
           <WorkoutLog
-            userId={user.sub}
             exercises={exercises}
             templates={templates}
             onSaved={setLogs}
@@ -115,12 +162,7 @@ export default function App() {
           />
         )}
         {page === 'calendar' && (
-          <Calendar
-            userId={user.sub}
-            logs={logs}
-            exercises={exercises}
-            onUpdate={setLogs}
-          />
+          <Calendar logs={logs} exercises={exercises} onUpdate={setLogs} />
         )}
       </main>
     </div>

@@ -2,9 +2,10 @@
 
 ## What this project is
 
-A single-page React web app for tracking gym workouts. All data is stored in
-the browser's `localStorage` (no backend). The app is deployed as a static
-site to AWS S3 + CloudFront.
+A single-page React web app for tracking gym workouts. Data is stored in AWS
+DynamoDB and served via a serverless API, enabling cross-device sync. The app
+is deployed as a static site (S3 + CloudFront) with a SAM-managed backend
+(API Gateway + Lambda + DynamoDB).
 
 ## Tech stack
 
@@ -12,20 +13,48 @@ site to AWS S3 + CloudFront.
 |---|---|
 | UI framework | React 19 (Vite) |
 | Styling | Vanilla CSS (`src/index.css`) — dark theme, CSS custom properties |
-| State | React `useState` + direct `localStorage` reads/writes |
+| State | React `useState` + in-memory cache in `src/api.js` |
+| Auth | Google Identity Services (GIS) — frontend OAuth, ID token verified in Lambda |
+| API | AWS API Gateway HTTP API (v2) |
+| Compute | AWS Lambda (Node.js 22, ESM) |
+| Database | AWS DynamoDB (single-table, on-demand billing) |
+| IaC | AWS SAM (`backend/template.yaml`) |
 | Tests | Vitest + Testing Library |
-| Deploy | GitHub Actions → S3 sync → CloudFront invalidation |
+| Deploy | GitHub Actions → SAM deploy → Vite build → S3 sync → CF invalidation |
+
+## Architecture
+
+```
+Browser  →  CloudFront  →  S3 (React SPA)
+               ↓
+         API Gateway HTTP API
+               ↓
+            Lambda  →  DynamoDB
+```
+
+Authentication flow:
+1. User signs in with Google (GIS library)
+2. Google returns a signed ID token (JWT, expires in 1h)
+3. Token is stored in localStorage with its expiry
+4. Every API request sends `Authorization: Bearer <token>`
+5. Lambda verifies the token via `google-auth-library` and extracts `sub`
+6. DynamoDB data is keyed by `USER#<sub>`
 
 ## Project structure
 
 ```
+backend/
+  template.yaml            — SAM template: DynamoDB table, HTTP API, Lambda
+  src/
+    handler.mjs            — Lambda handler (routes by path+method)
+  package.json             — google-auth-library + @aws-sdk deps
 src/
-  auth.js                  — session helpers (store/get/clear Google user in localStorage)
-  store.js                 — all localStorage CRUD (exercises, templates, logs); keys namespaced by userId
+  api.js                   — async API client with in-memory cache; replaces localStorage store
+  auth.js                  — Google credential + user profile storage in localStorage
   index.css                — global styles and design tokens
-  App.jsx                  — auth gate, sidebar navigation + page routing
+  App.jsx                  — auth gate, data loading, sidebar navigation + page routing
   pages/
-    Login.jsx              — Google Sign-In screen (shown when not authenticated)
+    Login.jsx              — Google Sign-In screen
     Exercises.jsx          — configure exercises (name, muscle group, notes)
     Templates.jsx          — save named workout templates
     WorkoutLog.jsx         — log a workout session
@@ -34,13 +63,13 @@ src/
     Modal.jsx              — reusable modal overlay
     WorkoutBuilder.jsx     — shared component for building exercise/set lists
   test/
-    setup.js               — vitest global setup (@testing-library/jest-dom)
-    store.test.js          — unit tests for store CRUD operations
+    setup.js               — vitest global setup
+    api.test.js            — unit tests for api.js (mocks fetch)
     WorkoutBuilder.test.jsx — component tests for WorkoutBuilder
-    Exercises.test.jsx     — component tests for the Exercises page
+    Exercises.test.jsx     — component tests for Exercises page
 .github/workflows/
-  deploy.yml               — CI/CD: test → build → S3 sync → CF invalidation
-.env.example               — documents required environment variables
+  deploy.yml               — CI/CD: test → SAM deploy → Vite build → S3 → CF
+.env.example               — required environment variables
 ```
 
 ## Data model
@@ -59,6 +88,12 @@ src/
 { exerciseId: uuid, sets: [{ reps: string, weight: string }] }
 ```
 
+DynamoDB key schema (single table):
+```
+PK  =  USER#<googleSub>
+SK  =  EXERCISE#<id>  |  TEMPLATE#<id>  |  LOG#<id>
+```
+
 ## Common commands
 
 ```bash
@@ -67,24 +102,34 @@ npm test           # run tests once
 npm run test:watch # run tests in watch mode
 npm run build      # production build → dist/
 npm run preview    # preview the production build locally
+
+# Backend (from repo root)
+cd backend && npm install
+sam build --template backend/template.yaml
+sam local start-api --template backend/template.yaml   # local API dev
 ```
 
 ## AWS deployment setup
 
-The app is deployed via the GitHub Actions workflow in
-`.github/workflows/deploy.yml`. You must set the following secrets in your
-GitHub repository settings:
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) runs three jobs:
+`test → deploy-backend → deploy-frontend`. The API URL is captured from the
+SAM stack output and injected into the Vite build automatically.
+
+Set these secrets in your GitHub repository settings:
 
 | Secret | Description |
 |---|---|
 | `AWS_ACCESS_KEY_ID` | IAM user access key |
 | `AWS_SECRET_ACCESS_KEY` | IAM user secret key |
-| `AWS_REGION` | Region where your S3 bucket lives (e.g. `us-east-1`) |
-| `S3_BUCKET` | Name of the S3 bucket (e.g. `my-workout-planner-app`) |
-| `CLOUDFRONT_DISTRIBUTION_ID` | Your CloudFront distribution ID |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth 2.0 client ID (see below) |
+| `AWS_REGION` | e.g. `us-east-1` |
+| `S3_BUCKET` | Frontend assets bucket name |
+| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth 2.0 Client ID |
 
-### Minimal IAM policy for the deploy user
+### IAM policy for the deploy user
+
+The deploy user needs the S3/CloudFront permissions from before **plus** the
+following for SAM:
 
 ```json
 {
@@ -92,16 +137,39 @@ GitHub repository settings:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::YOUR_BUCKET",
-        "arn:aws:s3:::YOUR_BUCKET/*"
-      ]
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetObject", "s3:CreateBucket"],
+      "Resource": ["arn:aws:s3:::*"]
     },
     {
       "Effect": "Allow",
       "Action": "cloudfront:CreateInvalidation",
       "Resource": "arn:aws:cloudfront::YOUR_ACCOUNT_ID:distribution/YOUR_DIST_ID"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["cloudformation:*"],
+      "Resource": "arn:aws:cloudformation:*:*:stack/workout-planner-backend/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["lambda:*"],
+      "Resource": "arn:aws:lambda:*:*:function:workout-planner-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["dynamodb:CreateTable", "dynamodb:DescribeTable", "dynamodb:DeleteTable", "dynamodb:UpdateTable"],
+      "Resource": "arn:aws:dynamodb:*:*:table/workout-planner-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["iam:CreateRole", "iam:AttachRolePolicy", "iam:DeleteRole", "iam:DetachRolePolicy",
+                 "iam:GetRole", "iam:PassRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy"],
+      "Resource": "arn:aws:iam::*:role/workout-planner-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["apigateway:*"],
+      "Resource": "*"
     }
   ]
 }
@@ -109,52 +177,34 @@ GitHub repository settings:
 
 ### CloudFront / S3 configuration notes
 
-- The S3 bucket should **not** have static website hosting enabled. Instead,
-  use CloudFront with an Origin Access Control (OAC) policy so the bucket
-  remains private.
+- The S3 bucket should **not** have static website hosting enabled. Use an
+  Origin Access Control (OAC) policy so the bucket remains private.
 - Set the CloudFront default root object to `index.html`.
-- Add a custom error response: HTTP 403/404 → `index.html` (200) so that
-  client-side navigation works after a hard refresh (React SPA).
+- Add a custom error response: HTTP 403/404 → `index.html` (200) for SPA routing.
 
 ## Google OAuth setup
 
-Authentication uses [Google Identity Services](https://developers.google.com/identity/gsi/web)
-(GIS) — a frontend-only OAuth flow, no backend required.
+1. [Google Cloud Console](https://console.cloud.google.com/) →
+   **APIs & Services → Credentials → Create OAuth 2.0 Client ID → Web application**
+2. Add **Authorized JavaScript origins**: `http://localhost:5173` + your CloudFront URL
+3. Copy the Client ID, set it as `VITE_GOOGLE_CLIENT_ID`
+4. For local dev: `cp .env.example .env` and fill in both variables
 
-### Steps
+### How auth works
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) →
-   **APIs & Services → Credentials → Create credentials → OAuth 2.0 Client ID**.
-2. Application type: **Web application**.
-3. Add **Authorized JavaScript origins**:
-   - `http://localhost:5173` (local dev)
-   - `https://your-cloudfront-domain.cloudfront.net` (production)
-4. Copy the **Client ID** (looks like `xxxx.apps.googleusercontent.com`).
-5. For local dev: copy `.env.example` to `.env` and paste the client ID there.
-6. For production: add it as a GitHub Actions secret named `VITE_GOOGLE_CLIENT_ID`.
-
-### How it works
-
-- The GIS script is loaded in `index.html` with `async` (no defer).
-- `Login.jsx` polls for `window.google.accounts.id` then calls `renderButton()`.
-- On successful sign-in, Google returns a JWT credential. `parseJwt()` in
-  `auth.js` decodes the payload to extract `sub`, `name`, `email`, and
-  `picture`. The `sub` field is Google's stable, unique user identifier.
-- The user profile is stored in `localStorage` under `wp_auth` so the session
-  persists across page refreshes.
-- All workout data keys in `store.js` are suffixed with `_<sub>`, so multiple
-  Google accounts on the same device have completely isolated data.
-- Sign-out clears `wp_auth` and calls `google.accounts.id.disableAutoSelect()`
-  to prevent the One Tap prompt from re-appearing immediately.
+- `Login.jsx` renders the GIS button; on sign-in Google returns a JWT credential
+- The raw JWT is stored in `localStorage` (with expiry) via `auth.js`
+- `api.js` reads the credential before every request; if it's missing or within
+  5 minutes of expiry, a `wp:auth-error` event is fired → `App.jsx` signs the user out
+- The Lambda verifies the token on every request using `google-auth-library`
 
 ## Development guidelines
 
-- All persistent state lives in `src/store.js`. Keep it pure functions that
-  accept `userId` as first parameter and read/write `localStorage`. No global
-  state library needed.
+- All API calls go through `src/api.js`. Keep it as the single source of truth
+  for data. The in-memory cache is populated once on login via `initData()`.
 - The `WorkoutBuilder` component is shared between Templates and WorkoutLog.
   Keep it presentation-only — callers own the state and pass `onChange`.
-- Avoid adding a backend. The localStorage approach is intentional and
-  sufficient for a personal workout tracker.
 - New pages: add an entry to the `PAGES` array in `App.jsx` and render the
   component in the page switcher block.
+- Backend changes: edit `backend/src/handler.mjs` and `backend/template.yaml`.
+  Test locally with `sam local start-api`.

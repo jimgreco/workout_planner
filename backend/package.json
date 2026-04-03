@@ -1,0 +1,11 @@
+{
+  "name": "workout-planner-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Lambda handler for the Workout Planner API",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3",
+    "@aws-sdk/lib-dynamodb": "^3",
+    "google-auth-library": "^9"
+  }
+}

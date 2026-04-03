@@ -1,41 +1,41 @@
 import { useState } from 'react';
-import Modal from '../components/Modal';
-import WorkoutBuilder from '../components/WorkoutBuilder';
-import { saveTemplate, deleteTemplate } from '../store';
+import Modal from '../components/Modal.jsx';
+import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
+import { saveTemplate, deleteTemplate } from '../api.js';
 
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
 
-export default function Templates({ userId, templates, exercises, onUpdate, onStartWorkout }) {
-  const [modal, setModal] = useState(null); // null | 'add' | 'edit' | 'view'
-  const [form, setForm] = useState(emptyTemplate());
+export default function Templates({ templates, exercises, onUpdate, onStartWorkout }) {
+  const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view'
+  const [form, setForm]                 = useState(emptyTemplate());
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [saving, setSaving]             = useState(false);
 
-  function openAdd() {
-    setForm(emptyTemplate());
-    setModal('add');
+  function openAdd()    { setForm(emptyTemplate()); setModal('add'); }
+  function openEdit(t)  { setForm({ ...t }); setModal('edit'); }
+  function openView(t)  { setForm({ ...t }); setModal('view'); }
+
+  async function handleSave() {
+    if (!form.name.trim() || saving) return;
+    setSaving(true);
+    try {
+      const updated = await saveTemplate(form);
+      onUpdate(updated);
+      setModal(null);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function openEdit(t) {
-    setForm({ ...t });
-    setModal('edit');
-  }
-
-  function openView(t) {
-    setForm({ ...t });
-    setModal('view');
-  }
-
-  function handleSave() {
-    if (!form.name.trim()) return;
-    const updated = saveTemplate(userId, form);
-    onUpdate(updated);
-    setModal(null);
-  }
-
-  function handleDelete(id) {
-    const updated = deleteTemplate(userId, id);
-    onUpdate(updated);
-    setConfirmDelete(null);
+  async function handleDelete(id) {
+    setSaving(true);
+    try {
+      const updated = await deleteTemplate(id);
+      onUpdate(updated);
+      setConfirmDelete(null);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -86,16 +86,12 @@ export default function Templates({ userId, templates, exercises, onUpdate, onSt
       {(modal === 'add' || modal === 'edit') && (
         <Modal
           title={modal === 'add' ? 'New Template' : 'Edit Template'}
-          onClose={() => setModal(null)}
+          onClose={() => !saving && setModal(null)}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                onClick={handleSave}
-                disabled={!form.name.trim()}
-              >
-                {modal === 'add' ? 'Create Template' : 'Save Changes'}
+              <button className="btn btn-secondary" onClick={() => setModal(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim() || saving}>
+                {saving ? 'Saving…' : modal === 'add' ? 'Create Template' : 'Save Changes'}
               </button>
             </>
           }
@@ -143,23 +139,20 @@ export default function Templates({ userId, templates, exercises, onUpdate, onSt
           }
         >
           {form.description && <p className="text-muted" style={{ marginBottom: 14 }}>{form.description}</p>}
-          <WorkoutBuilder
-            exercises={exercises}
-            items={form.exerciseItems || []}
-            onChange={() => {}}
-            readOnly
-          />
+          <WorkoutBuilder exercises={exercises} items={form.exerciseItems || []} onChange={() => {}} readOnly />
         </Modal>
       )}
 
       {confirmDelete && (
         <Modal
           title="Delete Template"
-          onClose={() => setConfirmDelete(null)}
+          onClose={() => !saving && setConfirmDelete(null)}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete.id)}>Delete</button>
+              <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete.id)} disabled={saving}>
+                {saving ? 'Deleting…' : 'Delete'}
+              </button>
             </>
           }
         >

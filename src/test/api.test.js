@@ -1,0 +1,187 @@
+/**
+ * Tests for src/api.js
+ *
+ * The module holds an in-memory cache. We mock:
+ *   - globalThis.fetch (HTTP calls)
+ *   - src/auth.js#getStoredCredential (returns a fake token)
+ *
+ * Each test resets the cache via resetData() and the fetch mock.
+ */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  initData, resetData,
+  getExercises, saveExercise, deleteExercise,
+  getTemplates, saveTemplate, deleteTemplate,
+  getLogs, saveLog, deleteLog, getLogsByDate,
+} from '../api.js';
+
+// ── Mocks ─────────────────────────────────────────────────────────────────────
+vi.mock('../auth.js', () => ({
+  getStoredCredential: vi.fn(() => 'fake-token'),
+  // other exports used elsewhere
+  getStoredUser:        vi.fn(() => null),
+  storeUser:            vi.fn(),
+  clearStoredUser:      vi.fn(),
+  storeCredential:      vi.fn(),
+  clearStoredCredential: vi.fn(),
+  parseJwt:             vi.fn(() => ({ sub: 'u1', name: 'Test', email: 't@t.com', picture: '' })),
+}));
+
+function mockFetch(responseMap) {
+  globalThis.fetch = vi.fn(async (url, opts) => {
+    const method = opts?.method ?? 'GET';
+    const path   = url.replace(/(https?:\/\/[^/]*)/, '');
+    const key    = `${method} ${path}`;
+    const handler = responseMap[key] ?? responseMap[`${method} *`];
+    if (!handler) throw new Error(`Unmocked fetch: ${key}`);
+    const { status = 200, body = null } = handler();
+    return {
+      ok: status < 400,
+      status,
+      json: async () => body,
+      text: async () => JSON.stringify(body),
+    };
+  });
+}
+
+const EX   = { id: 'ex-1', name: 'Bench Press', muscleGroup: 'Chest', notes: '' };
+const TMPL = { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] };
+const LOG  = { id: 'log-1', name: 'Session', date: '2026-01-01', notes: '', exerciseItems: [] };
+
+beforeEach(() => {
+  resetData();
+  vi.clearAllMocks();
+});
+
+// ── initData ──────────────────────────────────────────────────────────────────
+describe('initData', () => {
+  it('fetches all three collections and populates the cache', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [EX] }),
+      'GET /templates': () => ({ body: [TMPL] }),
+      'GET /logs':      () => ({ body: [LOG] }),
+    });
+
+    await initData();
+
+    expect(getExercises()).toEqual([EX]);
+    expect(getTemplates()).toEqual([TMPL]);
+    expect(getLogs()).toEqual([LOG]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ── Exercises ──────────────────────────────────────────────────────────────────
+describe('exercises', () => {
+  it('getExercises returns [] before initData', () => {
+    expect(getExercises()).toEqual([]);
+  });
+
+  it('saveExercise (create) adds item to cache and returns list', async () => {
+    mockFetch({ 'PUT *': () => ({ body: EX }) });
+
+    const list = await saveExercise({ name: 'Bench Press', muscleGroup: 'Chest', notes: '' });
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Bench Press');
+  });
+
+  it('saveExercise (update) replaces the item in cache', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [EX] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [] }),
+      'PUT *': () => ({ body: { ...EX, name: 'Incline Press' } }),
+    });
+    await initData();
+
+    const list = await saveExercise({ ...EX, name: 'Incline Press' });
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Incline Press');
+  });
+
+  it('deleteExercise removes item from cache and returns list', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [EX] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [] }),
+      'DELETE *': () => ({ status: 204, body: null }),
+    });
+    await initData();
+
+    const list = await deleteExercise(EX.id);
+    expect(list).toHaveLength(0);
+  });
+});
+
+// ── Templates ──────────────────────────────────────────────────────────────────
+describe('templates', () => {
+  it('saveTemplate creates and returns list', async () => {
+    mockFetch({ 'PUT *': () => ({ body: TMPL }) });
+    const list = await saveTemplate({ name: 'Push Day', description: '', exerciseItems: [] });
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Push Day');
+  });
+
+  it('deleteTemplate removes from cache', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [] }),
+      'GET /templates': () => ({ body: [TMPL] }),
+      'GET /logs':      () => ({ body: [] }),
+      'DELETE *': () => ({ status: 204, body: null }),
+    });
+    await initData();
+
+    const list = await deleteTemplate(TMPL.id);
+    expect(list).toHaveLength(0);
+  });
+});
+
+// ── Workout logs ───────────────────────────────────────────────────────────────
+describe('logs', () => {
+  it('saveLog creates and returns list', async () => {
+    mockFetch({ 'PUT *': () => ({ body: LOG }) });
+    const list = await saveLog({ name: 'Session', date: '2026-01-01', notes: '', exerciseItems: [] });
+    expect(list).toHaveLength(1);
+    expect(list[0].date).toBe('2026-01-01');
+  });
+
+  it('deleteLog removes from cache', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [LOG] }),
+      'DELETE *': () => ({ status: 204, body: null }),
+    });
+    await initData();
+
+    const list = await deleteLog(LOG.id);
+    expect(list).toHaveLength(0);
+  });
+
+  it('getLogsByDate filters by date', async () => {
+    const log2 = { ...LOG, id: 'log-2', date: '2026-01-02' };
+    mockFetch({
+      'GET /exercises': () => ({ body: [] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [LOG, log2] }),
+    });
+    await initData();
+
+    expect(getLogsByDate('2026-01-01')).toHaveLength(1);
+    expect(getLogsByDate('2026-01-01')[0].id).toBe('log-1');
+    expect(getLogsByDate('2026-01-03')).toHaveLength(0);
+  });
+});
+
+// ── Auth error ─────────────────────────────────────────────────────────────────
+describe('auth errors', () => {
+  it('dispatches wp:auth-error and throws AuthError on 401', async () => {
+    mockFetch({ 'GET /exercises': () => ({ status: 401, body: { error: 'Unauthorized' } }) });
+
+    const events = [];
+    window.addEventListener('wp:auth-error', (e) => events.push(e));
+
+    await expect(initData()).rejects.toThrow('Session expired');
+    expect(events).toHaveLength(1);
+  });
+});
