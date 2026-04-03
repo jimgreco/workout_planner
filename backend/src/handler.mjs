@@ -37,9 +37,18 @@ const SK_PREFIX = {
 };
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
+const IS_LOCAL = process.env.AWS_SAM_LOCAL === 'true';
+const DEV_BYPASS_TOKEN = 'dev-bypass-token';
+const DEV_USER_SUB     = 'dev-user-local';
+
 async function verifyToken(authHeader) {
   if (!authHeader?.startsWith('Bearer ')) throw new Error('Missing token');
   const token = authHeader.slice(7);
+
+  // Accept the dev bypass token only when running under `sam local start-api`.
+  // AWS_SAM_LOCAL is never set on real Lambda, so this branch is unreachable in production.
+  if (IS_LOCAL && token === DEV_BYPASS_TOKEN) return DEV_USER_SUB;
+
   const ticket = await gClient.verifyIdToken({
     idToken: token,
     audience: process.env.GOOGLE_CLIENT_ID,

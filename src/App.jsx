@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import './index.css';
-import { getStoredUser, getStoredCredential, storeUser, clearStoredUser } from './auth.js';
+import { getStoredUser, getStoredCredential, storeUser, clearStoredUser, DEV_BYPASS, DEV_USER } from './auth.js';
 import { initData, resetData, getExercises, getTemplates, getLogs } from './api.js';
 import Login from './pages/Login.jsx';
 import Exercises from './pages/Exercises.jsx';
@@ -16,9 +16,10 @@ const PAGES = [
 ];
 
 export default function App() {
-  // If the user has a stored profile AND a still-valid credential, skip the login screen.
-  const storedUser = getStoredUser();
-  const hasValidSession = !!storedUser && !!getStoredCredential();
+  // Dev bypass: skip login entirely with a mock user (VITE_DEV_BYPASS_AUTH=true).
+  // Normal: require a stored profile + a still-valid Google credential.
+  const storedUser = DEV_BYPASS ? DEV_USER : getStoredUser();
+  const hasValidSession = DEV_BYPASS || (!!storedUser && !!getStoredCredential());
 
   const [user, setUser]           = useState(hasValidSession ? storedUser : null);
   const [loading, setLoading]     = useState(hasValidSession); // fetch data on first render

@@ -5,6 +5,18 @@ const AUTH_KEY       = 'wp_auth';
 const CRED_KEY       = 'wp_credential';
 const CRED_EXP_KEY   = 'wp_credential_exp';
 
+// ── Dev bypass ─────────────────────────────────────────────────────────────────
+// Set VITE_DEV_BYPASS_AUTH=true in .env to skip Google sign-in during local dev.
+// The backend accepts DEV_BYPASS_TOKEN only when AWS_SAM_LOCAL=true (sam local).
+export const DEV_BYPASS = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+export const DEV_BYPASS_TOKEN = 'dev-bypass-token';
+export const DEV_USER = {
+  sub:     'dev-user-local',
+  name:    'Dev User',
+  email:   'dev@localhost',
+  picture: '',
+};
+
 // ── User profile ───────────────────────────────────────────────────────────────
 /** @returns {{ sub: string, name: string, email: string, picture: string } | null} */
 export function getStoredUser() {
@@ -38,6 +50,7 @@ export function storeCredential(credential) {
  * re-authentication.
  */
 export function getStoredCredential() {
+  if (DEV_BYPASS) return DEV_BYPASS_TOKEN;
   const token = localStorage.getItem(CRED_KEY);
   const exp   = parseInt(localStorage.getItem(CRED_EXP_KEY) || '0', 10);
   if (!token || Date.now() / 1000 > exp - 300) return null;
