@@ -226,7 +226,6 @@ export default function App() {
             )}
             <div className="user-info">
               <span className="user-name">{user.name}</span>
-              <span className="user-meta">Account settings</span>
             </div>
           </button>
 
