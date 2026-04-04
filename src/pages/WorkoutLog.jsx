@@ -312,25 +312,25 @@ export default function WorkoutLog({
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="page">
-      <div className="action-row">
+      <div className="action-row" style={{ marginBottom: 20 }}>
         <div>
           <h1 style={{ marginBottom: 0 }}>
             {isEditing.current ? 'Edit Workout' : 'Log Workout'}
           </h1>
           {isActive && startTime && !isEditing.current && (
-            <div className="flex items-center gap-8 text-muted" style={{ marginTop: 4 }}>
-              <Clock size={14} /> <span>In progress · {elapsed}</span>
+            <div className="flex items-center gap-8 text-muted" style={{ marginTop: 2 }}>
+              <Clock size={12} /> <span style={{ fontSize: 13 }}>In progress · {elapsed}</span>
             </div>
           )}
         </div>
-        <div className="flex gap-8 action-buttons">
+        <div className="flex gap-4 action-buttons">
           {isActive && (
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => setConfirmDiscard(true)}
               disabled={saving}
             >
-              <X size={16} /> {isEditing.current ? 'Cancel' : 'Discard'}
+              <X size={14} /> {isEditing.current ? 'Cancel' : 'Discard'}
             </button>
           )}
           {isActive && items.length > 0 && (
@@ -339,13 +339,13 @@ export default function WorkoutLog({
               onClick={handleFinish}
               disabled={!name.trim() || saving}
             >
-              <Check size={18} /> {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
+              <Check size={16} /> {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
             </button>
           )}
         </div>
       </div>
 
-      <div className="form-row" style={{ marginTop: 24 }}>
+      <div className="form-row" style={{ marginTop: 12 }}>
         <div className="form-group" style={{ flex: 2 }}>
           <label>Workout Name</label>
           <input
@@ -365,8 +365,8 @@ export default function WorkoutLog({
         <div className="form-group">
           <label>Start from Template</label>
           <div className="input-with-icon">
-            <Clipboard className="input-icon" size={18} />
-            <select value="" onChange={(e) => loadTemplate(e.target.value)}>
+            <Clipboard className="input-icon" size={16} />
+            <select value="" onChange={(e) => loadTemplate(e.target.value)} style={{ paddingLeft: 36, fontSize: 14 }}>
               <option value="" disabled>Select a template…</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -378,8 +378,8 @@ export default function WorkoutLog({
         <div className="form-group">
           <label>Add from Template</label>
           <div className="input-with-icon">
-            <Clipboard className="input-icon" size={18} />
-            <select value="" onChange={(e) => loadTemplate(e.target.value)}>
+            <Clipboard className="input-icon" size={16} />
+            <select value="" onChange={(e) => loadTemplate(e.target.value)} style={{ paddingLeft: 36, fontSize: 14 }}>
               <option value="" disabled>Add exercises from template…</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -387,8 +387,8 @@ export default function WorkoutLog({
         </div>
       )}
 
-      <hr className="divider" style={{ opacity: 0.5, margin: '24px 0' }} />
-      <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>Exercises</h2>
+      <hr className="divider" style={{ opacity: 0.3, margin: '16px 0' }} />
+      <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 16 }}>Exercises</h2>
       <WorkoutBuilder
         exercises={exercises}
         items={items}
@@ -397,11 +397,11 @@ export default function WorkoutLog({
         defaultReps={settings.defaultReps}
       />
 
-      <hr className="divider" style={{ opacity: 0.5, margin: '24px 0' }} />
+      <hr className="divider" style={{ opacity: 0.3, margin: '16px 0' }} />
       <div className="form-group">
         <label>Session Notes (optional)</label>
         <textarea
-          rows={3}
+          rows={2}
           placeholder="How did it go? Any PRs, fatigue notes…"
           value={notes}
           onChange={(e) => handleFieldChange('notes', e.target.value)}

@@ -93,20 +93,20 @@ export default function WorkoutBuilder({
         return (
           <div key={item.exerciseId} className="sets-block">
             <div className="sets-block-header">
-              <div className="flex items-center gap-12">
-                <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.3px' }}>{ex.name}</span>
-                <span className="badge" style={{ padding: '4px 10px', fontSize: 12 }}>{ex.muscleGroup}</span>
+              <div className="flex items-center gap-8">
+                <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.2px' }}>{ex.name}</span>
+                <span className="badge" style={{ padding: '2px 8px', fontSize: 11 }}>{ex.muscleGroup}</span>
               </div>
               {!readOnly && (
-                <div className="flex gap-8 items-center card-actions">
-                  <button className="btn-icon" title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
-                    <ArrowUp size={16} />
+                <div className="flex gap-4 items-center card-actions">
+                  <button className="btn-icon" style={{ width: 28, height: 28 }} title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
+                    <ArrowUp size={14} />
                   </button>
-                  <button className="btn-icon" title="Move down" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
-                    <ArrowDown size={16} />
+                  <button className="btn-icon" style={{ width: 28, height: 28 }} title="Move down" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
+                    <ArrowDown size={14} />
                   </button>
-                  <button className="btn-icon" title="Remove exercise" onClick={() => removeExercise(idx)}>
-                    <X size={16} color="var(--danger)" />
+                  <button className="btn-icon" style={{ width: 28, height: 28 }} title="Remove exercise" onClick={() => removeExercise(idx)}>
+                    <X size={14} color="var(--danger)" />
                   </button>
                 </div>
               )}
@@ -115,10 +115,10 @@ export default function WorkoutBuilder({
             <table className="sets-table">
               <thead>
                 <tr>
-                  <th style={{ width: 48 }}>Set</th>
+                  <th style={{ width: 36 }}>Set</th>
                   <th>Reps</th>
-                  {showWeight && <th>Weight (lbs)</th>}
-                  {!readOnly && <th style={{ width: 48 }}></th>}
+                  {showWeight && <th>Weight</th>}
+                  {!readOnly && <th style={{ width: 32 }}></th>}
                 </tr>
               </thead>
               <tbody>
@@ -152,12 +152,12 @@ export default function WorkoutBuilder({
                       <td style={{ textAlign: 'center' }}>
                         <button
                           className="btn btn-ghost btn-sm"
-                          style={{ minWidth: 0, padding: 8, textDecoration: 'none' }}
+                          style={{ minWidth: 0, padding: 4, textDecoration: 'none' }}
                           onClick={() => removeSet(idx, si)}
                           disabled={item.sets.length <= 1}
                           title="Remove set"
                         >
-                          <X size={16} color="var(--text-muted)" />
+                          <X size={14} color="var(--text-muted)" />
                         </button>
                       </td>
                     )}
@@ -169,10 +169,10 @@ export default function WorkoutBuilder({
             {!readOnly && (
               <button
                 className="btn btn-secondary btn-sm"
-                style={{ marginTop: 12, width: '100%', background: 'transparent' }}
+                style={{ marginTop: 8, width: '100%', background: 'transparent', padding: '4px 8px' }}
                 onClick={() => addSet(idx)}
               >
-                <Plus size={14} /> Add Set
+                <Plus size={12} /> Add Set
               </button>
             )}
           </div>
@@ -180,13 +180,14 @@ export default function WorkoutBuilder({
       })}
 
       {!readOnly && (
-        <div className="form-group mt-16">
+        <div className="form-group mt-8">
           <label>Add Exercise</label>
           <div className="input-with-icon">
-            <Plus className="input-icon" size={18} />
+            <Plus className="input-icon" size={16} />
             <select
               value=""
               onChange={(e) => addExercise(e.target.value)}
+              style={{ padding: '8px 12px 8px 36px', fontSize: 14 }}
             >
               <option value="" disabled>Select exercise to add…</option>
               {availableExercises.length === 0 && (

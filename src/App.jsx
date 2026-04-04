@@ -168,10 +168,11 @@ export default function App() {
               key={p.id}
               className={`nav-item ${page === p.id ? 'active' : ''}`}
               onClick={() => navigate(p.id)}
+              style={{ padding: '10px 14px', gap: '12px' }}
             >
-              <p.icon size={20} className="nav-icon" strokeWidth={page === p.id ? 2.5 : 2} />
-              <span className="nav-label">{p.label}</span>
-              {page === p.id && <ChevronRight size={16} className="active-chevron" />}
+              <p.icon size={18} className="nav-icon" strokeWidth={page === p.id ? 2.5 : 2} />
+              <span className="nav-label" style={{ fontSize: '14.5px' }}>{p.label}</span>
+              {page === p.id && <ChevronRight size={14} className="active-chevron" />}
             </button>
           ))}
         </div>
