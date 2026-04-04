@@ -3,13 +3,24 @@
  * Used by both the Templates editor and the Workout Logger.
  *
  * Props:
- *   exercises      — full list of configured exercises
- *   items          — array of workout exercise items:
- *                    [{ exerciseId, sets: [{ reps, weight }] }]
- *   onChange(items) — called with updated items
- *   readOnly        — if true, inputs are disabled (view mode)
+ *   exercises       — full list of configured exercises
+ *   items           — array of workout exercise items:
+ *                     [{ exerciseId, sets: [{ reps, weight }] }]
+ *   onChange(items)  — called with updated items
+ *   readOnly         — if true, inputs are disabled (view mode)
+ *   showWeight       — if true, show weight column (default true)
+ *   defaultSets      — number of sets to add for a new exercise (default 4)
+ *   defaultReps      — default rep value for new sets (default 8)
  */
-export default function WorkoutBuilder({ exercises, items, onChange, readOnly = false }) {
+export default function WorkoutBuilder({
+  exercises,
+  items,
+  onChange,
+  readOnly = false,
+  showWeight = true,
+  defaultSets = 4,
+  defaultReps = 8,
+}) {
   function exById(id) {
     return exercises.find((e) => e.id === id);
   }
@@ -17,7 +28,11 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
   function addExercise(exerciseId) {
     if (!exerciseId) return;
     if (items.some((i) => i.exerciseId === exerciseId)) return;
-    onChange([...items, { exerciseId, sets: [{ reps: '', weight: '' }] }]);
+    const sets = Array.from({ length: defaultSets }, () => ({
+      reps: String(defaultReps),
+      weight: '',
+    }));
+    onChange([...items, { exerciseId, sets }]);
   }
 
   function removeExercise(idx) {
@@ -27,7 +42,7 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
   function addSet(itemIdx) {
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
-      const lastSet = item.sets[item.sets.length - 1] || { reps: '', weight: '' };
+      const lastSet = item.sets[item.sets.length - 1] || { reps: String(defaultReps), weight: '' };
       return { ...item, sets: [...item.sets, { reps: lastSet.reps, weight: lastSet.weight }] };
     });
     onChange(copy);
@@ -92,14 +107,14 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
                 <tr>
                   <th style={{ width: 36 }}>Set</th>
                   <th>Reps</th>
-                  <th>Weight (lbs)</th>
+                  {showWeight && <th>Weight (lbs)</th>}
                   {!readOnly && <th style={{ width: 32 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {item.sets.map((set, si) => (
                   <tr key={si}>
-                    <td style={{ color: 'var(--text-muted)', fontSize: 12, paddingTop: 6 }}>{si + 1}</td>
+                    <td className="set-num">{si + 1}</td>
                     <td>
                       <input
                         type="number"
@@ -108,21 +123,21 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
                         value={set.reps}
                         onChange={(e) => updateSet(idx, si, 'reps', e.target.value)}
                         disabled={readOnly}
-                        style={{ width: 80 }}
                       />
                     </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="2.5"
-                        placeholder="—"
-                        value={set.weight}
-                        onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                        disabled={readOnly}
-                        style={{ width: 100 }}
-                      />
-                    </td>
+                    {showWeight && (
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="2.5"
+                          placeholder="—"
+                          value={set.weight}
+                          onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                          disabled={readOnly}
+                        />
+                      </td>
+                    )}
                     {!readOnly && (
                       <td>
                         <button

@@ -13,6 +13,7 @@ import {
   getExercises, saveExercise, deleteExercise,
   getTemplates, saveTemplate, deleteTemplate,
   getLogs, saveLog, deleteLog, getLogsByDate,
+  getSettings,
 } from '../api.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ describe('initData', () => {
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [TMPL] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
     });
 
     await initData();
@@ -68,7 +70,8 @@ describe('initData', () => {
     expect(getExercises()).toEqual([EX]);
     expect(getTemplates()).toEqual([TMPL]);
     expect(getLogs()).toEqual([LOG]);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+    expect(getSettings()).toEqual({ defaultSets: 4, defaultReps: 8 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -91,6 +94,7 @@ describe('exercises', () => {
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'PUT *': () => ({ body: { ...EX, name: 'Incline Press' } }),
     });
     await initData();
@@ -105,6 +109,7 @@ describe('exercises', () => {
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE *': () => ({ status: 204, body: null }),
     });
     await initData();
@@ -128,6 +133,7 @@ describe('templates', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [TMPL] }),
       'GET /logs':      () => ({ body: [] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE *': () => ({ status: 204, body: null }),
     });
     await initData();
@@ -151,6 +157,7 @@ describe('logs', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE *': () => ({ status: 204, body: null }),
     });
     await initData();
@@ -165,6 +172,7 @@ describe('logs', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [LOG, log2] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
     });
     await initData();
 

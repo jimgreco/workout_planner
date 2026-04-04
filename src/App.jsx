@@ -1,18 +1,20 @@
 import { useState, useCallback, useEffect } from 'react';
 import './index.css';
 import { getStoredUser, getStoredCredential, storeUser, clearStoredUser, DEV_BYPASS, DEV_USER } from './auth.js';
-import { initData, resetData, getExercises, getTemplates, getLogs } from './api.js';
+import { initData, resetData, getExercises, getTemplates, getLogs, getSettings } from './api.js';
 import Login from './pages/Login.jsx';
 import Exercises from './pages/Exercises.jsx';
 import Templates from './pages/Templates.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
+import Settings from './pages/Settings.jsx';
 
 const PAGES = [
   { id: 'log',       label: 'Log Workout',  icon: '💪' },
-  { id: 'calendar',  label: 'Calendar',     icon: '📅' },
-  { id: 'templates', label: 'Templates',    icon: '📋' },
-  { id: 'exercises', label: 'Exercises',    icon: '🏋️' },
+  { id: 'history',   label: 'History',       icon: '📅' },
+  { id: 'templates', label: 'Templates',     icon: '📋' },
+  { id: 'exercises', label: 'Exercises',     icon: '🏋️' },
+  { id: 'settings',  label: 'Settings',      icon: '⚙️' },
 ];
 
 export default function App() {
@@ -25,11 +27,14 @@ export default function App() {
   const [loading, setLoading]     = useState(hasValidSession); // fetch data on first render
   const [dataError, setDataError] = useState(null);
   const [page, setPage]           = useState('log');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [logs, setLogs]           = useState([]);
+  const [settings, setSettings]   = useState({ defaultSets: 4, defaultReps: 8 });
   const [pendingTemplate, setPendingTemplate] = useState(null);
+  const [editingLog, setEditingLog] = useState(null);
 
   // ── Load data after login (or on first render with a valid session) ────────
   useEffect(() => {
@@ -41,10 +46,10 @@ export default function App() {
         setExercises(getExercises());
         setTemplates(getTemplates());
         setLogs(getLogs());
+        setSettings(getSettings());
       })
       .catch((err) => {
         if (err.name !== 'AuthError') setDataError(err.message);
-        // AuthError is handled by the wp:auth-error event below
       })
       .finally(() => setLoading(false));
   }, [user]);
@@ -72,13 +77,27 @@ export default function App() {
     setExercises([]);
     setTemplates([]);
     setLogs([]);
+    setSettings({ defaultSets: 4, defaultReps: 8 });
     setPendingTemplate(null);
+    setEditingLog(null);
     setPage('log');
   }
 
   function handleStartWorkout(template) {
     setPendingTemplate(template);
     setPage('log');
+    setMobileNavOpen(false);
+  }
+
+  function handleEditLog(log) {
+    setEditingLog(log);
+    setPage('log');
+    setMobileNavOpen(false);
+  }
+
+  function navigate(id) {
+    setPage(id);
+    setMobileNavOpen(false);
   }
 
   // ── Not logged in ──────────────────────────────────────────────────────────
@@ -111,7 +130,19 @@ export default function App() {
   // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      <nav className="sidebar">
+      {/* Mobile top bar */}
+      <header className="mobile-header">
+        <button className="mobile-hamburger" onClick={() => setMobileNavOpen(!mobileNavOpen)}>
+          {mobileNavOpen ? '✕' : '☰'}
+        </button>
+        <span className="mobile-title">WrkPlnr</span>
+        {user.picture && (
+          <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
+        )}
+      </header>
+
+      {/* Sidebar / mobile overlay nav */}
+      <nav className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-logo">
           WrkPlnr
           <span className="logo-sub">Workout Planner</span>
@@ -121,7 +152,7 @@ export default function App() {
           <button
             key={p.id}
             className={`nav-item ${page === p.id ? 'active' : ''}`}
-            onClick={() => setPage(p.id)}
+            onClick={() => navigate(p.id)}
           >
             <span className="nav-icon">{p.icon}</span>
             {p.label}
@@ -141,14 +172,39 @@ export default function App() {
         </div>
       </nav>
 
+      {/* Backdrop for mobile nav */}
+      {mobileNavOpen && <div className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} />}
+
+      {/* Bottom tab bar for mobile */}
+      <nav className="mobile-tabs">
+        {PAGES.slice(0, 4).map((p) => (
+          <button
+            key={p.id}
+            className={`mobile-tab ${page === p.id ? 'active' : ''}`}
+            onClick={() => navigate(p.id)}
+          >
+            <span className="mobile-tab-icon">{p.icon}</span>
+            <span className="mobile-tab-label">{p.label}</span>
+          </button>
+        ))}
+        <button
+          className={`mobile-tab ${page === 'settings' ? 'active' : ''}`}
+          onClick={() => navigate('settings')}
+        >
+          <span className="mobile-tab-icon">⚙️</span>
+          <span className="mobile-tab-label">Settings</span>
+        </button>
+      </nav>
+
       <main className="main">
         {page === 'exercises' && (
-          <Exercises exercises={exercises} onUpdate={setExercises} />
+          <Exercises exercises={exercises} logs={logs} onUpdate={setExercises} />
         )}
         {page === 'templates' && (
           <Templates
             templates={templates}
             exercises={exercises}
+            settings={settings}
             onUpdate={setTemplates}
             onStartWorkout={handleStartWorkout}
           />
@@ -157,13 +213,26 @@ export default function App() {
           <WorkoutLog
             exercises={exercises}
             templates={templates}
-            onSaved={setLogs}
+            logs={logs}
+            settings={settings}
+            onLogsChanged={setLogs}
+            onExercisesChanged={setExercises}
             initialTemplate={pendingTemplate}
             onClearTemplate={() => setPendingTemplate(null)}
+            editingLog={editingLog}
+            onClearEditing={() => setEditingLog(null)}
           />
         )}
-        {page === 'calendar' && (
-          <Calendar logs={logs} exercises={exercises} onUpdate={setLogs} />
+        {page === 'history' && (
+          <Calendar
+            logs={logs}
+            exercises={exercises}
+            onUpdate={setLogs}
+            onEditLog={handleEditLog}
+          />
+        )}
+        {page === 'settings' && (
+          <Settings settings={settings} onUpdate={setSettings} />
         )}
       </main>
     </div>

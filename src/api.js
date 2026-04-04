@@ -1,8 +1,8 @@
 /**
- * API client — replaces store.js.
+ * API client — single source of truth for all data.
  *
  * Holds an in-memory cache populated by initData() at login.
- * Reads are synchronous (from cache). Writes are async (API → update cache → return list).
+ * Reads are synchronous (from cache). Writes are async (API → update cache → return).
  *
  * Auth errors (401 / missing credential) dispatch a 'wp:auth-error' DOM event
  * so App.jsx can sign the user out without prop-drilling an error callback.
@@ -20,13 +20,17 @@ const cache = {
   exercises: /** @type {any[]|null} */ (null),
   templates: /** @type {any[]|null} */ (null),
   logs:      /** @type {any[]|null} */ (null),
+  settings:  /** @type {any|null} */ (null),
 };
+
+const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
 
 /** Clear the cache (called on sign-out). */
 export function resetData() {
   cache.exercises = null;
   cache.templates = null;
   cache.logs      = null;
+  cache.settings  = null;
 }
 
 // ── HTTP helper ────────────────────────────────────────────────────────────────
@@ -57,23 +61,35 @@ async function request(method, path, body) {
 }
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
-/** Fetch all three collections in parallel and populate the cache. */
+/** Fetch all collections + settings in parallel and populate the cache. */
 export async function initData() {
   // In dev bypass mode with no real API configured, start with empty collections.
   if (DEV_BYPASS && !BASE_URL) {
     cache.exercises = [];
     cache.templates = [];
     cache.logs      = [];
+    cache.settings  = { ...DEFAULT_SETTINGS };
     return;
   }
-  const [exercises, templates, logs] = await Promise.all([
+  const [exercises, templates, logs, settings] = await Promise.all([
     request('GET', '/exercises'),
     request('GET', '/templates'),
     request('GET', '/logs'),
+    request('GET', '/settings'),
   ]);
   cache.exercises = exercises;
   cache.templates = templates;
   cache.logs      = logs;
+  cache.settings  = settings ?? { ...DEFAULT_SETTINGS };
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+export function getSettings() { return cache.settings ?? { ...DEFAULT_SETTINGS }; }
+
+export async function saveSettings(settings) {
+  const saved = (DEV_BYPASS && !BASE_URL) ? settings : await request('PUT', '/settings', settings);
+  cache.settings = saved;
+  return saved;
 }
 
 // ── Exercises ──────────────────────────────────────────────────────────────────

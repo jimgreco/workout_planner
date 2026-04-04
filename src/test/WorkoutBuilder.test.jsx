@@ -62,7 +62,7 @@ describe('WorkoutBuilder', () => {
     const updated = onChange.mock.calls[0][0];
     expect(updated).toHaveLength(1);
     expect(updated[0].exerciseId).toBe('ex2');
-    expect(updated[0].sets).toHaveLength(1);
+    expect(updated[0].sets).toHaveLength(4); // default 4 sets
   });
 
   it('does not add a duplicate exercise', () => {

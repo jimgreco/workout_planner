@@ -5,7 +5,7 @@ import { saveTemplate, deleteTemplate } from '../api.js';
 
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
 
-export default function Templates({ templates, exercises, onUpdate, onStartWorkout }) {
+export default function Templates({ templates, exercises, settings, onUpdate, onStartWorkout }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view'
   const [form, setForm]                 = useState(emptyTemplate());
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -59,9 +59,9 @@ export default function Templates({ templates, exercises, onUpdate, onStartWorko
               <h3>{t.name}</h3>
               {t.description && <p className="text-muted">{t.description}</p>}
             </div>
-            <div className="flex gap-8 items-center">
+            <div className="flex gap-8 items-center card-actions">
               <button className="btn btn-secondary btn-sm" onClick={() => openView(t)}>View</button>
-              <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(t)}>Start Workout</button>
+              <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(t)}>Start</button>
               <button className="btn-icon" title="Edit" onClick={() => openEdit(t)}>✏️</button>
               <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(t)}>🗑️</button>
             </div>
@@ -121,6 +121,9 @@ export default function Templates({ templates, exercises, onUpdate, onStartWorko
             exercises={exercises}
             items={form.exerciseItems || []}
             onChange={(items) => setForm({ ...form, exerciseItems: items })}
+            showWeight={false}
+            defaultSets={settings.defaultSets}
+            defaultReps={settings.defaultReps}
           />
         </Modal>
       )}
@@ -139,7 +142,13 @@ export default function Templates({ templates, exercises, onUpdate, onStartWorko
           }
         >
           {form.description && <p className="text-muted" style={{ marginBottom: 14 }}>{form.description}</p>}
-          <WorkoutBuilder exercises={exercises} items={form.exerciseItems || []} onChange={() => {}} readOnly />
+          <WorkoutBuilder
+            exercises={exercises}
+            items={form.exerciseItems || []}
+            onChange={() => {}}
+            readOnly
+            showWeight={false}
+          />
         </Modal>
       )}
 

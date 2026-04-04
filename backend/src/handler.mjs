@@ -31,6 +31,7 @@ import {
 import { OAuth2Client } from 'google-auth-library';
 import { DEFAULT_EXERCISES } from './default-exercises.mjs';
 
+console.log('Initializing DynamoDB with endpoint:', process.env.AWS_ENDPOINT_URL_DYNAMODB);
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({
   endpoint: process.env.AWS_ENDPOINT_URL_DYNAMODB,
   region: process.env.AWS_REGION

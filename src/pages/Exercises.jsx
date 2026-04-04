@@ -10,12 +10,13 @@ const MUSCLE_GROUPS = [
 
 const empty = () => ({ name: '', muscleGroup: 'Other', notes: '' });
 
-export default function Exercises({ exercises, onUpdate }) {
-  const [modal, setModal]               = useState(null); // null | 'add' | 'edit'
+export default function Exercises({ exercises, logs, onUpdate }) {
+  const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'pb'
   const [form, setForm]                 = useState(empty());
   const [search, setSearch]             = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saving, setSaving]             = useState(false);
+  const [pbForm, setPbForm]             = useState(null);
 
   const filtered = exercises.filter(
     (e) =>
@@ -25,12 +26,40 @@ export default function Exercises({ exercises, onUpdate }) {
 
   function openAdd() { setForm(empty()); setModal('add'); }
   function openEdit(ex) { setForm({ ...ex }); setModal('edit'); }
+  function openPB(ex) {
+    setPbForm({
+      ...ex,
+      pbWeight: ex.personalBest?.weight || '',
+      pbDate: ex.personalBest?.date || new Date().toISOString().slice(0, 10),
+    });
+    setModal('pb');
+  }
 
   async function handleSave() {
     if (!form.name.trim() || saving) return;
     setSaving(true);
     try {
       const updated = await saveExercise(form);
+      onUpdate(updated);
+      setModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSavePB() {
+    if (!pbForm || saving) return;
+    setSaving(true);
+    try {
+      const exercise = { ...pbForm };
+      delete exercise.pbWeight;
+      delete exercise.pbDate;
+      if (pbForm.pbWeight) {
+        exercise.personalBest = { weight: pbForm.pbWeight, date: pbForm.pbDate };
+      } else {
+        delete exercise.personalBest;
+      }
+      const updated = await saveExercise(exercise);
       onUpdate(updated);
       setModal(null);
     } finally {
@@ -47,6 +76,13 @@ export default function Exercises({ exercises, onUpdate }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Compute usage count from finished logs
+  function getUsageCount(exerciseId) {
+    return (logs || []).filter(
+      (l) => l.status === 'finished' && (l.exerciseItems || []).some((i) => i.exerciseId === exerciseId),
+    ).length;
   }
 
   return (
@@ -74,11 +110,19 @@ export default function Exercises({ exercises, onUpdate }) {
         )}
         {filtered.map((ex) => (
           <div key={ex.id} className="exercise-item">
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="ex-name">{ex.name}</div>
-              {ex.notes && <div className="ex-group text-muted" style={{ marginTop: 2 }}>{ex.notes}</div>}
+              <div className="ex-meta">
+                {ex.personalBest && (
+                  <span className="pb-badge" onClick={() => openPB(ex)} title="Click to edit PB">
+                    ★ {ex.personalBest.weight} lbs
+                  </span>
+                )}
+                {ex.notes && <span className="text-muted">{ex.notes}</span>}
+              </div>
             </div>
             <span className="badge">{ex.muscleGroup}</span>
+            <button className="btn-icon" title="Edit PB" onClick={() => openPB(ex)}>★</button>
             <button className="btn-icon" title="Edit" onClick={() => openEdit(ex)}>✏️</button>
             <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(ex)}>🗑️</button>
           </div>
@@ -123,6 +167,47 @@ export default function Exercises({ exercises, onUpdate }) {
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
           </div>
+        </Modal>
+      )}
+
+      {modal === 'pb' && pbForm && (
+        <Modal
+          title={`Personal Best — ${pbForm.name}`}
+          onClose={() => !saving && setModal(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setModal(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSavePB} disabled={saving}>
+                {saving ? 'Saving…' : 'Save PB'}
+              </button>
+            </>
+          }
+        >
+          <div className="form-row">
+            <div className="form-group">
+              <label>Weight (lbs)</label>
+              <input
+                type="number"
+                min="0"
+                step="2.5"
+                placeholder="e.g. 225"
+                value={pbForm.pbWeight}
+                onChange={(e) => setPbForm({ ...pbForm, pbWeight: e.target.value })}
+                autoFocus
+              />
+            </div>
+            <div className="form-group">
+              <label>Date Achieved</label>
+              <input
+                type="date"
+                value={pbForm.pbDate}
+                onChange={(e) => setPbForm({ ...pbForm, pbDate: e.target.value })}
+              />
+            </div>
+          </div>
+          <p className="text-muted" style={{ marginTop: 4 }}>
+            Leave weight empty to clear the personal best. PBs are also tracked automatically when you finish workouts.
+          </p>
         </Modal>
       )}
 
