@@ -240,9 +240,7 @@ html, body, #root {
     flex-shrink: 0;
     z-index: auto;
   }
-  .sidebar-backdrop { display: none; }
-  .mobile-header { display: none; }
-  .mobile-tabs { display: none; }
+  .mobile-nav { display: none; }
   .page { padding: 32px 40px; }
 }
 
