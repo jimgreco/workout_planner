@@ -201,20 +201,29 @@ export default function WorkoutLog({
   function loadTemplate(templateId) {
     const t = templates.find((t) => t.id === templateId);
     if (!t) return;
-    const templateItems = (t.exerciseItems || []).map((item) => {
-      const lastSets = getLastSetsForExercise(item.exerciseId, logs);
-      if (lastSets) return { exerciseId: item.exerciseId, sets: lastSets };
-      return {
-        exerciseId: item.exerciseId,
-        sets: item.sets.map((s) => ({ reps: s.reps || String(settings.defaultReps), weight: '' })),
-      };
-    });
-    setName(t.name);
-    setItems(templateItems);
+
+    const currentExerciseIds = new Set(items.map(item => item.exerciseId));
+    
+    const newItemsFromTemplate = (t.exerciseItems || [])
+      .filter(item => !currentExerciseIds.has(item.exerciseId))
+      .map((item) => {
+        const lastSets = getLastSetsForExercise(item.exerciseId, logs);
+        if (lastSets) return { exerciseId: item.exerciseId, sets: lastSets };
+        return {
+          exerciseId: item.exerciseId,
+          sets: item.sets.map((s) => ({ reps: s.reps || String(settings.defaultReps), weight: '' })),
+        };
+      });
+
+    if (newItemsFromTemplate.length === 0) return;
+
+    const combinedItems = [...items, ...newItemsFromTemplate];
+    
+    setItems(combinedItems);
     if (!workoutId) {
-      startWorkout(t.name, templateItems);
+      startWorkout(t.name, combinedItems);
     } else {
-      scheduleAutoSave(workoutId, { name: t.name, date, notes, items: templateItems, startTime, status: 'active' });
+      scheduleAutoSave(workoutId, { name, date, notes, items: combinedItems, startTime, status: 'active' });
     }
   }
 
