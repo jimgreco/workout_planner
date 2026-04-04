@@ -141,13 +141,13 @@ html, body, #root {
   opacity: 0.6;
 }
 
-/* Mobile header */
-.mobile-header {
+/* Mobile Navigation (Single Integrated Bar) */
+.mobile-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: var(--mobile-header-h);
-  padding: 0 20px;
+  padding: 0 16px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -155,68 +155,65 @@ html, body, #root {
   top: 0;
   z-index: 100;
 }
-.mobile-brand {
+
+.mobile-nav-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  width: 40px;
 }
-.mobile-title {
-  font-weight: 800;
-  color: var(--text);
-  font-size: 20px;
-  letter-spacing: -0.8px;
+
+.mobile-nav-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
 }
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 12px;
+  font-family: inherit;
+  transition: all 0.2s;
+  border-radius: var(--radius-sm);
+}
+.mobile-nav-item.active {
+  color: var(--accent);
+}
+.mobile-nav-label {
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mobile-nav-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 40px;
+}
+
 .mobile-avatar {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid var(--border);
 }
 .mobile-avatar-placeholder {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--surface2);
-}
-
-/* Mobile bottom tabs */
-.mobile-tabs {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  height: var(--mobile-tabs-h);
-  background: var(--bg);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.mobile-tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 8px;
-  font-family: inherit;
-  flex: 1;
-  transition: color 0.2s;
-}
-.mobile-tab.active { color: var(--accent); }
-.mobile-tab-icon { 
-  opacity: 0.7;
-}
-.mobile-tab.active .mobile-tab-icon {
-  opacity: 1;
-}
-.mobile-tab-label { 
-  font-size: 10px; 
-  font-weight: 500;
-  white-space: nowrap; 
 }
 
 /* Main content area */

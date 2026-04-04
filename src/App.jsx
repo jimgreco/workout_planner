@@ -138,15 +138,30 @@ export default function App() {
   // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      {/* Mobile top bar */}
-      <header className="mobile-header">
-        <div className="mobile-brand">
-          <Dumbbell className="logo-icon" size={24} />
-          <span className="mobile-title">Forge</span>
+      {/* Integrated Top Navigation (Mobile) */}
+      <header className="mobile-nav">
+        <div className="mobile-nav-left">
+          <Dumbbell className="logo-icon" size={22} />
         </div>
-        {user.picture ? (
-          <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
-        ) : <div className="mobile-avatar-placeholder" />}
+        
+        <nav className="mobile-nav-center">
+          {PAGES.map((p) => (
+            <button
+              key={p.id}
+              className={`mobile-nav-item ${page === p.id ? 'active' : ''}`}
+              onClick={() => navigate(p.id)}
+            >
+              <p.icon size={20} strokeWidth={page === p.id ? 2.5 : 2} />
+              <span className="mobile-nav-label">{p.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="mobile-nav-right">
+          {user.picture ? (
+            <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
+          ) : <div className="mobile-avatar-placeholder" />}
+        </div>
       </header>
 
       {/* Sidebar (Desktop only) */}
@@ -187,20 +202,6 @@ export default function App() {
             </button>
           </div>
         </div>
-      </nav>
-
-      {/* Bottom tab bar for mobile */}
-      <nav className="mobile-tabs">
-        {PAGES.map((p) => (
-          <button
-            key={p.id}
-            className={`mobile-tab ${page === p.id ? 'active' : ''}`}
-            onClick={() => navigate(p.id)}
-          >
-            <p.icon size={22} className="mobile-tab-icon" strokeWidth={page === p.id ? 2.5 : 2} />
-            <span className="mobile-tab-label">{p.label}</span>
-          </button>
-        ))}
       </nav>
 
       <main className="main">
