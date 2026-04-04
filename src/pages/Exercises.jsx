@@ -18,11 +18,13 @@ export default function Exercises({ exercises, logs, onUpdate }) {
   const [saving, setSaving]             = useState(false);
   const [pbForm, setPbForm]             = useState(null);
 
-  const filtered = exercises.filter(
-    (e) =>
-      e.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.muscleGroup.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = exercises
+    .filter(
+      (e) =>
+        e.name.toLowerCase().includes(search.toLowerCase()) ||
+        e.muscleGroup.toLowerCase().includes(search.toLowerCase()),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   function openAdd() { setForm(empty()); setModal('add'); }
   function openEdit(ex) { setForm({ ...ex }); setModal('edit'); }
