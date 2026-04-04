@@ -5,7 +5,6 @@ import {
   Calendar as CalendarIcon, 
   LayoutGrid, 
   Library, 
-  Menu, 
   X,
   LogOut,
   ChevronRight
@@ -35,7 +34,7 @@ export default function App() {
   const [loading, setLoading]     = useState(hasValidSession); // fetch data on first render
   const [dataError, setDataError] = useState(null);
   const [page, setPage]           = useState('log');
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -89,24 +88,31 @@ export default function App() {
     setPendingTemplate(null);
     setEditingLog(null);
     setPage('log');
+    setShowUserMenu(false);
   }
 
   function handleStartWorkout(template) {
     setPendingTemplate(template);
     setPage('log');
-    setMobileNavOpen(false);
   }
 
   function handleEditLog(log) {
     setEditingLog(log);
     setPage('log');
-    setMobileNavOpen(false);
   }
 
   function navigate(id) {
     setPage(id);
-    setMobileNavOpen(false);
+    setShowUserMenu(false);
   }
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const close = () => setShowUserMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [showUserMenu]);
 
   // ── Not logged in ──────────────────────────────────────────────────────────
   if (!user) {
@@ -158,12 +164,28 @@ export default function App() {
         </nav>
 
         <div className="mobile-nav-right">
-          <button className="mobile-avatar-btn" onClick={handleSignOut} title="Sign out">
+          <button 
+            className="mobile-avatar-btn" 
+            onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
+          >
             {user.picture ? (
-              <img src={user.picture} alt="Sign out" className="mobile-avatar" referrerPolicy="no-referrer" />
+              <img src={user.picture} alt="User menu" className="mobile-avatar" referrerPolicy="no-referrer" />
             ) : <div className="mobile-avatar-placeholder" />}
           </button>
         </div>
+
+        {showUserMenu && (
+          <div className="user-dropdown mobile-dropdown" onClick={(e) => e.stopPropagation()}>
+            <div className="dropdown-info">
+              <span className="dropdown-name">{user.name}</span>
+              <span className="dropdown-email">{user.email}</span>
+            </div>
+            <hr className="dropdown-divider" />
+            <button className="dropdown-item logout-item" onClick={handleSignOut}>
+              <LogOut size={16} /> Sign out
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Sidebar (Desktop only) */}
@@ -193,16 +215,32 @@ export default function App() {
 
         <div className="sidebar-spacer" />
 
-        <div className="sidebar-user">
-          {user.picture && (
-            <img src={user.picture} alt="" className="user-avatar" referrerPolicy="no-referrer" />
+        <div className="sidebar-user-container">
+          <button 
+            className="sidebar-user-toggle" 
+            onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
+          >
+            {user.picture && (
+              <img src={user.picture} alt="" className="user-avatar" referrerPolicy="no-referrer" />
+            )}
+            <div className="user-info">
+              <span className="user-name">{user.name}</span>
+              <span className="user-meta">Account settings</span>
+            </div>
+          </button>
+
+          {showUserMenu && (
+            <div className="user-dropdown sidebar-dropdown" onClick={(e) => e.stopPropagation()}>
+              <div className="dropdown-info">
+                <span className="dropdown-name">{user.name}</span>
+                <span className="dropdown-email">{user.email}</span>
+              </div>
+              <hr className="dropdown-divider" />
+              <button className="dropdown-item logout-item" onClick={handleSignOut}>
+                <LogOut size={16} /> Sign out
+              </button>
+            </div>
           )}
-          <div className="user-info">
-            <span className="user-name">{user.name}</span>
-            <button className="btn-signout" onClick={handleSignOut}>
-              <LogOut size={12} /> Sign out
-            </button>
-          </div>
         </div>
       </nav>
 
