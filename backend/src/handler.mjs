@@ -11,10 +11,12 @@
  *   GET    /logs               → list user's workout logs
  *   PUT    /logs/:id           → create or update a log
  *   DELETE /logs/:id           → delete a log
+ *   GET    /settings           → get user settings (singleton)
+ *   PUT    /settings           → save user settings (singleton)
  *
  * DynamoDB key schema:
  *   PK  = USER#<googleSub>
- *   SK  = EXERCISE#<id> | TEMPLATE#<id> | LOG#<id>
+ *   SK  = EXERCISE#<id> | TEMPLATE#<id> | LOG#<id> | SETTINGS
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -23,10 +25,16 @@ import {
   QueryCommand,
   PutCommand,
   DeleteCommand,
+  GetCommand,
+  BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { OAuth2Client } from 'google-auth-library';
+import { DEFAULT_EXERCISES } from './default-exercises.mjs';
 
-const db = DynamoDBDocumentClient.from(new DynamoDBClient());
+const db = DynamoDBDocumentClient.from(new DynamoDBClient({
+  endpoint: process.env.AWS_ENDPOINT_URL_DYNAMODB,
+  region: process.env.AWS_REGION
+}));
 const gClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const TABLE = process.env.TABLE_NAME;
 
@@ -35,6 +43,8 @@ const SK_PREFIX = {
   templates: 'TEMPLATE',
   logs: 'LOG',
 };
+
+const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 const IS_LOCAL = process.env.AWS_SAM_LOCAL === 'true';
@@ -85,11 +95,8 @@ export const handler = async (event) => {
   // Parse path: /exercises  →  ['exercises']
   //             /exercises/uuid  →  ['exercises', 'uuid']
   const pathParts = event.rawPath.replace(/^\//, '').split('/');
-  const resource = pathParts[0]; // 'exercises' | 'templates' | 'logs'
+  const resource = pathParts[0]; // 'exercises' | 'templates' | 'logs' | 'settings'
   const id = pathParts[1];       // uuid or undefined
-
-  const prefix = SK_PREFIX[resource];
-  if (!prefix) return err(404, 'Not found');
 
   // Verify Google ID token on every request
   let userId;
@@ -104,6 +111,28 @@ export const handler = async (event) => {
   const PK = `USER#${userId}`;
 
   try {
+    // ── Settings (singleton — no collection pattern) ─────────────────────────
+    if (resource === 'settings') {
+      if (method === 'GET') {
+        const result = await db.send(new GetCommand({
+          TableName: TABLE,
+          Key: { PK, SK: 'SETTINGS' },
+        }));
+        return ok(result.Item ? strip(result.Item) : DEFAULT_SETTINGS);
+      }
+      if (method === 'PUT') {
+        const body = event.body ? JSON.parse(event.body) : {};
+        const item = { PK, SK: 'SETTINGS', ...body };
+        await db.send(new PutCommand({ TableName: TABLE, Item: item }));
+        return ok(strip(item));
+      }
+      return err(405, 'Method not allowed');
+    }
+
+    // ── Collection resources ─────────────────────────────────────────────────
+    const prefix = SK_PREFIX[resource];
+    if (!prefix) return err(404, 'Not found');
+
     // ── GET /resource → list ─────────────────────────────────────────────────
     if (method === 'GET' && !id) {
       const result = await db.send(new QueryCommand({
@@ -114,6 +143,26 @@ export const handler = async (event) => {
           ':prefix': `${prefix}#`,
         },
       }));
+
+      // Auto-seed default exercises for new users
+      if (resource === 'exercises' && result.Items.length === 0) {
+        const items = DEFAULT_EXERCISES.map((ex) => {
+          const id = crypto.randomUUID();
+          return { PK, SK: `EXERCISE#${id}`, id, ...ex };
+        });
+        // BatchWrite in chunks of 25 (DynamoDB limit)
+        for (let i = 0; i < items.length; i += 25) {
+          await db.send(new BatchWriteCommand({
+            RequestItems: {
+              [TABLE]: items.slice(i, i + 25).map((item) => ({
+                PutRequest: { Item: item },
+              })),
+            },
+          }));
+        }
+        return ok(items.map(strip));
+      }
+
       return ok(result.Items.map(strip));
     }
 
