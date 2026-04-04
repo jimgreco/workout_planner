@@ -8,7 +8,9 @@ const CRED_EXP_KEY   = 'wp_credential_exp';
 // ── Dev bypass ─────────────────────────────────────────────────────────────────
 // Set VITE_DEV_BYPASS_AUTH=true in .env to skip Google sign-in during local dev.
 // The backend accepts DEV_BYPASS_TOKEN only when AWS_SAM_LOCAL=true (sam local).
-export const DEV_BYPASS = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+// NEVER ALLOWED IN PRODUCTION.
+const isProd = import.meta.env.PROD;
+export const DEV_BYPASS = !isProd && import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
 export const DEV_BYPASS_TOKEN = 'dev-bypass-token';
 export const DEV_USER = {
   sub:     'dev-user-local',
