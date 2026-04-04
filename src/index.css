@@ -499,6 +499,52 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* ── Login page ──────────────────────────────────────────── */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  padding: 24px;
+}
+.login-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 56px 32px;
+  width: 100%;
+  max-width: 440px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.login-logo {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: -1.5px;
+  margin-bottom: 8px;
+}
+.login-tagline {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 32px;
+}
+.login-btn-wrap {
+  display: flex;
+  justify-content: center;
+}
+.login-warning {
+  background: color-mix(in srgb, var(--warn, #e0a052) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn, #e0a052) 20%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text);
+}
+
 /* ── View toggle ────────────────────────────────────────── */
 .view-toggle {
   display: flex;
