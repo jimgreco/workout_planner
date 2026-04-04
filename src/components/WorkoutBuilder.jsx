@@ -182,20 +182,23 @@ export default function WorkoutBuilder({
       {!readOnly && (
         <div className="form-group mt-16">
           <label>Add Exercise</label>
-          <select
-            value=""
-            onChange={(e) => addExercise(e.target.value)}
-          >
-            <option value="" disabled>Select exercise to add…</option>
-            {availableExercises.length === 0 && (
-              <option disabled>No more exercises available</option>
-            )}
-            {availableExercises.map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name} ({ex.muscleGroup})
-              </option>
-            ))}
-          </select>
+          <div className="input-with-icon">
+            <Plus className="input-icon" size={18} />
+            <select
+              value=""
+              onChange={(e) => addExercise(e.target.value)}
+            >
+              <option value="" disabled>Select exercise to add…</option>
+              {availableExercises.length === 0 && (
+                <option disabled>No more exercises available</option>
+              )}
+              {availableExercises.map((ex) => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.name} ({ex.muscleGroup})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 

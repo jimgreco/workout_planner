@@ -364,9 +364,9 @@ export default function WorkoutLog({
       {!isActive && templates.length > 0 && (
         <div className="form-group">
           <label>Start from Template</label>
-          <div style={{ position: 'relative' }}>
-            <Clipboard size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <select value="" onChange={(e) => loadTemplate(e.target.value)} style={{ paddingLeft: 40 }}>
+          <div className="input-with-icon">
+            <Clipboard className="input-icon" size={18} />
+            <select value="" onChange={(e) => loadTemplate(e.target.value)}>
               <option value="" disabled>Select a template…</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -376,10 +376,10 @@ export default function WorkoutLog({
 
       {isActive && templates.length > 0 && (
         <div className="form-group">
-          <label>Load Template</label>
-          <div style={{ position: 'relative' }}>
-            <Clipboard size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <select value="" onChange={(e) => loadTemplate(e.target.value)} style={{ paddingLeft: 40 }}>
+          <label>Add from Template</label>
+          <div className="input-with-icon">
+            <Clipboard className="input-icon" size={18} />
+            <select value="" onChange={(e) => loadTemplate(e.target.value)}>
               <option value="" disabled>Add exercises from template…</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -387,8 +387,8 @@ export default function WorkoutLog({
         </div>
       )}
 
-      <hr className="divider" />
-      <h2>Exercises</h2>
+      <hr className="divider" style={{ opacity: 0.5, margin: '24px 0' }} />
+      <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>Exercises</h2>
       <WorkoutBuilder
         exercises={exercises}
         items={items}
@@ -397,7 +397,7 @@ export default function WorkoutLog({
         defaultReps={settings.defaultReps}
       />
 
-      <hr className="divider" />
+      <hr className="divider" style={{ opacity: 0.5, margin: '24px 0' }} />
       <div className="form-group">
         <label>Session Notes (optional)</label>
         <textarea
