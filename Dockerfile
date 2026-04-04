@@ -12,7 +12,7 @@ ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
 # Stage 2: Backend
-FROM node:20-slim AS backend
+FROM node:20-alpine AS backend
 WORKDIR /app
 COPY backend/package*.json ./backend/
 RUN cd backend && npm ci
