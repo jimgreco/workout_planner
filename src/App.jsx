@@ -13,7 +13,6 @@ const PAGES = [
   { id: 'history',   label: 'History',       icon: '📅' },
   { id: 'templates', label: 'Templates',     icon: '📋' },
   { id: 'exercises', label: 'Exercises',     icon: '🏋️' },
-  { id: 'settings',  label: 'Settings',      icon: '⚙️' },
 ];
 
 export default function App() {
@@ -176,7 +175,7 @@ export default function App() {
 
       {/* Bottom tab bar for mobile */}
       <nav className="mobile-tabs">
-        {PAGES.slice(0, 4).map((p) => (
+        {PAGES.map((p) => (
           <button
             key={p.id}
             className={`mobile-tab ${page === p.id ? 'active' : ''}`}
@@ -186,13 +185,6 @@ export default function App() {
             <span className="mobile-tab-label">{p.label}</span>
           </button>
         ))}
-        <button
-          className={`mobile-tab ${page === 'settings' ? 'active' : ''}`}
-          onClick={() => navigate('settings')}
-        >
-          <span className="mobile-tab-icon">⚙️</span>
-          <span className="mobile-tab-label">Settings</span>
-        </button>
       </nav>
 
       <main className="main">
@@ -205,6 +197,7 @@ export default function App() {
             exercises={exercises}
             settings={settings}
             onUpdate={setTemplates}
+            onSettingsUpdate={setSettings}
             onStartWorkout={handleStartWorkout}
           />
         )}
