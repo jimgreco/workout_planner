@@ -158,9 +158,11 @@ export default function App() {
         </nav>
 
         <div className="mobile-nav-right">
-          {user.picture ? (
-            <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
-          ) : <div className="mobile-avatar-placeholder" />}
+          <button className="mobile-avatar-btn" onClick={handleSignOut} title="Sign out">
+            {user.picture ? (
+              <img src={user.picture} alt="Sign out" className="mobile-avatar" referrerPolicy="no-referrer" />
+            ) : <div className="mobile-avatar-placeholder" />}
+          </button>
         </div>
       </header>
 
