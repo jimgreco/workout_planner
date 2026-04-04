@@ -7,7 +7,6 @@ import Exercises from './pages/Exercises.jsx';
 import Templates from './pages/Templates.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
-import Settings from './pages/Settings.jsx';
 
 const PAGES = [
   { id: 'log',       label: 'Log Workout',  icon: '💪' },
