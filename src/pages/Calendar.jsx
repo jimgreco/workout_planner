@@ -29,6 +29,74 @@ function formatDateNice(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, onDeleteLog }) {
+  const d = new Date(log.date + 'T00:00:00');
+  const dayName = DAY_NAMES[d.getDay()];
+  const duration = formatDuration(log.startTime, log.endTime);
+  const exCount = (log.exerciseItems || []).length;
+  const isExpanded = expandedId === log.id;
+
+  return (
+    <div className={`history-item ${isExpanded ? 'expanded' : ''}`}>
+      <div className="history-item-header" onClick={() => onToggleExpand(log.id)}>
+        <div className="history-item-left">
+          <div className="history-item-title">
+            {log.hasPB && <Star size={14} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
+            {log.name}
+          </div>
+          <div className="history-item-meta">
+            {dayName} · {formatDateNice(log.date)}
+          </div>
+        </div>
+        <div className="history-item-right">
+          <span className="history-stat">{duration}</span>
+          <span className="history-stat">{exCount} ex</span>
+          <span className="history-chevron">{isExpanded ? <ChevronDown size={16} /> : <ChevronRightIcon size={16} />}</span>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="history-item-detail">
+          {(log.exerciseItems || []).map((item) => {
+            const ex = exercises.find((e) => e.id === item.exerciseId);
+            if (!ex) return null;
+            const isPB = (log.pbExerciseIds || []).includes(item.exerciseId);
+            return (
+              <div key={item.exerciseId} className="history-exercise">
+                <div className="history-exercise-name">
+                  {isPB && <Star size={12} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
+                  {ex.name}
+                  <span className="badge" style={{ marginLeft: 8 }}>{ex.muscleGroup}</span>
+                </div>
+                <div className="history-sets">
+                  {item.sets.map((s, si) => (
+                    <span key={si} className="history-set">
+                      {s.reps || '—'} × {s.weight ? `${s.weight} lbs` : '—'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {log.notes && (
+            <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 'var(--radius-sm)' }}>
+              "{log.notes}"
+            </p>
+          )}
+          <div className="history-item-actions">
+            <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); onEditLog(log); }}>
+              <Pencil size={14} /> Edit
+            </button>
+            <button className="btn-icon" title="Delete" onClick={(e) => { e.stopPropagation(); onDeleteLog(log); }}>
+              <Trash2 size={16} color="var(--danger)" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
   const now  = new Date();
   const [year, setYear]               = useState(now.getFullYear());
@@ -111,73 +179,17 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
 
     return (
       <div className="history-list">
-        {finishedLogs.map((log) => {
-          const d = new Date(log.date + 'T00:00:00');
-          const dayName = DAY_NAMES[d.getDay()];
-          const duration = formatDuration(log.startTime, log.endTime);
-          const exCount = (log.exerciseItems || []).length;
-          const isExpanded = expandedId === log.id;
-
-          return (
-            <div key={log.id} className={`history-item ${isExpanded ? 'expanded' : ''}`}>
-              <div className="history-item-header" onClick={() => toggleExpand(log.id)}>
-                <div className="history-item-left">
-                  <div className="history-item-title">
-                    {log.hasPB && <Star size={14} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
-                    {log.name}
-                  </div>
-                  <div className="history-item-meta">
-                    {dayName} · {formatDateNice(log.date)}
-                  </div>
-                </div>
-                <div className="history-item-right">
-                  <span className="history-stat">{duration}</span>
-                  <span className="history-stat">{exCount} ex</span>
-                  <span className="history-chevron">{isExpanded ? <ChevronDown size={16} /> : <ChevronRightIcon size={16} />}</span>
-                </div>
-              </div>
-
-              {isExpanded && (
-                <div className="history-item-detail">
-                  {(log.exerciseItems || []).map((item) => {
-                    const ex = exercises.find((e) => e.id === item.exerciseId);
-                    if (!ex) return null;
-                    const isPB = (log.pbExerciseIds || []).includes(item.exerciseId);
-                    return (
-                      <div key={item.exerciseId} className="history-exercise">
-                        <div className="history-exercise-name">
-                          {isPB && <Star size={12} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
-                          {ex.name}
-                          <span className="badge" style={{ marginLeft: 8 }}>{ex.muscleGroup}</span>
-                        </div>
-                        <div className="history-sets">
-                          {item.sets.map((s, si) => (
-                            <span key={si} className="history-set">
-                              {s.reps || '—'} × {s.weight ? `${s.weight} lbs` : '—'}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {log.notes && (
-                    <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 'var(--radius-sm)' }}>
-                      "{log.notes}"
-                    </p>
-                  )}
-                  <div className="history-item-actions">
-                    <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); onEditLog(log); }}>
-                      <Pencil size={14} /> Edit
-                    </button>
-                    <button className="btn-icon" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirmDelete(log); }}>
-                      <Trash2 size={16} color="var(--danger)" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {finishedLogs.map((log) => (
+          <HistoryItem
+            key={log.id}
+            log={log}
+            exercises={exercises}
+            expandedId={expandedId}
+            onToggleExpand={toggleExpand}
+            onEditLog={onEditLog}
+            onDeleteLog={setConfirmDelete}
+          />
+        ))}
       </div>
     );
   }
@@ -235,31 +247,21 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
               <div className="empty-state" style={{ padding: '20px 0' }}>
                 <p className="text-muted">No workouts logged on this day.</p>
               </div>
-            ) : selectedLogs.map((log) => (
-              <div key={log.id} className="card">
-                <div className="card-header">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3>
-                      {log.hasPB && <Star size={16} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
-                      {log.name}
-                    </h3>
-                    <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
-                      {formatDuration(log.startTime, log.endTime)} · {(log.exerciseItems || []).length} ex · {(log.exerciseItems || []).reduce((acc, i) => acc + i.sets.length, 0)} sets
-                    </p>
-                  </div>
-                  <div className="flex gap-8">
-                    <button className="btn btn-secondary btn-sm" onClick={() => onEditLog(log)}><Pencil size={14} /> Edit</button>
-                    <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(log)}><Trash2 size={16} color="var(--danger)" /></button>
-                  </div>
-                </div>
-                <div style={{ marginTop: 12 }}>
-                  <WorkoutBuilder exercises={exercises} items={log.exerciseItems || []} onChange={() => {}} readOnly />
-                </div>
-                {log.notes && (
-                  <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 'var(--radius-sm)' }}>"{log.notes}"</p>
-                )}
+            ) : (
+              <div className="history-list">
+                {selectedLogs.map((log) => (
+                  <HistoryItem
+                    key={log.id}
+                    log={log}
+                    exercises={exercises}
+                    expandedId={expandedId}
+                    onToggleExpand={toggleExpand}
+                    onEditLog={onEditLog}
+                    onDeleteLog={setConfirmDelete}
+                  />
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
       </>
