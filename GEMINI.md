@@ -23,6 +23,7 @@ Migrated from a serverless SAM-based deployment to a consolidated EC2 instance (
 Managed in `~/deploy/.env` on the EC2 instance:
 - `WORKOUT_GOOGLE_CLIENT_ID`: Google OAuth Client ID for both frontend build and backend verification.
 - `AWS_ENDPOINT_URL_DYNAMODB`: Points to `http://dynamodb:8000`.
+- `INTERNAL_SYNC_SECRET`: Shared secret used for Macro Tracker internal sync.
 
 ## Routing
 - **Frontend**: `workout.jim-greco.com` (Example domain)
