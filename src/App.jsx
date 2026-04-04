@@ -1,5 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import './index.css';
+import { 
+  Dumbbell, 
+  Calendar as CalendarIcon, 
+  LayoutGrid, 
+  Library, 
+  Menu, 
+  X,
+  LogOut,
+  ChevronRight
+} from 'lucide-react';
 import { getStoredUser, getStoredCredential, storeUser, clearStoredUser, DEV_BYPASS, DEV_USER } from './auth.js';
 import { initData, resetData, getExercises, getTemplates, getLogs, getSettings } from './api.js';
 import Login from './pages/Login.jsx';
@@ -9,10 +19,10 @@ import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
 
 const PAGES = [
-  { id: 'log',       label: 'Log Workout',  icon: '💪' },
-  { id: 'history',   label: 'History',       icon: '📅' },
-  { id: 'templates', label: 'Templates',     icon: '📋' },
-  { id: 'exercises', label: 'Exercises',     icon: '🏋️' },
+  { id: 'log',       label: 'Workout',  icon: Dumbbell },
+  { id: 'history',   label: 'History',   icon: CalendarIcon },
+  { id: 'templates', label: 'Templates', icon: LayoutGrid },
+  { id: 'exercises', label: 'Library',   icon: Library },
 ];
 
 export default function App() {
@@ -131,31 +141,40 @@ export default function App() {
       {/* Mobile top bar */}
       <header className="mobile-header">
         <button className="mobile-hamburger" onClick={() => setMobileNavOpen(!mobileNavOpen)}>
-          {mobileNavOpen ? '✕' : '☰'}
+          {mobileNavOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
-        <span className="mobile-title">WrkPlnr</span>
-        {user.picture && (
+        <div className="mobile-brand">
+          <Dumbbell className="logo-icon" size={24} />
+          <span className="mobile-title">WrkPlnr</span>
+        </div>
+        {user.picture ? (
           <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
-        )}
+        ) : <div className="mobile-avatar-placeholder" />}
       </header>
 
       {/* Sidebar / mobile overlay nav */}
       <nav className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-logo">
-          WrkPlnr
-          <span className="logo-sub">Workout Planner</span>
+          <Dumbbell className="logo-icon" size={32} />
+          <div className="logo-text">
+            <span className="logo-main">WrkPlnr</span>
+            <span className="logo-sub">Workout Planner</span>
+          </div>
         </div>
 
-        {PAGES.map((p) => (
-          <button
-            key={p.id}
-            className={`nav-item ${page === p.id ? 'active' : ''}`}
-            onClick={() => navigate(p.id)}
-          >
-            <span className="nav-icon">{p.icon}</span>
-            {p.label}
-          </button>
-        ))}
+        <div className="nav-group">
+          {PAGES.map((p) => (
+            <button
+              key={p.id}
+              className={`nav-item ${page === p.id ? 'active' : ''}`}
+              onClick={() => navigate(p.id)}
+            >
+              <p.icon size={20} className="nav-icon" strokeWidth={page === p.id ? 2.5 : 2} />
+              <span className="nav-label">{p.label}</span>
+              {page === p.id && <ChevronRight size={16} className="active-chevron" />}
+            </button>
+          ))}
+        </div>
 
         <div className="sidebar-spacer" />
 
@@ -165,7 +184,9 @@ export default function App() {
           )}
           <div className="user-info">
             <span className="user-name">{user.name}</span>
-            <button className="btn-signout" onClick={handleSignOut}>Sign out</button>
+            <button className="btn-signout" onClick={handleSignOut}>
+              <LogOut size={12} /> Sign out
+            </button>
           </div>
         </div>
       </nav>
@@ -181,7 +202,7 @@ export default function App() {
             className={`mobile-tab ${page === p.id ? 'active' : ''}`}
             onClick={() => navigate(p.id)}
           >
-            <span className="mobile-tab-icon">{p.icon}</span>
+            <p.icon size={22} className="mobile-tab-icon" strokeWidth={page === p.id ? 2.5 : 2} />
             <span className="mobile-tab-label">{p.label}</span>
           </button>
         ))}

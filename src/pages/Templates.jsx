@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Settings, Plus, LayoutGrid, Play, Pencil, Trash2, Eye } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import { saveTemplate, deleteTemplate, saveSettings } from '../api.js';
@@ -62,48 +63,62 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
       <div className="action-row">
         <h1 style={{ marginBottom: 0 }}>Workout Templates</h1>
         <div className="flex gap-8">
-          <button className="btn btn-secondary" onClick={openSettings}>⚙️ Settings</button>
-          <button className="btn btn-primary" onClick={openAdd}>+ New Template</button>
+          <button className="btn btn-secondary" onClick={openSettings}>
+            <Settings size={18} /> Settings
+          </button>
+          <button className="btn btn-primary" onClick={openAdd}>
+            <Plus size={18} /> New Template
+          </button>
         </div>
       </div>
 
-      {templates.length === 0 && (
-        <div className="empty-state">
-          <div className="empty-icon">📋</div>
-          <p>No templates yet. Create one to save your favourite workouts!</p>
-        </div>
-      )}
+      <div style={{ marginTop: 24 }}>
+        {templates.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-icon"><LayoutGrid size={48} /></div>
+            <p>No templates yet. Create one to save your favourite workouts!</p>
+          </div>
+        )}
 
-      {templates.map((t) => (
-        <div key={t.id} className="card">
-          <div className="card-header">
-            <div>
-              <h3>{t.name}</h3>
-              {t.description && <p className="text-muted">{t.description}</p>}
+        {templates.map((t) => (
+          <div key={t.id} className="card">
+            <div className="card-header">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3>{t.name}</h3>
+                {t.description && <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>{t.description}</p>}
+              </div>
+              <div className="flex gap-8 items-center card-actions">
+                <button className="btn btn-secondary btn-sm" onClick={() => openView(t)}>
+                  <Eye size={14} /> View
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(t)}>
+                  <Play size={14} fill="currentColor" /> Start
+                </button>
+                <button className="btn-icon" title="Edit" onClick={() => openEdit(t)}>
+                  <Pencil size={16} />
+                </button>
+                <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(t)}>
+                  <Trash2 size={16} color="var(--danger)" />
+                </button>
+              </div>
             </div>
-            <div className="flex gap-8 items-center card-actions">
-              <button className="btn btn-secondary btn-sm" onClick={() => openView(t)}>View</button>
-              <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(t)}>Start</button>
-              <button className="btn-icon" title="Edit" onClick={() => openEdit(t)}>✏️</button>
-              <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(t)}>🗑️</button>
+            <div className="flex gap-8" style={{ flexWrap: 'wrap', marginTop: 12 }}>
+              {(t.exerciseItems || []).map((item) => {
+                const ex = exercises.find((e) => e.id === item.exerciseId);
+                if (!ex) return null;
+                return (
+                  <span key={item.exerciseId} className="badge">
+                    {ex.name} • {item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'}
+                  </span>
+                );
+              })}
+              {(!t.exerciseItems || t.exerciseItems.length === 0) && (
+                <span className="text-muted" style={{ fontSize: 13 }}>No exercises added</span>
+              )}
             </div>
           </div>
-          <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-            {(t.exerciseItems || []).map((item) => {
-              const ex = exercises.find((e) => e.id === item.exerciseId);
-              if (!ex) return null;
-              return (
-                <span key={item.exerciseId} className="badge">
-                  {ex.name} ({item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'})
-                </span>
-              );
-            })}
-            {(!t.exerciseItems || t.exerciseItems.length === 0) && (
-              <span className="text-muted">No exercises added</span>
-            )}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {(modal === 'add' || modal === 'edit') && (
         <Modal

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
 
@@ -80,33 +81,30 @@ export default function Exercises({ exercises, logs, onUpdate }) {
     }
   }
 
-  // Compute usage count from finished logs
-  function getUsageCount(exerciseId) {
-    return (logs || []).filter(
-      (l) => l.status === 'finished' && (l.exerciseItems || []).some((i) => i.exerciseId === exerciseId),
-    ).length;
-  }
-
   return (
     <div className="page">
       <div className="action-row">
         <h1 style={{ marginBottom: 0 }}>Exercises</h1>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Exercise</button>
+        <button className="btn btn-primary" onClick={openAdd}>
+          <Plus size={18} /> Add Exercise
+        </button>
       </div>
 
-      <div className="form-group mb-0">
+      <div className="form-group mb-0" style={{ position: 'relative' }}>
+        <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
         <input
           type="text"
           placeholder="Search exercises…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          style={{ paddingLeft: 40 }}
         />
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 24 }}>
         {filtered.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">🏋️</div>
+            <div className="empty-icon"><Dumbbell size={48} /></div>
             <p>{search ? 'No exercises match your search.' : 'No exercises yet. Add one to get started!'}</p>
           </div>
         )}
@@ -115,18 +113,26 @@ export default function Exercises({ exercises, logs, onUpdate }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="ex-name">{ex.name}</div>
               <div className="ex-meta">
+                <span className="badge">{ex.muscleGroup}</span>
                 {ex.personalBest && (
                   <span className="pb-badge" onClick={() => openPB(ex)} title="Click to edit PB">
-                    ★ {ex.personalBest.weight} lbs
+                    <Star size={12} fill="currentColor" /> {ex.personalBest.weight} lbs
                   </span>
                 )}
-                {ex.notes && <span className="text-muted">{ex.notes}</span>}
+                {ex.notes && <span className="text-muted" style={{ fontSize: 13 }}>• {ex.notes}</span>}
               </div>
             </div>
-            <span className="badge">{ex.muscleGroup}</span>
-            <button className="btn-icon" title="Edit PB" onClick={() => openPB(ex)}>★</button>
-            <button className="btn-icon" title="Edit" onClick={() => openEdit(ex)}>✏️</button>
-            <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(ex)}>🗑️</button>
+            <div className="card-actions" style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-icon" title="Edit PB" onClick={() => openPB(ex)}>
+                <Star size={16} fill={ex.personalBest ? 'currentColor' : 'none'} />
+              </button>
+              <button className="btn-icon" title="Edit" onClick={() => openEdit(ex)}>
+                <Pencil size={16} />
+              </button>
+              <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(ex)}>
+                <Trash2 size={16} color="var(--danger)" />
+              </button>
+            </div>
           </div>
         ))}
       </div>

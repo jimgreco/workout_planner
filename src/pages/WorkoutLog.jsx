@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Check, X, Clock, Trophy, Clipboard, Trash2 } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Modal from '../components/Modal.jsx';
 import { saveLog, deleteLog, saveExercise } from '../api.js';
@@ -317,17 +318,19 @@ export default function WorkoutLog({
             {isEditing.current ? 'Edit Workout' : 'Log Workout'}
           </h1>
           {isActive && startTime && !isEditing.current && (
-            <p className="text-muted" style={{ marginTop: 4 }}>In progress · {elapsed}</p>
+            <div className="flex items-center gap-8 text-muted" style={{ marginTop: 4 }}>
+              <Clock size={14} /> <span>In progress · {elapsed}</span>
+            </div>
           )}
         </div>
         <div className="flex gap-8 action-buttons">
           {isActive && (
             <button
-              className="btn btn-ghost btn-sm"
+              className="btn btn-secondary btn-sm"
               onClick={() => setConfirmDiscard(true)}
               disabled={saving}
             >
-              {isEditing.current ? 'Cancel Edit' : 'Discard'}
+              <X size={16} /> {isEditing.current ? 'Cancel' : 'Discard'}
             </button>
           )}
           {isActive && items.length > 0 && (
@@ -336,13 +339,13 @@ export default function WorkoutLog({
               onClick={handleFinish}
               disabled={!name.trim() || saving}
             >
-              {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
+              <Check size={18} /> {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
             </button>
           )}
         </div>
       </div>
 
-      <div className="form-row">
+      <div className="form-row" style={{ marginTop: 24 }}>
         <div className="form-group" style={{ flex: 2 }}>
           <label>Workout Name</label>
           <input
@@ -361,20 +364,26 @@ export default function WorkoutLog({
       {!isActive && templates.length > 0 && (
         <div className="form-group">
           <label>Start from Template</label>
-          <select value="" onChange={(e) => loadTemplate(e.target.value)}>
-            <option value="" disabled>Select a template…</option>
-            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <Clipboard size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <select value="" onChange={(e) => loadTemplate(e.target.value)} style={{ paddingLeft: 40 }}>
+              <option value="" disabled>Select a template…</option>
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
       {isActive && templates.length > 0 && (
         <div className="form-group">
           <label>Load Template</label>
-          <select value="" onChange={(e) => loadTemplate(e.target.value)}>
-            <option value="" disabled>Add exercises from template…</option>
-            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <Clipboard size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <select value="" onChange={(e) => loadTemplate(e.target.value)} style={{ paddingLeft: 40 }}>
+              <option value="" disabled>Add exercises from template…</option>
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
@@ -410,7 +419,7 @@ export default function WorkoutLog({
                 Keep {isEditing.current ? 'Editing' : 'Going'}
               </button>
               <button className="btn btn-danger" onClick={handleDiscard} disabled={saving}>
-                {saving ? 'Discarding…' : isEditing.current ? 'Cancel Edit' : 'Discard Workout'}
+                <Trash2 size={16} /> {saving ? 'Discarding…' : isEditing.current ? 'Cancel Edit' : 'Discard Workout'}
               </button>
             </>
           }
@@ -435,15 +444,23 @@ export default function WorkoutLog({
             </button>
           }
         >
-          <p><strong>{name}</strong> — {finishModal.duration}</p>
-          <p className="text-muted" style={{ marginTop: 4 }}>
-            {finishModal.exerciseCount} exercise{finishModal.exerciseCount !== 1 ? 's' : ''} · {finishModal.setCount} total sets
-          </p>
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ background: 'var(--surface)', width: 80, height: 80, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: 'var(--accent)' }}>
+              <Trophy size={40} style={{ margin: '0 auto' }} />
+            </div>
+            <p style={{ fontSize: 20, fontWeight: 700 }}>Great job!</p>
+            <p style={{ marginTop: 8 }}><strong>{name}</strong> — {finishModal.duration}</p>
+            <p className="text-muted" style={{ marginTop: 4 }}>
+              {finishModal.exerciseCount} exercise{finishModal.exerciseCount !== 1 ? 's' : ''} · {finishModal.setCount} total sets
+            </p>
+          </div>
           {finishModal.pbExercises.length > 0 && (
-            <div style={{ marginTop: 12, padding: '10px 12px', background: 'color-mix(in srgb, var(--accent) 15%, transparent)', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: 'var(--accent-light)' }}>New Personal Bests!</strong>
-              <ul style={{ margin: '6px 0 0 16px', fontSize: 13 }}>
-                {finishModal.pbExercises.map((name) => <li key={name}>{name}</li>)}
+            <div style={{ marginTop: 12, padding: '16px', background: 'color-mix(in srgb, var(--accent) 8%, #fff)', border: '1px solid color-mix(in srgb, var(--accent) 20%, var(--border))', borderRadius: 'var(--radius)' }}>
+              <div className="flex items-center gap-8" style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: 8 }}>
+                <Trophy size={16} fill="currentColor" /> <span>New Personal Bests!</span>
+              </div>
+              <ul style={{ margin: '0 0 0 24px', fontSize: 14 }}>
+                {finishModal.pbExercises.map((name) => <li key={name} style={{ marginBottom: 4 }}>{name}</li>)}
               </ul>
             </div>
           )}

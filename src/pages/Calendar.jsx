@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil, Trash2, ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import { deleteLog } from '../api.js';
@@ -102,7 +103,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
     if (finishedLogs.length === 0) {
       return (
         <div className="empty-state">
-          <div className="empty-icon">📅</div>
+          <div className="empty-icon"><CalendarIcon size={48} /></div>
           <p>No finished workouts yet. Complete a workout to see it here!</p>
         </div>
       );
@@ -122,7 +123,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
               <div className="history-item-header" onClick={() => toggleExpand(log.id)}>
                 <div className="history-item-left">
                   <div className="history-item-title">
-                    {log.hasPB && <span className="pb-star" title="Personal best!">★</span>}
+                    {log.hasPB && <Star size={14} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
                     {log.name}
                   </div>
                   <div className="history-item-meta">
@@ -131,8 +132,8 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
                 </div>
                 <div className="history-item-right">
                   <span className="history-stat">{duration}</span>
-                  <span className="history-stat">{exCount} exercise{exCount !== 1 ? 's' : ''}</span>
-                  <span className="history-chevron">{isExpanded ? '▾' : '▸'}</span>
+                  <span className="history-stat">{exCount} ex</span>
+                  <span className="history-chevron">{isExpanded ? <ChevronDown size={16} /> : <ChevronRightIcon size={16} />}</span>
                 </div>
               </div>
 
@@ -145,9 +146,9 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
                     return (
                       <div key={item.exerciseId} className="history-exercise">
                         <div className="history-exercise-name">
-                          {isPB && <span className="pb-star-sm">★</span>}
+                          {isPB && <Star size={12} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
                           {ex.name}
-                          <span className="badge" style={{ marginLeft: 6 }}>{ex.muscleGroup}</span>
+                          <span className="badge" style={{ marginLeft: 8 }}>{ex.muscleGroup}</span>
                         </div>
                         <div className="history-sets">
                           {item.sets.map((s, si) => (
@@ -160,16 +161,16 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
                     );
                   })}
                   {log.notes && (
-                    <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 8 }}>
+                    <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 'var(--radius-sm)' }}>
                       "{log.notes}"
                     </p>
                   )}
                   <div className="history-item-actions">
                     <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); onEditLog(log); }}>
-                      Edit
+                      <Pencil size={14} /> Edit
                     </button>
                     <button className="btn-icon" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirmDelete(log); }}>
-                      🗑️
+                      <Trash2 size={16} color="var(--danger)" />
                     </button>
                   </div>
                 </div>
@@ -185,13 +186,13 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
   function renderCalendarView() {
     return (
       <>
-        <div className="calendar-nav">
-          <button className="btn btn-secondary btn-sm" onClick={prevMonth}>‹ Prev</button>
-          <h2 style={{ marginBottom: 0 }}>{MONTHS[month]} {year}</h2>
-          <button className="btn btn-secondary btn-sm" onClick={nextMonth}>Next ›</button>
+        <div className="calendar-nav" style={{ justifyContent: 'center' }}>
+          <button className="btn btn-icon" onClick={prevMonth}><ChevronLeft size={18} /></button>
+          <h2 style={{ marginBottom: 0, minWidth: 180 }}>{MONTHS[month]} {year}</h2>
+          <button className="btn btn-icon" onClick={nextMonth}><ChevronRight size={18} /></button>
         </div>
 
-        <div className="calendar-grid">
+        <div className="calendar-grid" style={{ marginTop: 20 }}>
           {DAYS.map((d) => <div key={d} className="cal-header-cell">{d}</div>)}
           {cells.map((cell, idx) => {
             const dateStr = cell.current ? toDateStr(year, month, cell.day) : null;
@@ -214,8 +215,8 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
                 onClick={() => handleCellClick(cell)}
               >
                 <span className="cal-date">{cell.day}</span>
-                {hasLog && <span className="cal-dot" />}
-                {hasPB && <span className="pb-star-sm" style={{ fontSize: 10 }}>★</span>}
+                {hasLog && <div className="cal-dot" />}
+                {hasPB && <Star size={10} fill="var(--accent)" color="var(--accent)" />}
                 {hasLog && dayLogs.length > 1 && <span className="cal-count">×{dayLogs.length}</span>}
               </div>
             );
@@ -223,35 +224,39 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
         </div>
 
         {selectedDate && (
-          <div style={{ marginTop: 24 }}>
-            <h2>
+          <div style={{ marginTop: 32 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 16 }}>
               {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
-                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                weekday: 'long', month: 'long', day: 'numeric',
               })}
             </h2>
 
             {selectedLogs.length === 0 ? (
-              <p className="text-muted">No workouts logged on this day.</p>
+              <div className="empty-state" style={{ padding: '20px 0' }}>
+                <p className="text-muted">No workouts logged on this day.</p>
+              </div>
             ) : selectedLogs.map((log) => (
               <div key={log.id} className="card">
                 <div className="card-header">
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <h3>
-                      {log.hasPB && <span className="pb-star">★ </span>}
+                      {log.hasPB && <Star size={16} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
                       {log.name}
                     </h3>
-                    <p className="text-muted">
-                      {formatDuration(log.startTime, log.endTime)} · {(log.exerciseItems || []).length} exercise{(log.exerciseItems || []).length !== 1 ? 's' : ''} · {(log.exerciseItems || []).reduce((acc, i) => acc + i.sets.length, 0)} sets
+                    <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+                      {formatDuration(log.startTime, log.endTime)} · {(log.exerciseItems || []).length} ex · {(log.exerciseItems || []).reduce((acc, i) => acc + i.sets.length, 0)} sets
                     </p>
                   </div>
                   <div className="flex gap-8">
-                    <button className="btn btn-secondary btn-sm" onClick={() => onEditLog(log)}>Edit</button>
-                    <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(log)}>🗑️</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => onEditLog(log)}><Pencil size={14} /> Edit</button>
+                    <button className="btn-icon" title="Delete" onClick={() => setConfirmDelete(log)}><Trash2 size={16} color="var(--danger)" /></button>
                   </div>
                 </div>
-                <WorkoutBuilder exercises={exercises} items={log.exerciseItems || []} onChange={() => {}} readOnly />
+                <div style={{ marginTop: 12 }}>
+                  <WorkoutBuilder exercises={exercises} items={log.exerciseItems || []} onChange={() => {}} readOnly />
+                </div>
                 {log.notes && (
-                  <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 8 }}>"{log.notes}"</p>
+                  <p className="text-muted" style={{ fontStyle: 'italic', marginTop: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 'var(--radius-sm)' }}>"{log.notes}"</p>
                 )}
               </div>
             ))}
@@ -269,19 +274,23 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
           <button
             className={`btn btn-sm ${view === 'list' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setView('list')}
+            style={{ borderRadius: '100px 0 0 100px', padding: '8px 16px' }}
           >
-            List
+            <List size={16} /> List
           </button>
           <button
             className={`btn btn-sm ${view === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setView('calendar')}
+            style={{ borderRadius: '0 100px 100px 0', padding: '8px 16px' }}
           >
-            Calendar
+            <CalendarIcon size={16} /> Calendar
           </button>
         </div>
       </div>
 
-      {view === 'list' ? renderListView() : renderCalendarView()}
+      <div style={{ marginTop: 24 }}>
+        {view === 'list' ? renderListView() : renderCalendarView()}
+      </div>
 
       {confirmDelete && (
         <Modal
