@@ -49,7 +49,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">WrkPlnr</div>
+        <div className="login-logo">Forge</div>
         <p className="login-tagline">Track every rep. Own every PR.</p>
 
         {CLIENT_ID ? (

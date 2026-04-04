@@ -59,28 +59,15 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* Sidebar — hidden on mobile, slide-in overlay via hamburger */
+/* Sidebar — Desktop only (fixed) */
 .sidebar {
   display: none;
-  position: fixed;
-  top: 0; left: 0; bottom: 0;
-  width: 280px;
+  width: 240px;
   background: var(--bg);
   border-right: 1px solid var(--border);
   flex-direction: column;
   padding: 32px 0;
-  z-index: 300;
-  overflow-y: auto;
-}
-.sidebar.sidebar-open {
-  display: flex;
-}
-.sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.3);
-  backdrop-filter: blur(4px);
-  z-index: 299;
+  flex-shrink: 0;
 }
 
 .sidebar-logo {
@@ -97,19 +84,19 @@ html, body, #root {
   flex-direction: column;
 }
 .logo-main {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
   color: var(--accent);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.8px;
   line-height: 1;
 }
 .sidebar-logo .logo-sub {
   color: var(--text-muted);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   display: block;
   margin-top: 4px;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
@@ -160,7 +147,7 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   height: var(--mobile-header-h);
-  padding: 0 16px;
+  padding: 0 20px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -173,26 +160,11 @@ html, body, #root {
   align-items: center;
   gap: 8px;
 }
-.mobile-hamburger {
-  background: none;
-  border: none;
-  color: var(--text);
-  cursor: pointer;
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background 0.2s;
-}
-.mobile-hamburger:active {
-  background: var(--surface2);
-}
 .mobile-title {
   font-weight: 800;
   color: var(--text);
-  font-size: 18px;
-  letter-spacing: -0.5px;
+  font-size: 20px;
+  letter-spacing: -0.8px;
 }
 .mobile-avatar {
   width: 32px;

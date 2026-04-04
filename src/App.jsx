@@ -140,24 +140,21 @@ export default function App() {
     <div className="app">
       {/* Mobile top bar */}
       <header className="mobile-header">
-        <button className="mobile-hamburger" onClick={() => setMobileNavOpen(!mobileNavOpen)}>
-          {mobileNavOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
         <div className="mobile-brand">
           <Dumbbell className="logo-icon" size={24} />
-          <span className="mobile-title">WrkPlnr</span>
+          <span className="mobile-title">Forge</span>
         </div>
         {user.picture ? (
           <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
         ) : <div className="mobile-avatar-placeholder" />}
       </header>
 
-      {/* Sidebar / mobile overlay nav */}
-      <nav className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}>
+      {/* Sidebar (Desktop only) */}
+      <nav className="sidebar">
         <div className="sidebar-logo">
           <Dumbbell className="logo-icon" size={32} />
           <div className="logo-text">
-            <span className="logo-main">WrkPlnr</span>
+            <span className="logo-main">Forge</span>
             <span className="logo-sub">Workout Planner</span>
           </div>
         </div>
@@ -191,9 +188,6 @@ export default function App() {
           </div>
         </div>
       </nav>
-
-      {/* Backdrop for mobile nav */}
-      {mobileNavOpen && <div className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} />}
 
       {/* Bottom tab bar for mobile */}
       <nav className="mobile-tabs">
