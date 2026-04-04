@@ -174,26 +174,43 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
         </Modal>
       )}
 
-      {confirmDelete && (
+      {modal === 'settings' && (
         <Modal
-          title="Delete Template"
-          onClose={() => !saving && setConfirmDelete(null)}
+          title="Workout Defaults"
+          onClose={() => !saving && setModal(null)}
           footer={
-            <>
-              <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)} disabled={saving}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete.id)} disabled={saving}>
-                {saving ? 'Deleting…' : 'Delete'}
+            <div className="flex gap-8 items-center justify-end" style={{ width: '100%' }}>
+              {saved && <span style={{ color: 'var(--success)', fontSize: 13 }}>Saved!</span>}
+              <button className="btn btn-secondary" onClick={() => setModal(null)} disabled={saving}>Close</button>
+              <button className="btn btn-primary" onClick={handleSaveSettings} disabled={!settingsDirty || saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
               </button>
-            </>
+            </div>
           }
         >
-          <p>Delete template <strong>{confirmDelete.name}</strong>? This cannot be undone.</p>
-        </Modal>
-      )}
-    </div>
-  );
-}
-       />
+          <p className="text-muted" style={{ marginBottom: 20 }}>
+            These values are used when adding a new exercise to a workout or template.
+          </p>
+
+          <div className="form-group">
+            <label>Default Sets</label>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={settingsForm.defaultSets}
+              onChange={(e) => setSettingsForm({ ...settingsForm, defaultSets: parseInt(e.target.value) || 1 })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Default Reps</label>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={settingsForm.defaultReps}
+              onChange={(e) => setSettingsForm({ ...settingsForm, defaultReps: parseInt(e.target.value) || 1 })}
+            />
           </div>
         </Modal>
       )}
