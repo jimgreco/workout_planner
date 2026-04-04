@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import './index.css';
 import { 
   Dumbbell, 
+  Flame,
   Calendar as CalendarIcon, 
   LayoutGrid, 
   Library, 
@@ -147,7 +148,7 @@ export default function App() {
       {/* Integrated Top Navigation (Mobile) */}
       <header className="mobile-nav">
         <div className="mobile-nav-left">
-          <Dumbbell className="logo-icon" size={22} />
+          <Flame className="logo-icon" size={22} />
         </div>
         
         <nav className="mobile-nav-center">
@@ -191,7 +192,7 @@ export default function App() {
       {/* Sidebar (Desktop only) */}
       <nav className="sidebar">
         <div className="sidebar-logo">
-          <Dumbbell className="logo-icon" size={32} />
+          <Flame className="logo-icon" size={32} />
           <div className="logo-text">
             <span className="logo-main">Forge</span>
             <span className="logo-sub">Workout Planner</span>
