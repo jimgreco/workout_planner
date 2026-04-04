@@ -79,7 +79,9 @@ export default function WorkoutBuilder({
   }
 
   const usedIds = new Set(items.map((i) => i.exerciseId));
-  const availableExercises = exercises.filter((e) => !usedIds.has(e.id));
+  const availableExercises = exercises
+    .filter((e) => !usedIds.has(e.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div>
