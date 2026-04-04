@@ -496,16 +496,24 @@ input:focus, select:focus, textarea:focus {
 /* ── Page Layout ────────────────────────────────────────── */
 .action-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 @media (max-width: 768px) {
   .action-row {
-    flex-direction: column;
-    align-items: stretch;
+    margin-bottom: 16px;
+  }
+  .action-row h1 {
+    font-size: 18px;
   }
 }
 
