@@ -1,19 +1,22 @@
 import { useState } from 'react';
 import Modal from '../components/Modal.jsx';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
-import { saveTemplate, deleteTemplate } from '../api.js';
+import { saveTemplate, deleteTemplate, saveSettings } from '../api.js';
 
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
 
-export default function Templates({ templates, exercises, settings, onUpdate, onStartWorkout }) {
-  const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view'
+export default function Templates({ templates, exercises, settings, onUpdate, onSettingsUpdate, onStartWorkout }) {
+  const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view' | 'settings'
   const [form, setForm]                 = useState(emptyTemplate());
+  const [settingsForm, setSettingsForm] = useState({ ...settings });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saving, setSaving]             = useState(false);
+  const [saved, setSaved]               = useState(false);
 
-  function openAdd()    { setForm(emptyTemplate()); setModal('add'); }
-  function openEdit(t)  { setForm({ ...t }); setModal('edit'); }
-  function openView(t)  { setForm({ ...t }); setModal('view'); }
+  function openAdd()      { setForm(emptyTemplate()); setModal('add'); }
+  function openEdit(t)    { setForm({ ...t }); setModal('edit'); }
+  function openView(t)    { setForm({ ...t }); setModal('view'); }
+  function openSettings() { setSettingsForm({ ...settings }); setModal('settings'); setSaved(false); }
 
   async function handleSave() {
     if (!form.name.trim() || saving) return;
@@ -22,6 +25,20 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
       const updated = await saveTemplate(form);
       onUpdate(updated);
       setModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveSettings() {
+    if (saving) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const updated = await saveSettings(settingsForm);
+      onSettingsUpdate(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
     }
@@ -38,11 +55,16 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
     }
   }
 
+  const settingsDirty = settingsForm.defaultSets !== settings.defaultSets || settingsForm.defaultReps !== settings.defaultReps;
+
   return (
     <div className="page">
       <div className="action-row">
         <h1 style={{ marginBottom: 0 }}>Workout Templates</h1>
-        <button className="btn btn-primary" onClick={openAdd}>+ New Template</button>
+        <div className="flex gap-8">
+          <button className="btn btn-secondary" onClick={openSettings}>⚙️ Settings</button>
+          <button className="btn btn-primary" onClick={openAdd}>+ New Template</button>
+        </div>
       </div>
 
       {templates.length === 0 && (
@@ -149,6 +171,30 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
             readOnly
             showWeight={false}
           />
+        </Modal>
+      )}
+
+      {confirmDelete && (
+        <Modal
+          title="Delete Template"
+          onClose={() => !saving && setConfirmDelete(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete.id)} disabled={saving}>
+                {saving ? 'Deleting…' : 'Delete'}
+              </button>
+            </>
+          }
+        >
+          <p>Delete template <strong>{confirmDelete.name}</strong>? This cannot be undone.</p>
+        </Modal>
+      )}
+    </div>
+  );
+}
+       />
+          </div>
         </Modal>
       )}
 

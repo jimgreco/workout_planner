@@ -231,10 +231,9 @@ export default function App() {
             onEditLog={handleEditLog}
           />
         )}
-        {page === 'settings' && (
-          <Settings settings={settings} onUpdate={setSettings} />
-        )}
       </main>
     </div>
   );
+}
+
 }
