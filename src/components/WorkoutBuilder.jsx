@@ -93,9 +93,9 @@ export default function WorkoutBuilder({
         return (
           <div key={item.exerciseId} className="sets-block">
             <div className="sets-block-header">
-              <div className="flex items-center gap-8">
-                <span style={{ fontWeight: 700, fontSize: 16 }}>{ex.name}</span>
-                <span className="badge">{ex.muscleGroup}</span>
+              <div className="flex items-center gap-12">
+                <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.3px' }}>{ex.name}</span>
+                <span className="badge" style={{ padding: '4px 10px', fontSize: 12 }}>{ex.muscleGroup}</span>
               </div>
               {!readOnly && (
                 <div className="flex gap-8 items-center card-actions">
@@ -115,7 +115,7 @@ export default function WorkoutBuilder({
             <table className="sets-table">
               <thead>
                 <tr>
-                  <th style={{ width: 48, textAlign: 'center' }}>Set</th>
+                  <th style={{ width: 48 }}>Set</th>
                   <th>Reps</th>
                   {showWeight && <th>Weight (lbs)</th>}
                   {!readOnly && <th style={{ width: 48 }}></th>}
@@ -124,7 +124,7 @@ export default function WorkoutBuilder({
               <tbody>
                 {item.sets.map((set, si) => (
                   <tr key={si}>
-                    <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>{si + 1}</td>
+                    <td className="set-num-cell">{si + 1}</td>
                     <td>
                       <input
                         type="number"
@@ -152,7 +152,7 @@ export default function WorkoutBuilder({
                       <td style={{ textAlign: 'center' }}>
                         <button
                           className="btn btn-ghost btn-sm"
-                          style={{ minWidth: 0, padding: 4, textDecoration: 'none' }}
+                          style={{ minWidth: 0, padding: 8, textDecoration: 'none' }}
                           onClick={() => removeSet(idx, si)}
                           disabled={item.sets.length <= 1}
                           title="Remove set"
