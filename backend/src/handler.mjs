@@ -99,14 +99,22 @@ export const handler = async (event) => {
   const resource = pathParts[0]; // 'exercises' | 'templates' | 'logs' | 'settings'
   const id = pathParts[1];       // uuid or undefined
 
-  // Verify Google ID token on every request
+  // Verify Google ID token on every request (or trust internal secret)
   let userId;
-  try {
-    userId = await verifyToken(
-      event.headers?.authorization ?? event.headers?.Authorization,
-    );
-  } catch {
-    return err(401, 'Unauthorized');
+  const internalSecret = process.env.INTERNAL_SYNC_SECRET;
+  const providedSecret = event.headers?.['x-internal-sync-secret'] || event.headers?.['X-Internal-Sync-Secret'];
+  const internalUserId = event.headers?.['x-internal-user-id'] || event.headers?.['X-Internal-User-Id'];
+
+  if (internalSecret && providedSecret === internalSecret && internalUserId) {
+    userId = internalUserId;
+  } else {
+    try {
+      userId = await verifyToken(
+        event.headers?.authorization ?? event.headers?.Authorization,
+      );
+    } catch {
+      return err(401, 'Unauthorized');
+    }
   }
 
   const PK = `USER#${userId}`;
