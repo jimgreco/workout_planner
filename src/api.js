@@ -114,7 +114,9 @@ export async function deleteExercise(id) {
 }
 
 // ── Templates ──────────────────────────────────────────────────────────────────
-export function getTemplates() { return cache.templates ?? []; }
+export function getTemplates() { 
+  return (cache.templates ?? []).sort((a, b) => a.name.localeCompare(b.name)); 
+}
 
 export async function saveTemplate(template) {
   const id = template.id ?? crypto.randomUUID();
@@ -122,9 +124,10 @@ export async function saveTemplate(template) {
   const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/templates/${id}`, item);
   const list = cache.templates ?? [];
   const idx = list.findIndex((t) => t.id === id);
-  cache.templates = idx >= 0
+  const updated = idx >= 0
     ? list.map((t, i) => (i === idx ? saved : t))
     : [...list, saved];
+  cache.templates = updated.sort((a, b) => a.name.localeCompare(b.name));
   return cache.templates;
 }
 

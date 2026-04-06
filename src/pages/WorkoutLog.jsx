@@ -238,10 +238,11 @@ export default function WorkoutLog({
 
       // Check for personal bests
       const pbExerciseIds = [];
+      let currentExercises = [...exercises];
       for (const item of items) {
         const maxWeight = Math.max(...item.sets.map((s) => parseFloat(s.weight) || 0));
         if (maxWeight <= 0) continue;
-        const ex = exercises.find((e) => e.id === item.exerciseId);
+        const ex = currentExercises.find((e) => e.id === item.exerciseId);
         if (!ex) continue;
         const currentPB = parseFloat(ex.personalBest?.weight) || 0;
         if (maxWeight > currentPB) {
@@ -251,6 +252,7 @@ export default function WorkoutLog({
             ...ex,
             personalBest: { weight: String(maxWeight), date },
           });
+          currentExercises = updated;
           onExercisesChanged(updated);
         }
       }
@@ -464,7 +466,7 @@ export default function WorkoutLog({
             </p>
           </div>
           {finishModal.pbExercises.length > 0 && (
-            <div style={{ marginTop: 12, padding: '16px', background: 'color-mix(in srgb, var(--accent) 8%, #fff)', border: '1px solid color-mix(in srgb, var(--accent) 20%, var(--border))', borderRadius: 'var(--radius)' }}>
+            <div style={{ marginTop: 12, padding: '16px', background: 'color-mix(in srgb, var(--accent) 8%, var(--bg))', border: '1px solid color-mix(in srgb, var(--accent) 20%, var(--border))', borderRadius: 'var(--radius)' }}>
               <div className="flex items-center gap-8" style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: 8 }}>
                 <Trophy size={16} fill="currentColor" /> <span>New Personal Bests!</span>
               </div>

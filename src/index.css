@@ -323,7 +323,7 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   background: var(--accent-dark);
 }
 .btn-secondary { 
-  background: #fff; 
+  background: var(--bg); 
   color: var(--text); 
   border: 1px solid var(--border); 
 }
@@ -350,7 +350,7 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 50%;
@@ -377,7 +377,7 @@ input[type="date"],
 select,
 textarea {
   width: 100%;
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -441,7 +441,7 @@ input:focus, select:focus, textarea:focus {
   z-index: 400;
 }
 .modal {
-  background: #fff;
+  background: var(--bg);
   border-radius: var(--radius) var(--radius) 0 0;
   padding: 24px;
   width: 100%;
@@ -472,6 +472,7 @@ input:focus, select:focus, textarea:focus {
     border-radius: var(--radius);
     max-width: 560px;
     max-height: 90vh;
+    background: var(--bg);
   }
 }
 
@@ -505,11 +506,11 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--bg);
   padding: 24px;
 }
 .login-card {
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 24px;
   padding: 56px 32px;
@@ -560,7 +561,7 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: #fff;
+  background: var(--bg);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   margin-bottom: 12px;
@@ -574,7 +575,7 @@ input:focus, select:focus, textarea:focus {
 
 /* ── Sets Table ─────────────────────────────────────────── */
 .sets-block {
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 16px;
@@ -628,7 +629,7 @@ input:focus, select:focus, textarea:focus {
   gap: 12px;
 }
 .history-item {
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -684,7 +685,7 @@ input:focus, select:focus, textarea:focus {
 .history-item-detail {
   padding: 0 16px 16px;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg);
 }
 .history-exercise {
   padding: 8px 0;
@@ -753,7 +754,7 @@ input:focus, select:focus, textarea:focus {
 
 .cal-cell {
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -767,10 +768,10 @@ input:focus, select:focus, textarea:focus {
 }
 .cal-cell:hover:not(.cal-other-month) { border-color: var(--text); box-shadow: var(--shadow-sm); }
 .cal-cell.cal-today { border: 2px solid var(--text); }
-.cal-cell.cal-has-log { background: color-mix(in srgb, var(--accent) 8%, #fff); border-color: color-mix(in srgb, var(--accent) 20%, var(--border)); }
-.cal-cell.cal-selected { background: var(--text); border-color: var(--text); color: #fff; }
-.cal-cell.cal-selected .cal-date { color: #fff; }
-.cal-cell.cal-selected .cal-dot { background: #fff; }
+.cal-cell.cal-has-log { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); border-color: color-mix(in srgb, var(--accent) 20%, var(--border)); }
+.cal-cell.cal-selected { background: var(--text); border-color: var(--text); color: var(--bg); }
+.cal-cell.cal-selected .cal-date { color: var(--bg); }
+.cal-cell.cal-selected .cal-dot { background: var(--bg); }
 .cal-cell.cal-other-month { opacity: .2; cursor: default; }
 .cal-date { font-size: 13px; font-weight: 700; line-height: 1; }
 .cal-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-top: 2px; }
@@ -862,7 +863,7 @@ input:focus, select:focus, textarea:focus {
 /* Dropdown Menu */
 .user-dropdown {
   position: absolute;
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.12);
@@ -933,7 +934,7 @@ input:focus, select:focus, textarea:focus {
   color: var(--danger);
 }
 .logout-item:hover {
-  background: color-mix(in srgb, var(--danger) 5%, #fff);
+  background: color-mix(in srgb, var(--danger) 5%, var(--bg));
 }
 
 /* ── Full-page centered states (loading / error) ─────────── */
