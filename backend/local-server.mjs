@@ -6,6 +6,23 @@
  */
 
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Load .env from parent directory
+try {
+  const envFile = readFileSync(join(process.cwd(), '.env'), 'utf8');
+  envFile.split('\n').forEach(line => {
+    const match = line.match(/^([^#\s][^=]*)=(['"]?)(.*)\2/);
+    if (match) {
+      const key = match[1].trim();
+      const value = match[3].trim();
+      process.env[key] ||= value;
+    }
+  });
+} catch (e) {
+  // .env might not exist or be readable, skip
+}
 
 // Configure env before importing the handler (it reads env at module load)
 process.env.TABLE_NAME ||= 'workout-planner';
