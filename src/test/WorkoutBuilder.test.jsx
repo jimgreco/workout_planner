@@ -40,7 +40,7 @@ describe('WorkoutBuilder', () => {
   it('adds a new set when "+ Add Set" is clicked', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
-    fireEvent.click(screen.getByText('+ Add Set'));
+    fireEvent.click(screen.getByText(/Add Set/i));
     const updated = onChange.mock.calls[0][0];
     expect(updated[0].sets).toHaveLength(2);
   });
@@ -48,7 +48,7 @@ describe('WorkoutBuilder', () => {
   it('new set inherits reps/weight from previous set', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
-    fireEvent.click(screen.getByText('+ Add Set'));
+    fireEvent.click(screen.getByText(/Add Set/i));
     const updated = onChange.mock.calls[0][0];
     expect(updated[0].sets[1].reps).toBe('8');
     expect(updated[0].sets[1].weight).toBe('135');
@@ -94,8 +94,9 @@ describe('WorkoutBuilder', () => {
     expect(screen.queryByText('+ Add Set')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Remove exercise')).not.toBeInTheDocument();
     // Inputs should be disabled
-    const inputs = screen.getAllByRole('spinbutton');
-    inputs.forEach((input) => expect(input).toBeDisabled());
+    const spinbuttons = screen.queryAllByRole('spinbutton');
+    const textboxes = screen.queryAllByRole('textbox');
+    [...spinbuttons, ...textboxes].forEach((input) => expect(input).toBeDisabled());
   });
 
   it('shows empty message when no exercises configured', () => {

@@ -33,7 +33,7 @@ describe('Exercises page', () => {
 
   it('shows notes when present', () => {
     render(<Exercises exercises={sampleExercises} onUpdate={() => {}} />);
-    expect(screen.getByText('Keep back straight')).toBeInTheDocument();
+    expect(screen.getByText(/Keep back straight/i)).toBeInTheDocument();
   });
 
   it('shows empty state when no exercises', () => {
@@ -58,32 +58,32 @@ describe('Exercises page', () => {
 
   it('opens add modal on button click', () => {
     render(<Exercises exercises={sampleExercises} onUpdate={() => {}} />);
-    fireEvent.click(screen.getByText('+ Add Exercise'));
+    fireEvent.click(screen.getAllByText(/Add Exercise/i)[0]);
     expect(screen.getByRole('heading', { name: 'Add Exercise' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/e.g. Bench Press/i)).toBeInTheDocument();
   });
 
   it('disables save button when name is empty', () => {
     render(<Exercises exercises={sampleExercises} onUpdate={() => {}} />);
-    fireEvent.click(screen.getByText('+ Add Exercise'));
-    const saveBtn = screen.getByText('Add Exercise', { selector: 'button.btn-primary' });
+    fireEvent.click(screen.getAllByText(/Add Exercise/i)[0]);
+    const saveBtn = screen.getAllByText(/Add Exercise/i, { selector: 'button.btn-primary' })[1];
     expect(saveBtn).toBeDisabled();
   });
 
   it('enables save button when name is filled', () => {
     render(<Exercises exercises={sampleExercises} onUpdate={() => {}} />);
-    fireEvent.click(screen.getByText('+ Add Exercise'));
+    fireEvent.click(screen.getAllByText(/Add Exercise/i)[0]);
     fireEvent.change(screen.getByPlaceholderText(/e.g. Bench Press/i), { target: { value: 'Pull Up' } });
-    const saveBtn = screen.getByText('Add Exercise', { selector: 'button.btn-primary' });
+    const saveBtn = screen.getAllByText(/Add Exercise/i, { selector: 'button.btn-primary' })[1];
     expect(saveBtn).not.toBeDisabled();
   });
 
   it('calls onUpdate and closes modal on save', async () => {
     const onUpdate = vi.fn();
     render(<Exercises exercises={sampleExercises} onUpdate={onUpdate} />);
-    fireEvent.click(screen.getByText('+ Add Exercise'));
+    fireEvent.click(screen.getAllByText(/Add Exercise/i)[0]);
     fireEvent.change(screen.getByPlaceholderText(/e.g. Bench Press/i), { target: { value: 'Pull Up' } });
-    fireEvent.click(screen.getByText('Add Exercise', { selector: 'button.btn-primary' }));
+    fireEvent.click(screen.getAllByText(/Add Exercise/i, { selector: 'button.btn-primary' })[1]);
     await waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
     expect(screen.queryByPlaceholderText(/e.g. Bench Press/i)).not.toBeInTheDocument();
   });

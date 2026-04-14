@@ -51,7 +51,9 @@ export default function WorkoutLog({
   const [notes, setNotes]           = useState('');
   const [items, setItems]           = useState([]);
   const [startTime, setStartTime]   = useState(null);
-  const [saving, setSaving]         = useState(false);
+    const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
+  const [activeSetIdx, setActiveSetIdx] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [finishModal, setFinishModal]       = useState(null); // null | { pbExercises }
   const [elapsed, setElapsed]       = useState('');
@@ -89,11 +91,15 @@ export default function WorkoutLog({
     if (!initialTemplate || isActive) return;
     const templateItems = (initialTemplate.exerciseItems || []).map((item) => {
       const lastSets = getLastSetsForExercise(item.exerciseId, logs);
-      if (lastSets) return { exerciseId: item.exerciseId, sets: lastSets };
-      // Use template sets but fill defaults
       return {
         exerciseId: item.exerciseId,
-        sets: item.sets.map((s) => ({ reps: s.reps || String(settings.defaultReps), weight: '' })),
+        sets: item.sets.map((s, si) => {
+          const targetReps = s.reps || String(settings.defaultReps);
+          if (lastSets && si < lastSets.length) {
+            return { reps: '', weight: '', placeholderReps: `${lastSets[si].reps} (${targetReps})`, placeholderWeight: lastSets[si].weight };
+          }
+          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
+        }),
       };
     });
     setName(initialTemplate.name);
@@ -156,19 +162,19 @@ export default function WorkoutLog({
     if (newItems.length > items.length) {
       const addedItem = newItems[newItems.length - 1];
       const lastSets = getLastSetsForExercise(addedItem.exerciseId, logs);
-      if (lastSets) {
-        newItems = newItems.map((item, i) => {
-          if (i !== newItems.length - 1) return item;
-          // Merge: use last workout's weights, keep the new set count structure
-          const merged = item.sets.map((s, si) => {
-            if (si < lastSets.length) {
-              return { reps: s.reps, weight: lastSets[si].weight };
-            }
-            return s;
-          });
-          return { ...item, sets: merged };
+      
+      newItems = newItems.map((item, i) => {
+        if (i !== newItems.length - 1) return item;
+        
+        const merged = item.sets.map((s, si) => {
+          const targetReps = s.reps || String(settings.defaultReps);
+          if (lastSets && si < lastSets.length) {
+            return { reps: '', weight: '', placeholderReps: `${lastSets[si].reps} (${targetReps})`, placeholderWeight: lastSets[si].weight };
+          }
+          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
         });
-      }
+        return { ...item, sets: merged };
+      });
     }
 
     setItems(newItems);
@@ -183,6 +189,51 @@ export default function WorkoutLog({
     } else if (workoutId) {
       scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status: isEditing.current ? 'finished' : 'active' });
     }
+  }
+
+  
+  function handleSetWeightBlur(exIdx, setIdx) {
+    if (!workoutId) return;
+    const now = Date.now();
+    const newItems = items.map((ex, i) => {
+      if (i !== exIdx) return { ...ex, sets: ex.sets.map(s => {
+          if (s.restStartTime && !s.restDuration) {
+             return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
+          }
+          return s;
+        })
+      };
+      
+      const newSets = ex.sets.map((s, si) => {
+        // If this is the current set, start its rest timer
+        if (si === setIdx) {
+          if (!s.weight) return s;
+          return { ...s, restStartTime: now, restDuration: null };
+        }
+        // If this set had a running timer, close it
+        if (s.restStartTime && !s.restDuration) {
+          return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
+        }
+        return s;
+      });
+      return { ...ex, sets: newSets };
+    });
+
+    // Determine next active set
+    let nextEx = exIdx;
+    let nextSet = setIdx + 1;
+    if (nextSet >= newItems[exIdx].sets.length) {
+      nextEx = exIdx + 1;
+      nextSet = 0;
+    }
+
+    if (nextEx < newItems.length) {
+      setActiveExerciseIdx(nextEx);
+      setActiveSetIdx(nextSet);
+    }
+
+    setItems(newItems);
+    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status: isEditing.current ? 'finished' : 'active' });
   }
 
   function handleFieldChange(field, value) {
@@ -208,10 +259,15 @@ export default function WorkoutLog({
       .filter(item => !currentExerciseIds.has(item.exerciseId))
       .map((item) => {
         const lastSets = getLastSetsForExercise(item.exerciseId, logs);
-        if (lastSets) return { exerciseId: item.exerciseId, sets: lastSets };
         return {
           exerciseId: item.exerciseId,
-          sets: item.sets.map((s) => ({ reps: s.reps || String(settings.defaultReps), weight: '' })),
+          sets: item.sets.map((s, si) => {
+            const targetReps = s.reps || String(settings.defaultReps);
+            if (lastSets && si < lastSets.length) {
+              return { reps: '', weight: '', placeholderReps: `${lastSets[si].reps} (${targetReps})`, placeholderWeight: lastSets[si].weight };
+            }
+            return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
+          }),
         };
       });
 
@@ -220,10 +276,14 @@ export default function WorkoutLog({
     const combinedItems = [...items, ...newItemsFromTemplate];
     
     setItems(combinedItems);
+    if (!name || name === '') {
+      setName(t.name);
+    }
     if (!workoutId) {
       startWorkout(t.name, combinedItems);
     } else {
-      scheduleAutoSave(workoutId, { name, date, notes, items: combinedItems, startTime, status: 'active' });
+      const finalName = (!name || name === '') ? t.name : name;
+      scheduleAutoSave(workoutId, { name: finalName, date, notes, items: combinedItems, startTime, status: 'active' });
     }
   }
 
@@ -404,6 +464,9 @@ export default function WorkoutLog({
         exercises={exercises}
         items={items}
         onChange={handleItemsChange}
+        activeExerciseIdx={activeExerciseIdx}
+        activeSetIdx={activeSetIdx}
+        onSetWeightBlur={handleSetWeightBlur}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
       />

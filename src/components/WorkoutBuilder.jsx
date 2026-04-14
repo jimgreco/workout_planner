@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { ArrowUp, ArrowDown, X, Plus } from 'lucide-react';
 
 /**
@@ -14,6 +15,23 @@ import { ArrowUp, ArrowDown, X, Plus } from 'lucide-react';
  *   defaultSets      — number of sets to add for a new exercise (default 4)
  *   defaultReps      — default rep value for new sets (default 8)
  */
+
+function RestTimer({ startTime, duration }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!startTime || duration) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startTime, duration]);
+
+  if (duration) return <span className="rest-time">{duration}s</span>;
+  if (startTime) {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    return <span className="rest-time live">{elapsed}s</span>;
+  }
+  return null;
+}
+
 export default function WorkoutBuilder({
   exercises,
   items,
@@ -22,6 +40,9 @@ export default function WorkoutBuilder({
   showWeight = true,
   defaultSets = 4,
   defaultReps = 8,
+  activeExerciseIdx = null,
+  activeSetIdx = null,
+  onSetWeightBlur,
 }) {
   function exById(id) {
     return exercises.find((e) => e.id === id);
@@ -45,7 +66,7 @@ export default function WorkoutBuilder({
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       const lastSet = item.sets[item.sets.length - 1] || { reps: String(defaultReps), weight: '' };
-      return { ...item, sets: [...item.sets, { reps: lastSet.reps, weight: lastSet.weight }] };
+      return { ...item, sets: [...item.sets, { reps: lastSet.reps, weight: lastSet.weight, placeholderReps: lastSet.placeholderReps, placeholderWeight: lastSet.placeholderWeight }] };
     });
     onChange(copy);
   }
@@ -91,11 +112,16 @@ export default function WorkoutBuilder({
         const ex = exById(item.exerciseId);
         if (!ex) return null;
         return (
-          <div key={item.exerciseId} className="sets-block">
+          <div key={item.exerciseId} className={`sets-block ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
             <div className="sets-block-header">
               <div className="flex items-center gap-8">
                 <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.2px' }}>{ex.name}</span>
                 <span className="badge" style={{ padding: '2px 8px', fontSize: 11 }}>{ex.muscleGroup}</span>
+                {ex.personalBest?.weight && (
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>
+                    • PB: {ex.personalBest.weight} lbs
+                  </span>
+                )}
               </div>
               {!readOnly && (
                 <div className="flex gap-4 items-center card-actions">
@@ -123,13 +149,13 @@ export default function WorkoutBuilder({
               </thead>
               <tbody>
                 {item.sets.map((set, si) => (
-                  <tr key={si}>
+                  <tr key={si} className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
                     <td>
                       <input
-                        type="number"
-                        min="0"
-                        placeholder="—"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={set.placeholderReps || "—"}
                         value={set.reps}
                         onChange={(e) => updateSet(idx, si, 'reps', e.target.value)}
                         disabled={readOnly}
@@ -137,15 +163,20 @@ export default function WorkoutBuilder({
                     </td>
                     {showWeight && (
                       <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="2.5"
-                          placeholder="—"
-                          value={set.weight}
-                          onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                          disabled={readOnly}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="2.5"
+                            placeholder={set.placeholderWeight || "—"}
+                            value={set.weight}
+                            onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                            onBlur={() => onSetWeightBlur && onSetWeightBlur(idx, si)}
+                            disabled={readOnly}
+                            style={{ flex: 1 }}
+                          />
+                          <RestTimer startTime={set.restStartTime} duration={set.restDuration} />
+                        </div>
                       </td>
                     )}
                     {!readOnly && (
