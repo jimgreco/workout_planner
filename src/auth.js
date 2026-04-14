@@ -53,10 +53,7 @@ export function storeCredential(credential) {
  */
 export function getStoredCredential() {
   if (DEV_BYPASS) return DEV_BYPASS_TOKEN;
-  const token = localStorage.getItem(CRED_KEY);
-  const exp   = parseInt(localStorage.getItem(CRED_EXP_KEY) || '0', 10);
-  if (!token || Date.now() / 1000 > exp - 300) return null;
-  return token;
+  return localStorage.getItem(CRED_KEY);
 }
 
 export function clearStoredCredential() {

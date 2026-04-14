@@ -63,6 +63,8 @@ async function verifyToken(authHeader) {
   const ticket = await gClient.verifyIdToken({
     idToken: token,
     audience: process.env.GOOGLE_CLIENT_ID,
+    // Effectively ignore expiry by allowing for a massive clock skew (e.g., 10 years)
+    clockSkewSeconds: 10 * 365 * 24 * 60 * 60,
   });
   return ticket.getPayload().sub;
 }

@@ -144,6 +144,7 @@ export default function WorkoutBuilder({
                   <th style={{ width: 36 }}>Set</th>
                   <th>Reps</th>
                   {showWeight && <th>Weight</th>}
+                  <th style={{ width: 50, textAlign: 'right' }}>Rest</th>
                   {!readOnly && <th style={{ width: 32 }}></th>}
                 </tr>
               </thead>
@@ -163,22 +164,21 @@ export default function WorkoutBuilder({
                     </td>
                     {showWeight && (
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            step="2.5"
-                            placeholder={set.placeholderWeight || "—"}
-                            value={set.weight}
-                            onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                            onBlur={() => onSetWeightBlur && onSetWeightBlur(idx, si)}
-                            disabled={readOnly}
-                            style={{ flex: 1 }}
-                          />
-                          <RestTimer startTime={set.restStartTime} duration={set.restDuration} />
-                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="2.5"
+                          placeholder={set.placeholderWeight || "—"}
+                          value={set.weight}
+                          onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                          onBlur={() => onSetWeightBlur && onSetWeightBlur(idx, si)}
+                          disabled={readOnly}
+                        />
                       </td>
                     )}
+                    <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8, width: 60 }}>
+                      <RestTimer startTime={set.restStartTime} duration={set.restDuration} />
+                    </td>
                     {!readOnly && (
                       <td style={{ textAlign: 'center' }}>
                         <button

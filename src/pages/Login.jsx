@@ -19,6 +19,7 @@ export default function Login({ onLogin }) {
 
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID,
+        auto_select: true,
         callback: (response) => {
           // Store the raw JWT so api.js can attach it to every request.
           storeCredential(response.credential);
