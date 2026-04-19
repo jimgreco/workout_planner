@@ -24,12 +24,19 @@ function RestTimer({ startTime, duration }) {
     return () => clearInterval(id);
   }, [startTime, duration]);
 
-  if (duration) return <span className="rest-time">{duration}s</span>;
+  const format = (sec) => {
+    if (sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  if (duration) return <span className="rest-time">{format(duration)}</span>;
   if (startTime) {
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    return <span className="rest-time live">{elapsed}s</span>;
+    const elapsed = Math.floor((now - startTime) / 1000);
+    return <span className="rest-time live">{format(elapsed)}</span>;
   }
-  return null;
+  return <span className="rest-time" style={{ opacity: 0 }}>00:00</span>;
 }
 
 export default function WorkoutBuilder({
