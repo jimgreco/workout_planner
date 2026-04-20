@@ -6,15 +6,15 @@ import { saveLog, deleteLog, saveExercise } from '../api.js';
 
 /**
  * Find the most recent finished log containing a given exercise and return
- * its sets (with reps + weights) so we can pre-populate the new entry.
+ * its entry so we can pre-populate the new entry.
  */
-function getLastSetsForExercise(exerciseId, logs) {
+function getLastItemForExercise(exerciseId, logs) {
   const finished = logs
     .filter((l) => l.status === 'finished')
     .sort((a, b) => (b.date > a.date ? 1 : -1));
   for (const log of finished) {
     const item = (log.exerciseItems || []).find((i) => i.exerciseId === exerciseId);
-    if (item) return item.sets.map((s) => ({ ...s }));
+    if (item) return JSON.parse(JSON.stringify(item));
   }
   return null;
 }
@@ -90,13 +90,14 @@ export default function WorkoutLog({
   useEffect(() => {
     if (!initialTemplate || isActive) return;
     const templateItems = (initialTemplate.exerciseItems || []).map((item) => {
-      const lastSets = getLastSetsForExercise(item.exerciseId, logs);
+      const lastItem = getLastItemForExercise(item.exerciseId, logs);
       return {
         exerciseId: item.exerciseId,
+        weightType: item.weightType || (lastItem?.weightType) || 'weight',
         sets: item.sets.map((s, si) => {
           const targetReps = s.reps || String(settings.defaultReps);
-          if (lastSets && si < lastSets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastSets[si].reps} (${targetReps})`, placeholderWeight: lastSets[si].weight };
+          if (lastItem && lastItem.sets && si < lastItem.sets.length) {
+            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
           }
           return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
         }),
@@ -161,19 +162,19 @@ export default function WorkoutLog({
     // If new exercise was added, pre-populate weights from last workout
     if (newItems.length > items.length) {
       const addedItem = newItems[newItems.length - 1];
-      const lastSets = getLastSetsForExercise(addedItem.exerciseId, logs);
+      const lastItem = getLastItemForExercise(addedItem.exerciseId, logs);
       
       newItems = newItems.map((item, i) => {
         if (i !== newItems.length - 1) return item;
         
         const merged = item.sets.map((s, si) => {
           const targetReps = s.reps || String(settings.defaultReps);
-          if (lastSets && si < lastSets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastSets[si].reps} (${targetReps})`, placeholderWeight: lastSets[si].weight };
+          if (lastItem && lastItem.sets && si < lastItem.sets.length) {
+            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
           }
           return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
         });
-        return { ...item, sets: merged };
+        return { ...item, sets: merged, weightType: item.weightType || lastItem?.weightType || 'weight' };
       });
     }
 
@@ -207,7 +208,8 @@ export default function WorkoutLog({
       const newSets = ex.sets.map((s, si) => {
         // If this is the current set, start its rest timer
         if (si === setIdx) {
-          if (!s.weight) return s;
+          const hasValue = ex.weightType === 'none' ? !!s.reps : !!s.weight;
+          if (!hasValue) return s;
           return { ...s, restStartTime: now, restDuration: null };
         }
         // If this set had a running timer, close it
@@ -258,13 +260,14 @@ export default function WorkoutLog({
     const newItemsFromTemplate = (t.exerciseItems || [])
       .filter(item => !currentExerciseIds.has(item.exerciseId))
       .map((item) => {
-        const lastSets = getLastSetsForExercise(item.exerciseId, logs);
+        const lastItem = getLastItemForExercise(item.exerciseId, logs);
         return {
           exerciseId: item.exerciseId,
+          weightType: item.weightType || lastItem?.weightType || 'weight',
           sets: item.sets.map((s, si) => {
             const targetReps = s.reps || String(settings.defaultReps);
-            if (lastSets && si < lastSets.length) {
-              return { reps: '', weight: '', placeholderReps: `${lastSets[si].reps} (${targetReps})`, placeholderWeight: lastSets[si].weight };
+            if (lastItem && lastItem.sets && si < lastItem.sets.length) {
+              return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
             }
             return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
           }),

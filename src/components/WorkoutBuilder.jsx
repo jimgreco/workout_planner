@@ -62,11 +62,18 @@ export default function WorkoutBuilder({
       reps: String(defaultReps),
       weight: '',
     }));
-    onChange([...items, { exerciseId, sets }]);
+    onChange([...items, { exerciseId, sets, weightType: 'weight' }]);
   }
 
   function removeExercise(idx) {
     onChange(items.filter((_, i) => i !== idx));
+  }
+
+  function updateWeightType(itemIdx, weightType) {
+    const copy = items.map((item, i) =>
+      i === itemIdx ? { ...item, weightType } : item
+    );
+    onChange(copy);
   }
 
   function addSet(itemIdx) {
@@ -121,17 +128,27 @@ export default function WorkoutBuilder({
         return (
           <div key={item.exerciseId} className={`sets-block ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
             <div className="sets-block-header">
-              <div className="flex items-center gap-8">
-                <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.2px' }}>{ex.name}</span>
-                <span className="badge" style={{ padding: '2px 8px', fontSize: 11 }}>{ex.muscleGroup}</span>
+              <div className="flex items-center gap-8" style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ex.name}</span>
+                <span className="badge" style={{ padding: '2px 8px', fontSize: 11, flexShrink: 0 }}>{ex.muscleGroup}</span>
                 {ex.personalBest?.weight && (
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500, flexShrink: 0 }}>
                     • PB: {ex.personalBest.weight} lbs
                   </span>
                 )}
               </div>
               {!readOnly && (
                 <div className="flex gap-4 items-center card-actions">
+                  <select
+                    value={item.weightType || 'weight'}
+                    onChange={(e) => updateWeightType(idx, e.target.value)}
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: 28, padding: '0 8px', fontSize: 11, background: 'var(--surface)' }}
+                  >
+                    <option value="weight">Weight</option>
+                    <option value="double">2 x Weight</option>
+                    <option value="none">No Weight</option>
+                  </select>
                   <button className="btn-icon" style={{ width: 28, height: 28 }} title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
                     <ArrowUp size={14} />
                   </button>
@@ -150,7 +167,9 @@ export default function WorkoutBuilder({
                 <tr>
                   <th style={{ width: 36 }}>Set</th>
                   <th>Reps</th>
-                  {showWeight && <th>Weight</th>}
+                  {showWeight && item.weightType !== 'none' && (
+                    <th>{item.weightType === 'double' ? 'Weight (2x)' : 'Weight'}</th>
+                  )}
                   <th style={{ width: 50, textAlign: 'right' }}>Rest</th>
                   {!readOnly && <th style={{ width: 32 }}></th>}
                 </tr>
@@ -166,10 +185,11 @@ export default function WorkoutBuilder({
                         placeholder={set.placeholderReps || "—"}
                         value={set.reps}
                         onChange={(e) => updateSet(idx, si, 'reps', e.target.value)}
+                        onBlur={() => item.weightType === 'none' && onSetWeightBlur && onSetWeightBlur(idx, si)}
                         disabled={readOnly}
                       />
                     </td>
-                    {showWeight && (
+                    {showWeight && item.weightType !== 'none' && (
                       <td>
                         <input
                           type="number"

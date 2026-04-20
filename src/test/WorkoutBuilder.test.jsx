@@ -57,7 +57,8 @@ describe('WorkoutBuilder', () => {
   it('adds an exercise from the dropdown', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={[]} onChange={onChange} />);
-    const select = screen.getByRole('combobox');
+    const selects = screen.getAllByRole('combobox');
+    const select = selects[selects.length - 1]; // "Add Exercise" select
     fireEvent.change(select, { target: { value: 'ex2' } });
     const updated = onChange.mock.calls[0][0];
     expect(updated).toHaveLength(1);
@@ -68,7 +69,8 @@ describe('WorkoutBuilder', () => {
   it('does not add a duplicate exercise', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
-    const select = screen.getByRole('combobox');
+    const selects = screen.getAllByRole('combobox');
+    const select = selects[selects.length - 1]; // "Add Exercise" select
     fireEvent.change(select, { target: { value: 'ex1' } });
     // onChange should not be called since ex1 is already in items
     expect(onChange).not.toHaveBeenCalled();
@@ -102,5 +104,60 @@ describe('WorkoutBuilder', () => {
   it('shows empty message when no exercises configured', () => {
     render(<WorkoutBuilder exercises={[]} items={[]} onChange={() => {}} />);
     expect(screen.getByText(/No exercises configured yet/i)).toBeInTheDocument();
+  });
+
+  describe('Weight Types', () => {
+    it('defaults to "Weight" type', () => {
+      const items = [{ exerciseId: 'ex1', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
+      
+      // Header should say Weight
+      expect(screen.getByRole('columnheader', { name: 'Weight' })).toBeInTheDocument();
+      // Selector should have Weight selected
+      const weightSelectors = screen.getAllByRole('combobox');
+      expect(weightSelectors[0]).toHaveValue('weight');
+    });
+
+    it('shows "Weight (2x)" when type is double', () => {
+      const items = [{ exerciseId: 'ex2', weightType: 'double', sets: [{ reps: '10', weight: '50' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
+      
+      expect(screen.getByRole('columnheader', { name: 'Weight (2x)' })).toBeInTheDocument();
+      expect(screen.getByDisplayValue('50')).toBeInTheDocument();
+    });
+
+    it('hides weight input when type is none', () => {
+      const items = [{ exerciseId: 'ex3', weightType: 'none', sets: [{ reps: '20', weight: '' }] }];
+      const { container } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
+      
+      expect(screen.queryByRole('columnheader', { name: 'Weight' })).not.toBeInTheDocument();
+      // Weight input (type="number") should be gone. 
+      expect(container.querySelector('input[type="number"]')).toBeNull();
+      expect(screen.getByDisplayValue('20')).toBeInTheDocument(); // Reps input should still be there
+    });
+
+    it('calls onSetWeightBlur when reps blurred in "none" type', () => {
+      const onSetWeightBlur = vi.fn();
+      const items = [{ exerciseId: 'ex3', weightType: 'none', sets: [{ reps: '20', weight: '' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} onSetWeightBlur={onSetWeightBlur} />);
+      
+      const repsInput = screen.getByDisplayValue('20');
+      fireEvent.blur(repsInput);
+      
+      expect(onSetWeightBlur).toHaveBeenCalledWith(0, 0);
+    });
+
+    it('changes weightType when selector is changed', () => {
+      const onChange = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+      
+      const weightSelectors = screen.getAllByRole('combobox');
+      fireEvent.change(weightSelectors[0], { target: { value: 'double' } });
+      
+      expect(onChange).toHaveBeenCalledOnce();
+      const updated = onChange.mock.calls[0][0];
+      expect(updated[0].weightType).toBe('double');
+    });
   });
 });
