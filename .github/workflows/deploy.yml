@@ -23,4 +23,4 @@ jobs:
       - name: Rebuild and Restart Workout Planner
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "cd ~/workout_planner && docker-compose build --build-arg VITE_DEV_BYPASS_AUTH=false workout workout_api && docker-compose up -d workout workout_api && docker system prune -f"
+            "cd ~/deploy && docker-compose build --no-cache --build-arg VITE_DEV_BYPASS_AUTH=false workout workout_api && docker-compose up -d --force-recreate workout workout_api && docker system prune -f"
