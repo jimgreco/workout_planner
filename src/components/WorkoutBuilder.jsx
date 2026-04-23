@@ -128,50 +128,53 @@ export default function WorkoutBuilder({
         return (
           <div key={item.exerciseId} className={`sets-block ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
             <div className="sets-block-header">
-              <div className="flex items-center gap-8" style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ex.name}</span>
-                <span className="badge" style={{ padding: '2px 8px', fontSize: 11, flexShrink: 0 }}>{ex.muscleGroup}</span>
-                {ex.personalBest?.weight && (
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500, flexShrink: 0 }}>
-                    • PB: {ex.personalBest.weight} lbs
-                  </span>
-                )}
+              <div className="sets-block-info">
+                <span className="exercise-name">{ex.name}</span>
+                <div className="exercise-meta">
+                  <span className="badge">{ex.muscleGroup}</span>
+                  {ex.personalBest?.weight && (
+                    <span className="pb-label">
+                      • PB: {ex.personalBest.weight} lbs
+                    </span>
+                  )}
+                </div>
               </div>
               {!readOnly && (
-                <div className="flex gap-4 items-center card-actions">
+                <div className="flex gap-8 items-center card-actions" style={{ flexWrap: 'wrap' }}>
                   <select
                     value={item.weightType || 'weight'}
                     onChange={(e) => updateWeightType(idx, e.target.value)}
                     className="btn btn-secondary btn-sm"
-                    style={{ height: 28, padding: '0 8px', fontSize: 11, background: 'var(--surface)' }}
+                    style={{ height: 32, padding: '0 32px 0 12px', fontSize: 12, background: 'var(--surface)', flex: '1 1 auto', minWidth: '120px' }}
                   >
                     <option value="weight">Weight</option>
                     <option value="double">2 x Weight</option>
                     <option value="none">No Weight</option>
                   </select>
-                  <button className="btn-icon" style={{ width: 28, height: 28 }} title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
-                    <ArrowUp size={14} />
-                  </button>
-                  <button className="btn-icon" style={{ width: 28, height: 28 }} title="Move down" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
-                    <ArrowDown size={14} />
-                  </button>
-                  <button className="btn-icon" style={{ width: 28, height: 28 }} title="Remove exercise" onClick={() => removeExercise(idx)}>
-                    <X size={14} color="var(--danger)" />
-                  </button>
+                  <div className="action-buttons-group">
+                    <button className="btn-icon" style={{ width: 32, height: 32 }} title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
+                      <ArrowUp size={16} />
+                    </button>
+                    <button className="btn-icon" style={{ width: 32, height: 32 }} title="Move down" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
+                      <ArrowDown size={16} />
+                    </button>
+                    <button className="btn-icon" style={{ width: 32, height: 32 }} title="Remove exercise" onClick={() => removeExercise(idx)}>
+                      <X size={16} color="var(--danger)" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-
             <table className="sets-table">
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}>Set</th>
+                  <th style={{ width: 32 }}>Set</th>
                   <th>Reps</th>
                   {showWeight && item.weightType !== 'none' && (
                     <th>{item.weightType === 'double' ? 'Weight (2x)' : 'Weight'}</th>
                   )}
-                  <th style={{ width: 50, textAlign: 'right' }}>Rest</th>
-                  {!readOnly && <th style={{ width: 32 }}></th>}
+                  <th style={{ width: 60, textAlign: 'right' }}>Rest</th>
+                  {!readOnly && <th style={{ width: 36 }}></th>}
                 </tr>
               </thead>
               <tbody>
@@ -203,7 +206,7 @@ export default function WorkoutBuilder({
                         />
                       </td>
                     )}
-                    <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8, width: 60 }}>
+                    <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
                       <RestTimer startTime={set.restStartTime} duration={set.restDuration} />
                     </td>
                     {!readOnly && (
@@ -215,7 +218,7 @@ export default function WorkoutBuilder({
                           disabled={item.sets.length <= 1}
                           title="Remove set"
                         >
-                          <X size={14} color="var(--text-muted)" />
+                          <X size={16} color="var(--text-muted)" />
                         </button>
                       </td>
                     )}

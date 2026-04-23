@@ -574,6 +574,19 @@ input:focus, select:focus, textarea:focus {
 .exercise-item .ex-name { font-weight: 700; font-size: 16px; }
 
 /* ── Sets Table ─────────────────────────────────────────── */
+.badge {
+  background: var(--surface2);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+}
+
 .sets-block {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -581,18 +594,89 @@ input:focus, select:focus, textarea:focus {
   padding: 16px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
 }
+
+.sets-block.active-exercise {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow);
+}
+
+.active-row input {
+  background: var(--bg);
+  border-color: var(--accent-light);
+}
+
 .sets-block-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 12px;
-  padding-bottom: 8px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--surface);
 }
+
+@media (min-width: 640px) {
+  .sets-block-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+}
+
+.sets-block-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.exercise-name {
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+}
+
+@media (max-width: 639px) {
+  .exercise-name {
+    white-space: normal; /* Allow wrapping on mobile if name is long */
+  }
+}
+
+@media (min-width: 640px) {
+  .exercise-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.exercise-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pb-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.action-buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .sets-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 .sets-table th {
   font-size: 10px;
@@ -600,7 +684,7 @@ input:focus, select:focus, textarea:focus {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 800;
-  padding: 0 4px 8px;
+  padding: 8px 4px;
   text-align: center;
 }
 .sets-table td {
@@ -608,18 +692,35 @@ input:focus, select:focus, textarea:focus {
   vertical-align: middle;
 }
 .sets-table input {
-  padding: 8px;
-  font-size: 14px;
+  width: 100%;
+  height: 40px;
+  padding: 8px 4px;
+  font-size: 15px;
   text-align: center;
   border-radius: var(--radius-sm);
-  border-color: var(--border);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: all 0.2s;
 }
+.sets-table input:focus {
+  background: var(--bg);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .set-num-cell {
   width: 36px;
   text-align: center;
   font-weight: 700;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.rest-time {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── History List ───────────────────────────────────────── */
