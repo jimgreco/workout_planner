@@ -9,7 +9,7 @@
  *   onChange(items) — called with updated items
  *   readOnly        — if true, inputs are disabled (view mode)
  */
-export default function WorkoutBuilder({ exercises, items, onChange, readOnly = false }) {
+export default function WorkoutBuilder({ exercises, items, onChange, readOnly = false, planning = false }) {
   function exById(id) {
     return exercises.find((e) => e.id === id);
   }
@@ -91,7 +91,7 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
               <thead>
                 <tr>
                   <th style={{ width: 36 }}>Set</th>
-                  <th>Reps</th>
+                  <th>{planning ? 'Target Reps' : 'Reps'}</th>
                   <th>Weight (lbs)</th>
                   {!readOnly && <th style={{ width: 32 }}></th>}
                 </tr>
