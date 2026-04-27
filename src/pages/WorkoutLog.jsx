@@ -14,6 +14,7 @@ export default function WorkoutLog({ exercises, templates, onSaved, initialTempl
   );
   const [saving, setSaving]     = useState(false);
   const [savedModal, setSavedModal] = useState(false);
+  const [planning, setPlanning] = useState(true);
 
   function loadTemplate(templateId) {
     const t = templates.find((t) => t.id === templateId);
@@ -39,22 +40,38 @@ export default function WorkoutLog({ exercises, templates, onSaved, initialTempl
     setDate(today);
     setNotes('');
     setItems([]);
+    setPlanning(true);
     if (onClearTemplate) onClearTemplate();
   }
 
   return (
     <div className="page">
       <div className="action-row">
-        <h1 style={{ marginBottom: 0 }}>Log Workout</h1>
+        <div className="flex items-center gap-8">
+          <h1 style={{ marginBottom: 0 }}>Log Workout</h1>
+          <span className={`badge ${planning ? 'badge-planning' : 'badge-active'}`}>
+            {planning ? 'Planning' : 'Active'}
+          </span>
+        </div>
         <div className="flex gap-8">
           <button className="btn btn-ghost btn-sm" onClick={handleReset} disabled={saving}>Reset</button>
-          <button
-            className="btn btn-primary"
-            onClick={handleSave}
-            disabled={!name.trim() || items.length === 0 || saving}
-          >
-            {saving ? 'Saving…' : 'Save Workout'}
-          </button>
+          {planning ? (
+            <button
+              className="btn btn-primary"
+              onClick={() => setPlanning(false)}
+              disabled={!name.trim() || items.length === 0}
+            >
+              Start Workout
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={!name.trim() || items.length === 0 || saving}
+            >
+              {saving ? 'Saving…' : 'End Workout'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -74,7 +91,7 @@ export default function WorkoutLog({ exercises, templates, onSaved, initialTempl
         </div>
       </div>
 
-      {templates.length > 0 && (
+      {planning && templates.length > 0 && (
         <div className="form-group">
           <label>Load from Template</label>
           <select value="" onChange={(e) => loadTemplate(e.target.value)}>
@@ -86,7 +103,7 @@ export default function WorkoutLog({ exercises, templates, onSaved, initialTempl
 
       <hr className="divider" />
       <h2>Exercises</h2>
-      <WorkoutBuilder exercises={exercises} items={items} onChange={setItems} />
+      <WorkoutBuilder exercises={exercises} items={items} onChange={setItems} planning={planning} />
 
       <hr className="divider" />
       <div className="form-group">

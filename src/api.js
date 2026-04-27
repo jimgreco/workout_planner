@@ -9,6 +9,7 @@
  */
 
 import { getStoredCredential, DEV_BYPASS } from './auth.js';
+import { seedExercises, seedTemplates } from './devSeed.js';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -59,10 +60,10 @@ async function request(method, path, body) {
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
 /** Fetch all three collections in parallel and populate the cache. */
 export async function initData() {
-  // In dev bypass mode with no real API configured, start with empty collections.
+  // In dev bypass mode with no real API configured, seed with example data.
   if (DEV_BYPASS && !BASE_URL) {
-    cache.exercises = [];
-    cache.templates = [];
+    cache.exercises = JSON.parse(JSON.stringify(seedExercises));
+    cache.templates = JSON.parse(JSON.stringify(seedTemplates));
     cache.logs      = [];
     return;
   }

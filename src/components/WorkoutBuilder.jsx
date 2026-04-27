@@ -9,7 +9,7 @@
  *   onChange(items) — called with updated items
  *   readOnly        — if true, inputs are disabled (view mode)
  */
-export default function WorkoutBuilder({ exercises, items, onChange, readOnly = false }) {
+export default function WorkoutBuilder({ exercises, items, onChange, readOnly = false, planning = false }) {
   function exById(id) {
     return exercises.find((e) => e.id === id);
   }
@@ -17,7 +17,11 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
   function addExercise(exerciseId) {
     if (!exerciseId) return;
     if (items.some((i) => i.exerciseId === exerciseId)) return;
-    onChange([...items, { exerciseId, sets: [{ reps: '', weight: '' }] }]);
+    onChange([...items, { exerciseId, weightType: 'lbs', sets: [{ reps: '', weight: '' }] }]);
+  }
+
+  function updateWeightType(itemIdx, weightType) {
+    onChange(items.map((item, i) => i === itemIdx ? { ...item, weightType } : item));
   }
 
   function removeExercise(idx) {
@@ -91,8 +95,22 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
               <thead>
                 <tr>
                   <th style={{ width: 36 }}>Set</th>
-                  <th>Reps</th>
-                  <th>Weight (lbs)</th>
+                  <th>{planning ? 'Target Reps' : 'Reps'}</th>
+                  {(item.weightType || 'lbs') !== 'none' && (
+                    <th>
+                      {readOnly ? (item.weightType === '2xlbs' ? '2× lbs' : 'lbs') : (
+                        <select
+                          className="weight-type-select"
+                          value={item.weightType || 'lbs'}
+                          onChange={(e) => updateWeightType(idx, e.target.value)}
+                        >
+                          <option value="lbs">lbs</option>
+                          <option value="2xlbs">2× lbs</option>
+                          <option value="none">No weight</option>
+                        </select>
+                      )}
+                    </th>
+                  )}
                   {!readOnly && <th style={{ width: 32 }}></th>}
                 </tr>
               </thead>
@@ -111,18 +129,20 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
                         style={{ width: 80 }}
                       />
                     </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="2.5"
-                        placeholder="—"
-                        value={set.weight}
-                        onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                        disabled={readOnly}
-                        style={{ width: 100 }}
-                      />
-                    </td>
+                    {(item.weightType || 'lbs') !== 'none' && (
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="2.5"
+                          placeholder="—"
+                          value={set.weight}
+                          onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                          disabled={readOnly}
+                          style={{ width: 100 }}
+                        />
+                      </td>
+                    )}
                     {!readOnly && (
                       <td>
                         <button
@@ -157,6 +177,7 @@ export default function WorkoutBuilder({ exercises, items, onChange, readOnly = 
         <div className="form-group mt-8">
           <label>Add Exercise</label>
           <select
+            aria-label="Add exercise"
             value=""
             onChange={(e) => addExercise(e.target.value)}
           >
