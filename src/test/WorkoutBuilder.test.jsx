@@ -68,7 +68,7 @@ describe('WorkoutBuilder', () => {
   it('does not add a duplicate exercise', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
-    const select = screen.getByRole('combobox');
+    const select = screen.getByRole('combobox', { name: /add exercise/i });
     fireEvent.change(select, { target: { value: 'ex1' } });
     // onChange should not be called since ex1 is already in items
     expect(onChange).not.toHaveBeenCalled();
