@@ -201,31 +201,27 @@ export default function WorkoutLog({
   
   function handleSetWeightBlur(exIdx, setIdx) {
     if (!workoutId) return;
+
+    // Only proceed if this set will actually start a new timer.
+    // If it has no value yet, or its timer was already stopped, leave everything alone.
+    const targetEx = items[exIdx];
+    const targetSet = targetEx.sets[setIdx];
+    const hasValue = targetEx.weightType === 'none' ? !!targetSet.reps : !!targetSet.weight;
+    if (!hasValue || targetSet.restDuration) return;
+
     const now = Date.now();
-    const newItems = items.map((ex, i) => {
-      if (i !== exIdx) return { ...ex, sets: ex.sets.map(s => {
-          if (s.restStartTime && !s.restDuration) {
-             return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
-          }
-          return s;
-        })
-      };
-      
-      const newSets = ex.sets.map((s, si) => {
-        // If this is the current set, start its rest timer
-        if (si === setIdx) {
-          const hasValue = ex.weightType === 'none' ? !!s.reps : !!s.weight;
-          if (!hasValue) return s;
+    const newItems = items.map((ex, i) => ({
+      ...ex,
+      sets: ex.sets.map((s, si) => {
+        if (i === exIdx && si === setIdx) {
           return { ...s, restStartTime: now, restDuration: null };
         }
-        // If this set had a running timer, close it
         if (s.restStartTime && !s.restDuration) {
           return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
         }
         return s;
-      });
-      return { ...ex, sets: newSets };
-    });
+      }),
+    }));
 
     // Determine next active set
     let nextEx = exIdx;
