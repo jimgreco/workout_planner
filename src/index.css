@@ -609,20 +609,13 @@ input:focus, select:focus, textarea:focus {
 
 .sets-block-header {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--surface);
-}
-
-@media (min-width: 640px) {
-  .sets-block-header {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-  }
 }
 
 .sets-block-info {

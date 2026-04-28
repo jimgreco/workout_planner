@@ -129,39 +129,25 @@ export default function WorkoutBuilder({
           <div key={item.exerciseId} className={`sets-block ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
             <div className="sets-block-header">
               <div className="sets-block-info">
-                <span className="exercise-name">{ex.name}</span>
-                <div className="exercise-meta">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="exercise-name">{ex.name}</span>
                   <span className="badge">{ex.muscleGroup}</span>
                   {ex.personalBest?.weight && (
-                    <span className="pb-label">
-                      • PB: {ex.personalBest.weight} lbs
-                    </span>
+                    <span className="pb-label">• PB: {ex.personalBest.weight} lbs</span>
                   )}
                 </div>
               </div>
               {!readOnly && (
-                <div className="flex gap-8 items-center card-actions" style={{ flexWrap: 'wrap' }}>
-                  <select
-                    value={item.weightType || 'weight'}
-                    onChange={(e) => updateWeightType(idx, e.target.value)}
-                    className="btn btn-secondary btn-sm"
-                    style={{ height: 32, padding: '0 32px 0 12px', fontSize: 12, background: 'var(--surface)', flex: '1 1 auto', minWidth: '120px' }}
-                  >
-                    <option value="weight">Weight</option>
-                    <option value="double">2 x Weight</option>
-                    <option value="none">No Weight</option>
-                  </select>
-                  <div className="action-buttons-group">
-                    <button className="btn-icon" style={{ width: 32, height: 32 }} title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
-                      <ArrowUp size={16} />
-                    </button>
-                    <button className="btn-icon" style={{ width: 32, height: 32 }} title="Move down" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
-                      <ArrowDown size={16} />
-                    </button>
-                    <button className="btn-icon" style={{ width: 32, height: 32 }} title="Remove exercise" onClick={() => removeExercise(idx)}>
-                      <X size={16} color="var(--danger)" />
-                    </button>
-                  </div>
+                <div className="action-buttons-group">
+                  <button className="btn-icon" style={{ width: 32, height: 32 }} title="Move up" onClick={() => moveItem(idx, -1)} disabled={idx === 0}>
+                    <ArrowUp size={16} />
+                  </button>
+                  <button className="btn-icon" style={{ width: 32, height: 32 }} title="Move down" onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1}>
+                    <ArrowDown size={16} />
+                  </button>
+                  <button className="btn-icon" style={{ width: 32, height: 32 }} title="Remove exercise" onClick={() => removeExercise(idx)}>
+                    <X size={16} color="var(--danger)" />
+                  </button>
                 </div>
               )}
             </div>
@@ -170,8 +156,22 @@ export default function WorkoutBuilder({
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
                   <th>Reps</th>
-                  {showWeight && item.weightType !== 'none' && (
-                    <th>{item.weightType === 'double' ? 'Weight (2x)' : 'Weight'}</th>
+                  {showWeight && (!readOnly || item.weightType !== 'none') && (
+                    <th style={{ paddingTop: 0, paddingBottom: 0 }}>
+                      {!readOnly ? (
+                        <select
+                          value={item.weightType || 'weight'}
+                          onChange={(e) => updateWeightType(idx, e.target.value)}
+                          style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 16px 0 0', appearance: 'auto' }}
+                        >
+                          <option value="weight">Weight</option>
+                          <option value="double">2× Weight</option>
+                          <option value="none">No Weight</option>
+                        </select>
+                      ) : (
+                        item.weightType === 'double' ? 'Weight (2x)' : 'Weight'
+                      )}
+                    </th>
                   )}
                   <th style={{ width: 60, textAlign: 'right' }}>Rest</th>
                   {!readOnly && <th style={{ width: 36 }}></th>}
@@ -192,18 +192,20 @@ export default function WorkoutBuilder({
                         disabled={readOnly}
                       />
                     </td>
-                    {showWeight && item.weightType !== 'none' && (
+                    {showWeight && (!readOnly || item.weightType !== 'none') && (
                       <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="2.5"
-                          placeholder={set.placeholderWeight || "—"}
-                          value={set.weight}
-                          onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                          onBlur={() => onSetWeightBlur && onSetWeightBlur(idx, si)}
-                          disabled={readOnly}
-                        />
+                        {item.weightType !== 'none' && (
+                          <input
+                            type="number"
+                            min="0"
+                            step="2.5"
+                            placeholder={set.placeholderWeight || "—"}
+                            value={set.weight}
+                            onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                            onBlur={() => onSetWeightBlur && onSetWeightBlur(idx, si)}
+                            disabled={readOnly}
+                          />
+                        )}
                       </td>
                     )}
                     <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
