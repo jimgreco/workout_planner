@@ -50,6 +50,7 @@ export default function WorkoutBuilder({
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetWeightBlur,
+  planningMode = false,
 }) {
   function exById(id) {
     return exercises.find((e) => e.id === id);
@@ -185,16 +186,17 @@ export default function WorkoutBuilder({
                       <input
                         type="text"
                         inputMode="numeric"
-                        placeholder={set.placeholderReps || "—"}
-                        value={set.reps}
-                        onChange={(e) => updateSet(idx, si, 'reps', e.target.value)}
-                        onBlur={() => item.weightType === 'none' && onSetWeightBlur && onSetWeightBlur(idx, si)}
+                        placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
+                        value={planningMode ? (set.placeholderReps || '') : set.reps}
+                        onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value)}
+                        onBlur={() => !planningMode && item.weightType === 'none' && onSetWeightBlur && onSetWeightBlur(idx, si)}
                         disabled={readOnly}
+                        style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                       />
                     </td>
                     {showWeight && (!readOnly || item.weightType !== 'none') && (
                       <td>
-                        {item.weightType !== 'none' && (
+                        {item.weightType !== 'none' && !planningMode && (
                           <input
                             type="number"
                             min="0"

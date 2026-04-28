@@ -61,6 +61,7 @@ export default function WorkoutLog({
 
   const saveTimer = useRef(null);
   const isActive = !!workoutId;
+  const isPlanningMode = !!workoutId && !startTime && !isEditing.current;
 
   // ── Resume active workout or load editing log ────────────────────────────
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function WorkoutLog({
       return;
     }
     // Check for an in-progress workout
-    const active = logs.find((l) => l.status === 'active');
+    const active = logs.find((l) => l.status === 'active' || l.status === 'planning');
     if (active) {
       setWorkoutId(active.id);
       setName(active.name || '');
@@ -105,7 +106,7 @@ export default function WorkoutLog({
     });
     setName(initialTemplate.name);
     setItems(templateItems);
-    startWorkout(initialTemplate.name, templateItems);
+    enterPlanningMode(initialTemplate.name, templateItems);
     if (onClearTemplate) onClearTemplate();
   }, [initialTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -141,20 +142,26 @@ export default function WorkoutLog({
     saveTimer.current = setTimeout(() => autoSave(id, data), 800);
   }
 
-  // ── Start a new workout ──────────────────────────────────────────────────
-  function startWorkout(workoutName, workoutItems) {
+  // ── Enter planning mode (exercises added but workout not yet started) ────
+  function enterPlanningMode(workoutName, workoutItems) {
     const id = crypto.randomUUID();
-    const now = new Date().toISOString();
     setWorkoutId(id);
-    setStartTime(now);
     autoSave(id, {
       name: workoutName || name,
       date,
       notes,
       items: workoutItems || items,
-      startTime: now,
-      status: 'active',
+      startTime: null,
+      status: 'planning',
     });
+  }
+
+  // ── Start the workout (planning → active) ────────────────────────────────
+  function handleStartWorkout() {
+    if (!workoutId) return;
+    const now = new Date().toISOString();
+    setStartTime(now);
+    autoSave(workoutId, { name, date, notes, items, startTime: now, status: 'active' });
   }
 
   // ── Handle exercise changes from WorkoutBuilder ──────────────────────────
@@ -181,14 +188,13 @@ export default function WorkoutLog({
     setItems(newItems);
 
     if (!workoutId && newItems.length > 0) {
-      // First exercise added — start the workout
+      // First exercise added — enter planning mode
       const id = crypto.randomUUID();
-      const now = new Date().toISOString();
       setWorkoutId(id);
-      setStartTime(now);
-      autoSave(id, { name, date, notes, items: newItems, startTime: now, status: 'active' });
+      autoSave(id, { name, date, notes, items: newItems, startTime: null, status: 'planning' });
     } else if (workoutId) {
-      scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status: isEditing.current ? 'finished' : 'active' });
+      const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+      scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
     }
   }
 
@@ -235,7 +241,8 @@ export default function WorkoutLog({
     }
 
     setItems(newItems);
-    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status: isEditing.current ? 'finished' : 'active' });
+    const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
   }
 
   function handleFieldChange(field, value) {
@@ -244,7 +251,8 @@ export default function WorkoutLog({
     else if (field === 'notes') setNotes(value);
 
     if (workoutId) {
-      const data = { name, date, notes, items, startTime, status: isEditing.current ? 'finished' : 'active' };
+      const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+      const data = { name, date, notes, items, startTime, status };
       data[field] = value;
       scheduleAutoSave(workoutId, data);
     }
@@ -283,10 +291,11 @@ export default function WorkoutLog({
       setName(t.name);
     }
     if (!workoutId) {
-      startWorkout(t.name, combinedItems);
+      enterPlanningMode(t.name, combinedItems);
     } else {
       const finalName = (!name || name === '') ? t.name : name;
-      scheduleAutoSave(workoutId, { name: finalName, date, notes, items: combinedItems, startTime, status: 'active' });
+      const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+      scheduleAutoSave(workoutId, { name: finalName, date, notes, items: combinedItems, startTime, status });
     }
   }
 
@@ -389,7 +398,7 @@ export default function WorkoutLog({
       <div className="action-row" style={{ marginBottom: 20 }}>
         <div>
           <h1 style={{ marginBottom: 0 }}>
-            {isEditing.current ? 'Edit Workout' : 'Log Workout'}
+            {isEditing.current ? 'Edit Workout' : isPlanningMode ? 'Plan Workout' : 'Log Workout'}
           </h1>
           {isActive && startTime && !isEditing.current && (
             <div className="flex items-center gap-8 text-muted" style={{ marginTop: 2 }}>
@@ -404,10 +413,19 @@ export default function WorkoutLog({
               onClick={() => setConfirmDiscard(true)}
               disabled={saving}
             >
-              <X size={14} /> {isEditing.current ? 'Cancel' : 'Discard'}
+              <X size={14} /> {isEditing.current ? 'Cancel' : isPlanningMode ? 'Discard Plan' : 'Discard'}
             </button>
           )}
-          {isActive && items.length > 0 && (
+          {isActive && items.length > 0 && isPlanningMode && (
+            <button
+              className="btn btn-primary"
+              onClick={handleStartWorkout}
+              disabled={!name.trim()}
+            >
+              <Check size={16} /> Start Workout
+            </button>
+          )}
+          {isActive && items.length > 0 && !isPlanningMode && (
             <button
               className="btn btn-primary"
               onClick={handleFinish}
@@ -472,6 +490,7 @@ export default function WorkoutLog({
         onSetWeightBlur={handleSetWeightBlur}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
+        planningMode={isPlanningMode}
       />
 
       <hr className="divider" style={{ opacity: 0.3, margin: '16px 0' }} />
@@ -504,6 +523,8 @@ export default function WorkoutLog({
           <p>
             {isEditing.current
               ? 'Discard your changes and go back?'
+              : isPlanningMode
+              ? 'Discard this workout plan?'
               : 'This will delete the in-progress workout. This cannot be undone.'
             }
           </p>
