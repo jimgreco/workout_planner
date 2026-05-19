@@ -166,7 +166,7 @@ export default function WorkoutBuilder({
                           style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 16px 0 0', appearance: 'auto' }}
                         >
                           <option value="weight">Weight</option>
-                          <option value="double">2× Weight</option>
+                          <option value="double">Weight (2x)</option>
                           <option value="none">No Weight</option>
                         </select>
                       ) : (

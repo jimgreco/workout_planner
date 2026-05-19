@@ -6,6 +6,14 @@ Parameters:
   GoogleClientId:
     Type: String
     Description: Google OAuth 2.0 Client ID used for ID token verification
+  GoogleClientIds:
+    Type: String
+    Default: ""
+    Description: Optional comma-separated extra Google OAuth client IDs for native apps
+  AppleClientIds:
+    Type: String
+    Default: ""
+    Description: Optional comma-separated Sign in with Apple audiences, such as the iOS bundle ID
 
 Globals:
   Function:
@@ -16,6 +24,8 @@ Globals:
       Variables:
         TABLE_NAME: !Ref WorkoutTable
         GOOGLE_CLIENT_ID: !Ref GoogleClientId
+        GOOGLE_CLIENT_IDS: !Sub "${GoogleClientId},${GoogleClientIds}"
+        APPLE_CLIENT_IDS: !Ref AppleClientIds
 
 Resources:
 

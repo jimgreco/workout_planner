@@ -1,0 +1,184 @@
+import Foundation
+
+struct UserProfile: Codable, Equatable {
+    var sub: String
+    var name: String
+    var email: String
+    var picture: String?
+}
+
+struct PersonalBest: Codable, Equatable {
+    var weight: String
+    var date: String?
+}
+
+struct Exercise: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var muscleGroup: String
+    var notes: String?
+    var personalBest: PersonalBest?
+
+    init(id: String = UUID().uuidString, name: String, muscleGroup: String = "Other", notes: String? = nil, personalBest: PersonalBest? = nil) {
+        self.id = id
+        self.name = name
+        self.muscleGroup = muscleGroup
+        self.notes = notes
+        self.personalBest = personalBest
+    }
+}
+
+struct WorkoutSet: Codable, Equatable {
+    var reps: String?
+    var weight: String?
+    var placeholderReps: String?
+    var placeholderWeight: String?
+    var restStartTime: Double?
+    var restDuration: Int?
+
+    init(
+        reps: String? = "",
+        weight: String? = "",
+        placeholderReps: String? = nil,
+        placeholderWeight: String? = nil,
+        restStartTime: Double? = nil,
+        restDuration: Int? = nil
+    ) {
+        self.reps = reps
+        self.weight = weight
+        self.placeholderReps = placeholderReps
+        self.placeholderWeight = placeholderWeight
+        self.restStartTime = restStartTime
+        self.restDuration = restDuration
+    }
+}
+
+struct ExerciseItem: Codable, Identifiable, Equatable {
+    var id: String { exerciseId }
+    var exerciseId: String
+    var weightType: String?
+    var sets: [WorkoutSet]
+
+    init(exerciseId: String, weightType: String? = "weight", sets: [WorkoutSet]) {
+        self.exerciseId = exerciseId
+        self.weightType = weightType
+        self.sets = sets
+    }
+}
+
+struct WorkoutTemplate: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var description: String?
+    var exerciseItems: [ExerciseItem]
+
+    init(id: String = UUID().uuidString, name: String, description: String? = "", exerciseItems: [ExerciseItem] = []) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.exerciseItems = exerciseItems
+    }
+}
+
+struct WorkoutLog: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var date: String
+    var notes: String?
+    var exerciseItems: [ExerciseItem]
+    var startTime: String?
+    var endTime: String?
+    var status: String?
+    var hasPB: Bool?
+    var pbExerciseIds: [String]?
+
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        date: String,
+        notes: String? = "",
+        exerciseItems: [ExerciseItem] = [],
+        startTime: String? = nil,
+        endTime: String? = nil,
+        status: String? = nil,
+        hasPB: Bool? = nil,
+        pbExerciseIds: [String]? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.date = date
+        self.notes = notes
+        self.exerciseItems = exerciseItems
+        self.startTime = startTime
+        self.endTime = endTime
+        self.status = status
+        self.hasPB = hasPB
+        self.pbExerciseIds = pbExerciseIds
+    }
+}
+
+struct WorkoutSettings: Codable, Equatable {
+    var defaultSets: Int
+    var defaultReps: Int
+
+    static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8)
+}
+
+enum MuscleGroups {
+    static let all = [
+        "Chest", "Back", "Shoulders", "Biceps", "Triceps",
+        "Forearms", "Core", "Quads", "Hamstrings", "Glutes",
+        "Calves", "Full Body", "Cardio", "Other",
+    ]
+}
+
+enum DateHelpers {
+    static let apiDay: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    static let displayDay: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
+    static func todayString() -> String {
+        apiDay.string(from: Date())
+    }
+
+    static func date(from day: String) -> Date {
+        apiDay.date(from: day) ?? Date()
+    }
+
+    static func dayString(from date: Date) -> String {
+        apiDay.string(from: date)
+    }
+}
+
+func formatDuration(startTime: String?, endTime: String? = nil) -> String {
+    guard let startTime, let start = ISO8601DateFormatter().date(from: startTime) else { return "" }
+    let end = endTime.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+    let minutes = max(0, Int(round(end.timeIntervalSince(start) / 60)))
+    if minutes < 60 { return "\(minutes)m" }
+    let hours = minutes / 60
+    let remaining = minutes % 60
+    return remaining > 0 ? "\(hours)h \(remaining)m" : "\(hours)h"
+}
+
+func restTimeText(startTime: Double?, duration: Int?) -> String {
+    let seconds: Int
+    if let duration {
+        seconds = duration
+    } else if let startTime {
+        seconds = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+    } else {
+        seconds = 0
+    }
+    return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+}

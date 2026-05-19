@@ -389,49 +389,73 @@ export default function WorkoutLog({
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
+  const showStartWorkout = isActive && items.length > 0 && isPlanningMode;
+  const showFinishWorkout = isActive && items.length > 0 && !isPlanningMode;
+  const canSubmitWorkout = !!name.trim();
+
   return (
-    <div className="page">
-      <div className="action-row" style={{ marginBottom: 20 }}>
-        <div>
-          <h1 style={{ marginBottom: 0 }}>
-            {isEditing.current ? 'Edit Workout' : isPlanningMode ? 'Plan Workout' : 'Log Workout'}
-          </h1>
-          {isActive && startTime && !isEditing.current && (
-            <div className="flex items-center gap-8 text-muted" style={{ marginTop: 2 }}>
-              <Clock size={12} /> <span style={{ fontSize: 13 }}>In progress · {elapsed}</span>
-            </div>
-          )}
-        </div>
-        <div className="flex gap-4 action-buttons">
+    <div className={`page workout-log-page ${showStartWorkout ? 'has-sticky-action' : ''}`}>
+      <header className="workout-page-header">
+        <div className="workout-page-title-row">
+          <div className="workout-page-title">
+            <h1>
+              {isEditing.current ? 'Edit Workout' : isPlanningMode ? 'Plan Workout' : 'Log Workout'}
+            </h1>
+            {isActive && startTime && !isEditing.current && (
+              <div className="flex items-center gap-8 text-muted" style={{ marginTop: 2 }}>
+                <Clock size={12} /> <span style={{ fontSize: 13 }}>In progress · {elapsed}</span>
+              </div>
+            )}
+          </div>
+
           {isActive && (
             <button
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm workout-discard-button"
               onClick={() => setConfirmDiscard(true)}
               disabled={saving}
             >
               <X size={14} /> {isEditing.current ? 'Cancel' : isPlanningMode ? 'Discard Plan' : 'Discard'}
             </button>
           )}
-          {isActive && items.length > 0 && isPlanningMode && (
+        </div>
+
+        {(showStartWorkout || showFinishWorkout) && (
+          <div className="workout-page-primary-actions">
+            {showStartWorkout && (
+              <button
+                className="btn btn-primary workout-primary-button workout-start-top"
+                onClick={handleStartWorkout}
+                disabled={!canSubmitWorkout}
+              >
+                <Check size={16} /> Start Workout
+              </button>
+            )}
+            {showFinishWorkout && (
+              <button
+                className="btn btn-primary workout-primary-button"
+                onClick={handleFinish}
+                disabled={!canSubmitWorkout || saving}
+              >
+                <Check size={16} /> {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
+              </button>
+            )}
+          </div>
+        )}
+      </header>
+
+      {showStartWorkout && (
+        <div className="workout-sticky-action">
+          <div className="workout-sticky-action-inner">
             <button
-              className="btn btn-primary"
+              className="btn btn-primary workout-sticky-button"
               onClick={handleStartWorkout}
-              disabled={!name.trim()}
+              disabled={!canSubmitWorkout}
             >
               <Check size={16} /> Start Workout
             </button>
-          )}
-          {isActive && items.length > 0 && !isPlanningMode && (
-            <button
-              className="btn btn-primary"
-              onClick={handleFinish}
-              disabled={!name.trim() || saving}
-            >
-              <Check size={16} /> {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
-            </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="form-row" style={{ marginTop: 12 }}>
         <div className="form-group" style={{ flex: 2 }}>

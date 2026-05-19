@@ -2,11 +2,9 @@ import { useState, useCallback, useEffect } from 'react';
 import './index.css';
 import { 
   Dumbbell, 
-  Flame,
   Calendar as CalendarIcon, 
-  LayoutGrid, 
-  Library, 
-  X,
+  ClipboardList,
+  BicepsFlexed,
   LogOut,
   ChevronRight
 } from 'lucide-react';
@@ -17,12 +15,13 @@ import Exercises from './pages/Exercises.jsx';
 import Templates from './pages/Templates.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
+import Logo from './components/Logo.jsx';
 
 const PAGES = [
-  { id: 'log',       label: 'Workout',  icon: Dumbbell },
+  { id: 'log',       label: 'Burn!',    icon: Dumbbell },
   { id: 'history',   label: 'History',   icon: CalendarIcon },
-  { id: 'templates', label: 'Templates', icon: LayoutGrid },
-  { id: 'exercises', label: 'Library',   icon: Library },
+  { id: 'templates', label: 'Workouts',  icon: ClipboardList },
+  { id: 'exercises', label: 'Exercises', icon: BicepsFlexed },
 ];
 
 export default function App() {
@@ -62,20 +61,8 @@ export default function App() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  // ── Global auth-error handler (fired by api.js on 401 / missing credential) ──
-  useEffect(() => {
-    const onAuthError = () => handleSignOut();
-    window.addEventListener('wp:auth-error', onAuthError);
-    return () => window.removeEventListener('wp:auth-error', onAuthError);
-  }, []);
-
   // ── Auth callbacks ─────────────────────────────────────────────────────────
-  const handleLogin = useCallback((profile) => {
-    storeUser(profile);
-    setUser(profile);
-  }, []);
-
-  function handleSignOut() {
+  const handleSignOut = useCallback(() => {
     clearStoredUser();
     resetData();
     if (window.google?.accounts?.id) {
@@ -90,7 +77,19 @@ export default function App() {
     setEditingLog(null);
     setPage('log');
     setShowUserMenu(false);
-  }
+  }, []);
+
+  const handleLogin = useCallback((profile) => {
+    storeUser(profile);
+    setUser(profile);
+  }, []);
+
+  // ── Global auth-error handler (fired by api.js on 401 / missing credential) ──
+  useEffect(() => {
+    const onAuthError = () => handleSignOut();
+    window.addEventListener('wp:auth-error', onAuthError);
+    return () => window.removeEventListener('wp:auth-error', onAuthError);
+  }, [handleSignOut]);
 
   function handleStartWorkout(template) {
     setPendingTemplate(template);
@@ -148,7 +147,7 @@ export default function App() {
       {/* Integrated Top Navigation (Mobile) */}
       <header className="mobile-nav">
         <div className="mobile-nav-left">
-          <Flame className="logo-icon" size={22} />
+          <Logo variant="mark" className="app-logo-mark" title="Forge" />
         </div>
         
         <nav className="mobile-nav-center">
@@ -192,11 +191,7 @@ export default function App() {
       {/* Sidebar (Desktop only) */}
       <nav className="sidebar">
         <div className="sidebar-logo">
-          <Flame className="logo-icon" size={32} />
-          <div className="logo-text">
-            <span className="logo-main">Forge</span>
-            <span className="logo-sub">Workout Planner</span>
-          </div>
+          <Logo className="app-logo-full" />
         </div>
 
         <div className="nav-group">

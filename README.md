@@ -14,3 +14,15 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## iPhone App
+
+The native SwiftUI iPhone app is in `ios/`. It uses the same API and data model as the mobile web app.
+
+```bash
+cd ios
+xcodegen generate
+open WorkoutPlanner.xcodeproj
+```
+
+Before running on a device, set `API_BASE_URL`, `GOOGLE_IOS_CLIENT_ID`, and the reversed Google URL scheme in `ios/project.yml`, then regenerate the project. Enable Sign in with Apple for the app bundle ID in the Apple Developer portal. Deploy the backend with `GoogleClientIds` containing the iOS OAuth client ID and `AppleClientIds` containing the iOS bundle ID so native ID tokens verify.

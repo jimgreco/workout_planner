@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { parseJwt, storeCredential } from '../auth.js';
+import Logo from '../components/Logo.jsx';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -50,7 +51,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">Forge</div>
+        <Logo className="login-logo" />
         <p className="login-tagline">Track every rep. Own every PR.</p>
 
         {CLIENT_ID ? (

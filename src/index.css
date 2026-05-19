@@ -73,31 +73,51 @@ html, body, #root {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 0 24px 32px;
 }
-.logo-icon {
-  color: var(--accent);
-}
-.logo-text {
-  display: flex;
-  flex-direction: column;
-}
-.logo-main {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--accent);
-  letter-spacing: -0.8px;
-  line-height: 1;
-}
-.sidebar-logo .logo-sub {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
+
+.forge-logo {
   display: block;
-  margin-top: 4px;
-  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  --logo-pink: var(--accent);
+  --logo-pink-dark: var(--accent-dark);
+  --logo-pink-light: var(--accent-light);
+  --logo-word: var(--text);
+  --logo-subtitle: var(--text-muted);
+  --logo-letter: #ffffff;
+}
+.forge-logo-tone-light {
+  --logo-word: #222222;
+  --logo-subtitle: #717171;
+}
+.forge-logo-tone-dark {
+  --logo-word: #f7f7fb;
+  --logo-subtitle: #aaaabb;
+}
+.forge-logo-flame-main { fill: var(--logo-pink); }
+.forge-logo-flame-side { fill: var(--logo-pink-dark); }
+.forge-logo-flame-highlight { fill: var(--logo-pink-light); }
+.forge-logo-letter { fill: var(--logo-letter); }
+.forge-logo-word {
+  fill: var(--logo-word);
+  font-size: 31px;
+  font-weight: 800;
+  font-family: Circular, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+}
+.forge-logo-subtitle {
+  fill: var(--logo-subtitle);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: Circular, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
   text-transform: uppercase;
+}
+.app-logo-full {
+  width: 184px;
+  height: auto;
+}
+.app-logo-mark {
+  width: 30px;
+  height: 30px;
 }
 
 .nav-group {
@@ -491,12 +511,136 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
 }
 
+.workout-log-page {
+  position: relative;
+}
+
+.workout-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.workout-page-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workout-page-title {
+  min-width: 0;
+}
+
+.workout-page-title h1 {
+  margin-bottom: 0;
+}
+
+.workout-discard-button {
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.workout-page-primary-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.workout-primary-button {
+  min-height: 44px;
+  padding-inline: 18px;
+}
+
+.workout-sticky-action {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .action-row {
     margin-bottom: 16px;
   }
   .action-row h1 {
     font-size: 18px;
+  }
+
+  .workout-log-page.has-sticky-action {
+    padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  }
+
+  .workout-page-header {
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .workout-page-title-row {
+    align-items: center;
+  }
+
+  .workout-page-title h1 {
+    font-size: 20px;
+  }
+
+  .workout-discard-button {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13.5px;
+  }
+
+  .workout-page-primary-actions {
+    justify-content: stretch;
+  }
+
+  .workout-primary-button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .workout-start-top {
+    display: none;
+  }
+
+  .workout-sticky-action {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 110;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.08);
+    backdrop-filter: blur(16px);
+  }
+
+  .workout-sticky-action-inner {
+    max-width: 1024px;
+    margin: 0 auto;
+  }
+
+  .workout-sticky-button {
+    width: 100%;
+    min-height: 48px;
+    font-size: 15px;
+    box-shadow: var(--shadow);
+  }
+}
+
+@media (min-width: 768px) {
+  .workout-page-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .workout-page-title-row {
+    flex: 1;
+  }
+
+  .workout-page-primary-actions {
+    flex-shrink: 0;
   }
 }
 
@@ -520,11 +664,9 @@ input:focus, select:focus, textarea:focus {
   box-shadow: var(--shadow);
 }
 .login-logo {
-  font-size: 48px;
-  font-weight: 800;
-  color: var(--accent);
-  letter-spacing: -1.5px;
-  margin-bottom: 8px;
+  width: 224px;
+  height: auto;
+  margin: 0 auto 10px;
 }
 .login-tagline {
   font-size: 18px;

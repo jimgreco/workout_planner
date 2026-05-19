@@ -1,7 +1,7 @@
 /**
  * Workout Planner — Lambda handler
  *
- * Routes (all require a valid Google ID token in Authorization: Bearer <token>):
+ * Routes (all require a valid Google or Apple ID token in Authorization: Bearer <token>):
  *   GET    /exercises          → list user's exercises
  *   PUT    /exercises/:id      → create or update an exercise
  *   DELETE /exercises/:id      → delete an exercise
@@ -15,7 +15,7 @@
  *   PUT    /settings           → save user settings (singleton)
  *
  * DynamoDB key schema:
- *   PK  = USER#<googleSub>
+ *   PK  = USER#<providerUserId>
  *   SK  = EXERCISE#<id> | TEMPLATE#<id> | LOG#<id> | SETTINGS
  */
 
@@ -29,6 +29,7 @@ import {
   BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { OAuth2Client } from 'google-auth-library';
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { DEFAULT_EXERCISES } from './default-exercises.mjs';
 
 console.log('Initializing DynamoDB with endpoint:', process.env.AWS_ENDPOINT_URL_DYNAMODB);
@@ -38,6 +39,15 @@ const db = DynamoDBDocumentClient.from(new DynamoDBClient({
 }));
 const gClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const TABLE = process.env.TABLE_NAME;
+const GOOGLE_AUDIENCES = (process.env.GOOGLE_CLIENT_IDS ?? process.env.GOOGLE_CLIENT_ID ?? '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+const APPLE_AUDIENCES = (process.env.APPLE_CLIENT_IDS ?? process.env.APPLE_CLIENT_ID ?? '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+const appleJWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
 const SK_PREFIX = {
   exercises: 'EXERCISE',
@@ -52,6 +62,11 @@ const IS_LOCAL = process.env.AWS_SAM_LOCAL === 'true';
 const DEV_BYPASS_TOKEN = 'dev-bypass-token';
 const DEV_USER_SUB     = 'dev-user-local';
 
+function audienceFor(audiences, provider) {
+  if (audiences.length === 0) throw new Error(`${provider} audience not configured`);
+  return audiences.length > 1 ? audiences : audiences[0];
+}
+
 async function verifyToken(authHeader) {
   if (!authHeader?.startsWith('Bearer ')) throw new Error('Missing token');
   const token = authHeader.slice(7);
@@ -60,9 +75,20 @@ async function verifyToken(authHeader) {
   // AWS_SAM_LOCAL is never set on real Lambda, so this branch is unreachable in production.
   if (IS_LOCAL && token === DEV_BYPASS_TOKEN) return DEV_USER_SUB;
 
+  const unverifiedPayload = decodeJwt(token);
+  if (unverifiedPayload.iss === 'https://appleid.apple.com') {
+    const { payload } = await jwtVerify(token, appleJWKS, {
+      issuer: 'https://appleid.apple.com',
+      audience: audienceFor(APPLE_AUDIENCES, 'Apple'),
+      // Match the existing Google behavior, which allows old client-held ID tokens.
+      currentDate: new Date(((unverifiedPayload.iat ?? Date.now() / 1000) * 1000)),
+    });
+    return `apple:${payload.sub}`;
+  }
+
   const ticket = await gClient.verifyIdToken({
     idToken: token,
-    audience: process.env.GOOGLE_CLIENT_ID,
+    audience: audienceFor(GOOGLE_AUDIENCES, 'Google'),
     // Effectively ignore expiry by allowing for a massive clock skew (e.g., 10 years)
     clockSkewSeconds: 10 * 365 * 24 * 60 * 60,
   });
