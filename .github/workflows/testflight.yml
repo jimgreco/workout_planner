@@ -180,11 +180,16 @@ jobs:
           set -euo pipefail
           IPA_PATH="$(find "$RUNNER_TEMP/export" -name '*.ipa' -print -quit)"
           test -n "$IPA_PATH"
+          UPLOAD_LOG="$RUNNER_TEMP/altool-upload.log"
           xcrun altool --upload-app \
             --type ios \
             --file "$IPA_PATH" \
             --apiKey "$API_KEY_ID" \
-            --apiIssuer "$API_ISSUER_ID"
+            --apiIssuer "$API_ISSUER_ID" 2>&1 | tee "$UPLOAD_LOG"
+
+          if grep -Eq "UPLOAD FAILED|Validation failed|Failed to upload package" "$UPLOAD_LOG"; then
+            exit 1
+          fi
 
       - name: Cleanup keychain
         if: always()
