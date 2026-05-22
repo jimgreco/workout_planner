@@ -51,6 +51,8 @@ jobs:
       WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://workout-planner.jim-greco.com' }}
       ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://workout-planner.jim-greco.com' }}
       APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
+      GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+      APPLE_CLIENT_IDS: ${{ secrets.APPLE_CLIENT_IDS || vars.IOS_BUNDLE_ID || 'com.workoutplanner.ios' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -63,6 +65,8 @@ jobs:
             echo "APP_SESSION_SECRET must be at least 32 characters."
             exit 1
           fi
+          test -n "$GOOGLE_IOS_CLIENT_ID"
+          test -n "$APPLE_CLIENT_IDS"
 
       - name: Transfer files to EC2
         run: |
@@ -82,19 +86,72 @@ jobs:
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::7}"
           ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "cd ~/deploy && \
-             APP_SESSION_SECRET='$APP_SESSION_SECRET' \
+            "APP_SESSION_SECRET='$APP_SESSION_SECRET' \
              ALLOWED_ORIGINS='$ALLOWED_ORIGINS' \
-             LOCAL_AUTH_BYPASS=false \
-             docker-compose build --no-cache \
-               --build-arg VITE_DEV_BYPASS_AUTH=false \
-               --build-arg VITE_GIT_COMMIT=$SHORT_SHA \
-               workout workout_api && \
-             APP_SESSION_SECRET='$APP_SESSION_SECRET' \
-             ALLOWED_ORIGINS='$ALLOWED_ORIGINS' \
-             LOCAL_AUTH_BYPASS=false \
-             docker-compose up -d --force-recreate workout workout_api && \
-             docker system prune -f"
+             GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID' \
+             APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS' \
+             SHORT_SHA='$SHORT_SHA' \
+             bash -s" <<'REMOTE_DEPLOY'
+          set -euo pipefail
+          cd ~/deploy
+
+          read_deploy_env() {
+            local key="$1"
+            if [ ! -f .env ]; then
+              return 0
+            fi
+            awk -v key="$key" '
+              $0 ~ "^[[:space:]]*#" { next }
+              index($0, key "=") == 1 {
+                value = substr($0, length(key) + 2)
+                gsub(/^["\047]|["\047]$/, "", value)
+                print value
+                exit
+              }
+            ' .env
+          }
+
+          WORKOUT_GOOGLE_CLIENT_ID="${WORKOUT_GOOGLE_CLIENT_ID:-$(read_deploy_env WORKOUT_GOOGLE_CLIENT_ID)}"
+          WORKOUT_GOOGLE_CLIENT_IDS="${WORKOUT_GOOGLE_CLIENT_IDS:-$(read_deploy_env WORKOUT_GOOGLE_CLIENT_IDS)}"
+          WORKOUT_APPLE_CLIENT_IDS="${WORKOUT_APPLE_CLIENT_IDS:-$(read_deploy_env WORKOUT_APPLE_CLIENT_IDS)}"
+
+          : "${WORKOUT_GOOGLE_CLIENT_ID:?WORKOUT_GOOGLE_CLIENT_ID must be set in ~/deploy/.env}"
+          : "${GOOGLE_IOS_CLIENT_ID:?GOOGLE_IOS_CLIENT_ID must be set in GitHub Secrets}"
+          : "${APP_SESSION_SECRET:?APP_SESSION_SECRET must be set in GitHub Secrets}"
+          : "${APPLE_CLIENT_IDS:?APPLE_CLIENT_IDS must be set}"
+
+          WORKOUT_GOOGLE_CLIENT_IDS="${WORKOUT_GOOGLE_CLIENT_IDS:-$WORKOUT_GOOGLE_CLIENT_ID,$GOOGLE_IOS_CLIENT_ID}"
+          WORKOUT_APPLE_CLIENT_IDS="${WORKOUT_APPLE_CLIENT_IDS:-$APPLE_CLIENT_IDS}"
+          LOCAL_AUTH_BYPASS=false
+
+          export APP_SESSION_SECRET
+          export ALLOWED_ORIGINS
+          export LOCAL_AUTH_BYPASS
+          export WORKOUT_GOOGLE_CLIENT_ID
+          export WORKOUT_GOOGLE_CLIENT_IDS
+          export WORKOUT_APPLE_CLIENT_IDS
+
+          OVERRIDE_FILE="$(mktemp)"
+          trap 'rm -f "$OVERRIDE_FILE"' EXIT
+          cat > "$OVERRIDE_FILE" <<'COMPOSE_OVERRIDE'
+          services:
+            workout_api:
+              environment:
+                APP_SESSION_SECRET: ${APP_SESSION_SECRET}
+                ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+                LOCAL_AUTH_BYPASS: ${LOCAL_AUTH_BYPASS}
+                GOOGLE_CLIENT_ID: ${WORKOUT_GOOGLE_CLIENT_ID}
+                GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
+                APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
+          COMPOSE_OVERRIDE
+
+          docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" build --no-cache \
+            --build-arg VITE_DEV_BYPASS_AUTH=false \
+            --build-arg VITE_GIT_COMMIT="$SHORT_SHA" \
+            workout workout_api
+          docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" up -d --force-recreate workout workout_api
+          docker system prune -f
+          REMOTE_DEPLOY
 
       - name: Smoke test live app
         run: |
