@@ -257,6 +257,32 @@ html, body, #root {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+.app-notice {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px auto 0;
+  max-width: 1024px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.app-notice.error {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  color: var(--danger);
+}
+.app-notice.success {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+  color: var(--success);
+}
 .page {
   padding: 24px 16px;
   max-width: 1024px;
@@ -686,6 +712,12 @@ input:focus, select:focus, textarea:focus {
   text-align: left;
   font-size: 14px;
   color: var(--text);
+}
+.login-error {
+  margin-top: 16px;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* ── View toggle ────────────────────────────────────────── */
@@ -1141,6 +1173,12 @@ input:focus, select:focus, textarea:focus {
   text-overflow: ellipsis;
 }
 
+.dropdown-build {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .dropdown-divider {
   border: none;
   border-top: 1px solid var(--border);
@@ -1164,6 +1202,15 @@ input:focus, select:focus, textarea:focus {
 }
 .dropdown-item:hover {
   background: var(--surface);
+}
+
+.dropdown-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.danger-text {
+  color: var(--danger);
 }
 
 .logout-item {

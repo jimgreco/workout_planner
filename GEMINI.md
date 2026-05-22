@@ -1,31 +1,18 @@
 # Workout Planner — Gemini Guide
 
-## Deployment (EC2 + Docker)
-Migrated from a serverless SAM-based deployment to a consolidated EC2 instance (`18.219.163.101`).
+Use `AGENTS.md` as the current source of truth for architecture, commands,
+auth, and deployment. The active production path is EC2 + Docker Compose.
 
-### Infrastructure Details
-- **Frontend**: React (Vite) served via Nginx in a Docker container.
-- **Backend**: Node.js container running the Lambda handler via a local server wrapper.
-- **Database**: DynamoDB Local running as a Docker container (shared across projects if needed).
-- **CI/CD**: GitHub Actions auto-deploy on push to `main`.
+## Current Production Shape
 
-### Auto-Deployment Workflow
-1. GitHub Action checks out code.
-2. `rsync` transfers the project files to the server.
-3. Server runs `docker-compose build workout_frontend workout_api && docker-compose up -d workout_frontend workout_api`.
+- Frontend: React/Vite static build served by Nginx in Docker.
+- API: Node 22 backend container running `backend/local-server.mjs`.
+- Data: DynamoDB table keyed by `USER#<providerSub>`.
+- Deploy: GitHub Actions verifies, rsyncs to EC2, rebuilds Docker Compose, and
+  smoke-tests `https://workout-planner.jim-greco.com/api/healthz`.
 
-## Key Files
-- **`Dockerfile`**: Multi-stage build for frontend (Nginx) and backend (Node.js).
-- **`backend/init-table.mjs`**: Initializes the `workout-planner` table in DynamoDB Local on startup.
-- **`backend/local-server.mjs`**: Wraps the Lambda handler to run as a persistent Express-like server.
+## Auth
 
-## Environment Variables (Production)
-Managed in `~/deploy/.env` on the EC2 instance:
-- `WORKOUT_GOOGLE_CLIENT_ID`: Google OAuth Client ID for both frontend build and backend verification.
-- `AWS_ENDPOINT_URL_DYNAMODB`: Points to `http://dynamodb:8000`.
-- `INTERNAL_SYNC_SECRET`: Shared secret used for Macro Tracker internal sync.
-
-## Routing
-- **Frontend**: `workout.jim-greco.com` (Example domain)
-- **Backend API**: `workout-api.jim-greco.com` (Example domain)
-- Configured via Nginx Proxy Manager on the EC2 instance.
+Google and Apple ID tokens are exchanged once at `/auth/google` or
+`/auth/apple`. The API returns a signed app session token used for normal data
+requests.

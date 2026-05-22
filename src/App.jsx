@@ -6,16 +6,31 @@ import {
   ClipboardList,
   BicepsFlexed,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  Download,
+  MessageSquare,
+  ShieldAlert
 } from 'lucide-react';
 import { getStoredUser, getStoredCredential, storeUser, clearStoredUser, DEV_BYPASS, DEV_USER } from './auth.js';
-import { initData, resetData, getExercises, getTemplates, getLogs, getSettings } from './api.js';
+import {
+  initData,
+  resetData,
+  getExercises,
+  getTemplates,
+  getLogs,
+  getSettings,
+  exportData,
+  submitFeedback,
+  deleteAccount as deleteAccountData,
+} from './api.js';
+import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
 import Exercises from './pages/Exercises.jsx';
 import Templates from './pages/Templates.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
 import Logo from './components/Logo.jsx';
+import Modal from './components/Modal.jsx';
 
 const PAGES = [
   { id: 'log',       label: 'Burn!',    icon: Dumbbell },
@@ -33,8 +48,13 @@ export default function App() {
   const [user, setUser]           = useState(hasValidSession ? storedUser : null);
   const [loading, setLoading]     = useState(hasValidSession); // fetch data on first render
   const [dataError, setDataError] = useState(null);
+  const [notice, setNotice]       = useState(null);
+  const [loadRequest, setLoadRequest] = useState(0);
   const [page, setPage]           = useState('log');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [accountModal, setAccountModal] = useState(null); // null | 'feedback' | 'delete'
+  const [feedbackText, setFeedbackText] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
 
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -46,20 +66,23 @@ export default function App() {
   // ── Load data after login (or on first render with a valid session) ────────
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
-    setDataError(null);
+    let cancelled = false;
     initData()
       .then(() => {
+        if (cancelled) return;
         setExercises(getExercises());
         setTemplates(getTemplates());
         setLogs(getLogs());
         setSettings(getSettings());
       })
       .catch((err) => {
-        if (err.name !== 'AuthError') setDataError(err.message);
+        if (!cancelled && err.name !== 'AuthError') setDataError(err.message);
       })
-      .finally(() => setLoading(false));
-  }, [user]);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [user, loadRequest]);
 
   // ── Auth callbacks ─────────────────────────────────────────────────────────
   const handleSignOut = useCallback(() => {
@@ -77,10 +100,14 @@ export default function App() {
     setEditingLog(null);
     setPage('log');
     setShowUserMenu(false);
+    setAccountModal(null);
   }, []);
 
   const handleLogin = useCallback((profile) => {
     storeUser(profile);
+    setDataError(null);
+    setLoading(true);
+    setLoadRequest((value) => value + 1);
     setUser(profile);
   }, []);
 
@@ -90,6 +117,17 @@ export default function App() {
     window.addEventListener('wp:auth-error', onAuthError);
     return () => window.removeEventListener('wp:auth-error', onAuthError);
   }, [handleSignOut]);
+
+  useEffect(() => {
+    const onApiError = (event) => {
+      setNotice({
+        type: 'error',
+        message: event.detail?.message || 'Something went wrong',
+      });
+    };
+    window.addEventListener('wp:api-error', onApiError);
+    return () => window.removeEventListener('wp:api-error', onApiError);
+  }, []);
 
   function handleStartWorkout(template) {
     setPendingTemplate(template);
@@ -104,6 +142,74 @@ export default function App() {
   function navigate(id) {
     setPage(id);
     setShowUserMenu(false);
+  }
+
+  async function handleExportData() {
+    setAccountBusy(true);
+    try {
+      const data = await exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `forge-workout-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setNotice({ type: 'success', message: 'Export downloaded.' });
+      setShowUserMenu(false);
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
+  async function handleSubmitFeedback() {
+    if (!feedbackText.trim() || accountBusy) return;
+    setAccountBusy(true);
+    try {
+      await submitFeedback(feedbackText.trim(), buildLabel());
+      setFeedbackText('');
+      setAccountModal(null);
+      setNotice({ type: 'success', message: 'Feedback sent. Thank you.' });
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (accountBusy) return;
+    setAccountBusy(true);
+    try {
+      await deleteAccountData();
+      handleSignOut();
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
+  function renderAccountMenuItems() {
+    return (
+      <>
+        <div className="dropdown-info">
+          <span className="dropdown-name">{user.name}</span>
+          <span className="dropdown-email">{user.email}</span>
+          <span className="dropdown-build">{buildLabel()}</span>
+        </div>
+        <hr className="dropdown-divider" />
+        <button className="dropdown-item" onClick={handleExportData} disabled={accountBusy}>
+          <Download size={16} /> Export data
+        </button>
+        <button className="dropdown-item" onClick={() => { setFeedbackText(''); setAccountModal('feedback'); setShowUserMenu(false); }}>
+          <MessageSquare size={16} /> Send feedback
+        </button>
+        <button className="dropdown-item danger-text" onClick={() => { setAccountModal('delete'); setShowUserMenu(false); }}>
+          <ShieldAlert size={16} /> Delete account
+        </button>
+        <hr className="dropdown-divider" />
+        <button className="dropdown-item logout-item" onClick={handleSignOut}>
+          <LogOut size={16} /> Sign out
+        </button>
+      </>
+    );
   }
 
   // Close menu when clicking outside
@@ -134,7 +240,7 @@ export default function App() {
     return (
       <div className="full-center">
         <p style={{ color: 'var(--danger)', marginBottom: 12 }}>Failed to load data: {dataError}</p>
-        <button className="btn btn-secondary" onClick={() => { setDataError(null); setLoading(true); }}>
+        <button className="btn btn-secondary" onClick={() => { setDataError(null); setLoading(true); setLoadRequest((value) => value + 1); }}>
           Retry
         </button>
       </div>
@@ -176,14 +282,7 @@ export default function App() {
 
         {showUserMenu && (
           <div className="user-dropdown mobile-dropdown" onClick={(e) => e.stopPropagation()}>
-            <div className="dropdown-info">
-              <span className="dropdown-name">{user.name}</span>
-              <span className="dropdown-email">{user.email}</span>
-            </div>
-            <hr className="dropdown-divider" />
-            <button className="dropdown-item logout-item" onClick={handleSignOut}>
-              <LogOut size={16} /> Sign out
-            </button>
+            {renderAccountMenuItems()}
           </div>
         )}
       </header>
@@ -226,22 +325,21 @@ export default function App() {
 
           {showUserMenu && (
             <div className="user-dropdown sidebar-dropdown" onClick={(e) => e.stopPropagation()}>
-              <div className="dropdown-info">
-                <span className="dropdown-name">{user.name}</span>
-                <span className="dropdown-email">{user.email}</span>
-              </div>
-              <hr className="dropdown-divider" />
-              <button className="dropdown-item logout-item" onClick={handleSignOut}>
-                <LogOut size={16} /> Sign out
-              </button>
+              {renderAccountMenuItems()}
             </div>
           )}
         </div>
       </nav>
 
       <main className="main">
+        {notice && (
+          <div className={`app-notice ${notice.type}`}>
+            <span>{notice.message}</span>
+            <button className="btn-icon" onClick={() => setNotice(null)} aria-label="Dismiss notice">×</button>
+          </div>
+        )}
         {page === 'exercises' && (
-          <Exercises exercises={exercises} logs={logs} onUpdate={setExercises} />
+          <Exercises exercises={exercises} onUpdate={setExercises} />
         )}
         {page === 'templates' && (
           <Templates
@@ -276,6 +374,50 @@ export default function App() {
           />
         )}
       </main>
+
+      {accountModal === 'feedback' && (
+        <Modal
+          title="Send Feedback"
+          onClose={() => !accountBusy && setAccountModal(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setAccountModal(null)} disabled={accountBusy}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSubmitFeedback} disabled={!feedbackText.trim() || accountBusy}>
+                {accountBusy ? 'Sending…' : 'Send'}
+              </button>
+            </>
+          }
+        >
+          <div className="form-group">
+            <label>What should I know?</label>
+            <textarea
+              rows={5}
+              value={feedbackText}
+              onChange={(event) => setFeedbackText(event.target.value)}
+              placeholder="Bug, rough edge, feature idea…"
+              autoFocus
+            />
+          </div>
+          <p className="text-muted" style={{ fontSize: 13 }}>Includes {buildLabel()} so issues are easier to trace.</p>
+        </Modal>
+      )}
+
+      {accountModal === 'delete' && (
+        <Modal
+          title="Delete Account"
+          onClose={() => !accountBusy && setAccountModal(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setAccountModal(null)} disabled={accountBusy}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleDeleteAccount} disabled={accountBusy}>
+                {accountBusy ? 'Deleting…' : 'Delete Everything'}
+              </button>
+            </>
+          }
+        >
+          <p>This permanently deletes your exercises, workouts, templates, settings, and feedback from the backend.</p>
+        </Modal>
+      )}
     </div>
   );
 }

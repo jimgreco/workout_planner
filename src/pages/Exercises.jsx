@@ -11,7 +11,7 @@ const MUSCLE_GROUPS = [
 
 const empty = () => ({ name: '', muscleGroup: 'Other', notes: '' });
 
-export default function Exercises({ exercises, logs, onUpdate }) {
+export default function Exercises({ exercises, onUpdate }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'pb'
   const [form, setForm]                 = useState(empty());
   const [search, setSearch]             = useState('');

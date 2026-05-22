@@ -136,6 +136,32 @@ final class WorkoutStore: ObservableObject {
         logs.removeAll { $0.id == id }
     }
 
+    func submitFeedback(_ message: String) async throws {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if usesLocalData { return }
+        guard let api else { throw WorkoutAPIError.missingConfiguration }
+        try await api.submitFeedback(message: message, build: AppConfiguration.buildLabel)
+    }
+
+    func exportData() async throws -> Data {
+        if usesLocalData {
+            return try JSONEncoder().encode([
+                "exportedAt": ISO8601DateFormatter().string(from: Date()),
+                "mode": "local",
+            ])
+        }
+        guard let api else { throw WorkoutAPIError.missingConfiguration }
+        return try await api.exportData()
+    }
+
+    func deleteAccount() async throws {
+        if !usesLocalData {
+            guard let api else { throw WorkoutAPIError.missingConfiguration }
+            try await api.deleteAccount()
+        }
+        reset()
+    }
+
     func activeWorkout() -> WorkoutLog? {
         logs.first { $0.status == "active" || $0.status == "planning" }
     }

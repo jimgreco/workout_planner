@@ -25,7 +25,7 @@ struct LoginView: View {
                     request.requestedScopes = [.fullName, .email]
                 } onCompletion: { result in
                     Task {
-                        auth.handleAppleSignIn(result)
+                        await auth.handleAppleSignIn(result)
                         if auth.user != nil {
                             await store.loadData()
                         }

@@ -2,11 +2,15 @@
   "name": "workout-planner-backend",
   "version": "1.0.0",
   "type": "module",
-  "description": "Lambda handler for the Workout Planner API",
+  "description": "Node API handler for the Workout Planner API",
+  "scripts": {
+    "backup": "node backup-table.mjs",
+    "test": "node --test"
+  },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3",
-    "@aws-sdk/lib-dynamodb": "^3",
-    "google-auth-library": "^9",
+    "@aws-sdk/client-dynamodb": "^3.1052.0",
+    "@aws-sdk/lib-dynamodb": "^3.1052.0",
+    "google-auth-library": "^10.6.2",
     "jose": "^5.10.0"
   }
 }

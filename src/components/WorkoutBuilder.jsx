@@ -17,11 +17,15 @@ import { ArrowUp, ArrowDown, X, Plus } from 'lucide-react';
  */
 
 function RestTimer({ startTime, duration }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   useEffect(() => {
     if (!startTime || duration) return;
+    const timeout = setTimeout(() => setNow(Date.now()), 0);
     const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(id);
+    };
   }, [startTime, duration]);
 
   const format = (sec) => {
@@ -33,7 +37,7 @@ function RestTimer({ startTime, duration }) {
 
   if (duration) return <span className="rest-time">{format(duration)}</span>;
   if (startTime) {
-    const elapsed = Math.floor((now - startTime) / 1000);
+    const elapsed = now ? Math.floor((now - startTime) / 1000) : 0;
     return <span className="rest-time live">{format(elapsed)}</span>;
   }
   return <span className="rest-time" style={{ opacity: 0 }}>00:00</span>;

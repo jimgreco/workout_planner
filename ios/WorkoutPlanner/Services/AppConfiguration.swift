@@ -18,4 +18,22 @@ enum AppConfiguration {
     static var isGoogleConfigured: Bool {
         googleClientID != nil
     }
+
+    static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
+    }
+
+    static var buildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+    }
+
+    static var gitCommitHash: String {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "GIT_COMMIT_HASH") as? String ?? "local"
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "local" : trimmed
+    }
+
+    static var buildLabel: String {
+        "iOS \(appVersion) (\(buildNumber), \(gitCommitHash))"
+    }
 }

@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react';
-import { parseJwt, storeCredential } from '../auth.js';
+import { useEffect, useRef, useState } from 'react';
+import { exchangeGoogleCredential } from '../auth.js';
 import Logo from '../components/Logo.jsx';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 export default function Login({ onLogin }) {
   const btnRef = useRef(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!CLIENT_ID) return;
@@ -21,16 +22,17 @@ export default function Login({ onLogin }) {
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID,
         auto_select: true,
-        callback: (response) => {
-          // Store the raw JWT so api.js can attach it to every request.
-          storeCredential(response.credential);
-          const payload = parseJwt(response.credential);
-          onLogin({
-            sub:     payload.sub,
-            name:    payload.name,
-            email:   payload.email,
-            picture: payload.picture,
-          });
+        callback: async (response) => {
+          try {
+            setError('');
+            const user = await exchangeGoogleCredential(response.credential);
+            onLogin(user);
+          } catch (error) {
+            setError(error.message);
+            window.dispatchEvent(new CustomEvent('wp:api-error', {
+              detail: { message: error.message },
+            }));
+          }
         },
       });
 
@@ -65,6 +67,8 @@ export default function Login({ onLogin }) {
             </p>
           </div>
         )}
+
+        {error && <p className="login-error">{error}</p>}
       </div>
     </div>
   );

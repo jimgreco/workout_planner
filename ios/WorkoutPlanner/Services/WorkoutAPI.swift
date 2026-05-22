@@ -63,6 +63,18 @@ struct WorkoutAPI {
         try await requestNoBody("DELETE", path: "/logs/\(id)")
     }
 
+    func submitFeedback(message: String, build: String) async throws {
+        let _: FeedbackResponse = try await request("POST", path: "/feedback", body: FeedbackRequest(message: message, build: build))
+    }
+
+    func exportData() async throws -> Data {
+        try await perform("GET", path: "/export", body: Optional<Data>.none)
+    }
+
+    func deleteAccount() async throws {
+        _ = try await perform("DELETE", path: "/account", body: Optional<Data>.none)
+    }
+
     private func request<T: Decodable>(_ method: String, path: String) async throws -> T {
         let data = try await perform(method, path: path, body: Optional<Data>.none)
         return try decoder.decode(T.self, from: data)
@@ -98,6 +110,15 @@ struct WorkoutAPI {
         }
         return data
     }
+}
+
+private struct FeedbackRequest: Encodable {
+    let message: String
+    let build: String
+}
+
+private struct FeedbackResponse: Decodable {
+    let id: String
 }
 
 private extension Array where Element == WorkoutTemplate {

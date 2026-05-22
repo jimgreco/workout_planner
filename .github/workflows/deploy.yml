@@ -5,22 +5,99 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Lint web app
+        run: npm run lint
+
+      - name: Test web app
+        run: npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Audit web production dependencies
+        run: npm audit --omit=dev
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Test backend
+        working-directory: backend
+        run: npm test
+
+      - name: Audit backend production dependencies
+        working-directory: backend
+        run: npm audit --omit=dev
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: verify
+    env:
+      WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://workout-planner.jim-greco.com' }}
+      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://workout-planner.jim-greco.com' }}
+      APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check production secrets
+        run: |
+          set -euo pipefail
+          test -n "$APP_SESSION_SECRET"
+          if [ "${#APP_SESSION_SECRET}" -lt 32 ]; then
+            echo "APP_SESSION_SECRET must be at least 32 characters."
+            exit 1
+          fi
 
       - name: Transfer files to EC2
         run: |
+          set -euo pipefail
           echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
           chmod 600 key.pem
           rsync -avz -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
             --exclude '.git' \
+            --exclude '.env' \
+            --exclude '.env.*' \
             --exclude 'node_modules' \
+            --exclude 'dist' \
             . ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/workout_planner/
 
-      - name: Rebuild and Restart Workout Planner
+      - name: Rebuild and restart Workout Planner
         run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
           ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "cd ~/deploy && docker-compose build --no-cache --build-arg VITE_DEV_BYPASS_AUTH=false workout workout_api && docker-compose up -d --force-recreate workout workout_api && docker system prune -f"
+            "cd ~/deploy && \
+             APP_SESSION_SECRET='$APP_SESSION_SECRET' \
+             ALLOWED_ORIGINS='$ALLOWED_ORIGINS' \
+             LOCAL_AUTH_BYPASS=false \
+             docker-compose build --no-cache \
+               --build-arg VITE_DEV_BYPASS_AUTH=false \
+               --build-arg VITE_GIT_COMMIT=$SHORT_SHA \
+               workout workout_api && \
+             APP_SESSION_SECRET='$APP_SESSION_SECRET' \
+             ALLOWED_ORIGINS='$ALLOWED_ORIGINS' \
+             LOCAL_AUTH_BYPASS=false \
+             docker-compose up -d --force-recreate workout workout_api && \
+             docker system prune -f"
+
+      - name: Smoke test live app
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$WEB_BASE_URL/api/healthz"
+          curl --fail --silent --show-error "$WEB_BASE_URL" >/dev/null

@@ -1,12 +1,7 @@
 # Forge iPhone App
 
-Native SwiftUI iPhone client for the Workout Planner API. It mirrors the mobile web app's pages and data model:
-
-- Workout logging with planning, active, finish, discard, and edit flows
-- Exercise library with search, CRUD, and personal bests
-- Workout templates with defaults, view/start/edit/delete
-- History list and calendar views
-- Sign in with Apple and Google Sign-In with the same `Authorization: Bearer <id-token>` API contract
+Native SwiftUI iPhone client for the Forge Workout Planner API. It mirrors the
+web app's workout logging, exercise library, workout templates, and history.
 
 ## Setup
 
@@ -19,13 +14,21 @@ Native SwiftUI iPhone client for the Workout Planner API. It mirrors the mobile 
    ```
 
 3. Open `ios/WorkoutPlanner.xcodeproj`.
-4. In `ios/project.yml`, replace:
-   - `API_BASE_URL` with the deployed API Gateway base URL
-   - `GOOGLE_IOS_CLIENT_ID` with the iOS OAuth client ID
-   - `CFBundleURLSchemes` with the reversed iOS client ID
-5. In the Apple Developer portal, enable **Sign in with Apple** for the app's bundle ID.
+4. In `ios/project.yml`, set:
+   - `API_BASE_URL` to the deployed API base URL, usually `https://workout-planner.jim-greco.com/api`
+   - `GOOGLE_IOS_CLIENT_ID` to the iOS OAuth client ID
+   - `CFBundleURLSchemes` to the reversed iOS client ID
+5. Enable **Sign in with Apple** for `com.workoutplanner.ios` in the Apple Developer portal.
 6. Regenerate the project after editing `project.yml`.
 
-The backend accepts the existing web Google client ID plus optional extra IDs through the `GoogleClientIds` SAM parameter. Pass the iOS OAuth client ID there so native Google tokens verify successfully.
+## Auth Contract
 
-For Apple, pass the app bundle ID, currently `com.workoutplanner.ios`, through the `AppleClientIds` SAM parameter so native Apple identity tokens verify successfully.
+The app exchanges Google or Apple identity tokens for a backend app session:
+
+- `POST /auth/google` with `{ credential }`
+- `POST /auth/apple` with `{ identityToken, profile }`
+
+The returned app session token is stored in Keychain and used for normal
+`Authorization: Bearer <token>` data requests. Production backend configuration
+must include the iOS OAuth client ID in `GOOGLE_CLIENT_IDS` and
+`com.workoutplanner.ios` in `APPLE_CLIENT_IDS`.

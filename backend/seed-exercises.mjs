@@ -1,7 +1,7 @@
 /**
  * Seed script — populates exercises and templates for a user in DynamoDB.
  * Useful for local development. Production seeding happens automatically
- * in the Lambda handler when a new user's first GET /exercises returns empty.
+ * in the API handler when a new user's first GET /exercises returns empty.
  *
  * Local usage (requires DynamoDB Local running on port 8000):
  *   node backend/seed-exercises.mjs

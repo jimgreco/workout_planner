@@ -74,8 +74,13 @@ struct AppShell: View {
 
 private struct TopNav: View {
     @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject private var store: WorkoutStore
     @Binding var page: AppPage
     let onSignOut: () -> Void
+    @State private var showingFeedback = false
+    @State private var confirmingDelete = false
+    @State private var accountBusy = false
+    @State private var exportFile: ExportFile?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -106,6 +111,24 @@ private struct TopNav: View {
                     Divider()
                 }
 
+                Text(AppConfiguration.buildLabel)
+                Divider()
+                Button {
+                    Task { await exportAccountData() }
+                } label: {
+                    Label("Export data", systemImage: "square.and.arrow.down")
+                }
+                Button {
+                    showingFeedback = true
+                } label: {
+                    Label("Send feedback", systemImage: "message")
+                }
+                Button(role: .destructive) {
+                    confirmingDelete = true
+                } label: {
+                    Label("Delete account", systemImage: "exclamationmark.triangle")
+                }
+                Divider()
                 Button(role: .destructive, action: onSignOut) {
                     Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
@@ -126,6 +149,122 @@ private struct TopNav: View {
             Rectangle()
                 .fill(Theme.border.opacity(0.65))
                 .frame(height: 1)
+        }
+        .sheet(isPresented: $showingFeedback) {
+            FeedbackSheet(isSending: $accountBusy) { message in
+                try await store.submitFeedback(message)
+            }
+        }
+        .sheet(item: $exportFile) { file in
+            NavigationStack {
+                VStack(spacing: 24) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 44, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                    ShareLink(item: file.url) {
+                        Label("Share Export", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                .padding(24)
+                .navigationTitle("Export Ready")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { exportFile = nil }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .confirmationDialog("Delete Account?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete Everything", role: .destructive) {
+                Task {
+                    accountBusy = true
+                    defer { accountBusy = false }
+                    do {
+                        try await store.deleteAccount()
+                        onSignOut()
+                    } catch {
+                        store.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your exercises, workouts, templates, settings, and feedback from the backend.")
+        }
+    }
+
+    @MainActor
+    private func exportAccountData() async {
+        accountBusy = true
+        defer { accountBusy = false }
+        do {
+            let data = try await store.exportData()
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("forge-workout-export-\(DateHelpers.todayString()).json")
+            try data.write(to: url, options: .atomic)
+            exportFile = ExportFile(url: url)
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct ExportFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct FeedbackSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var isSending: Bool
+    let onSubmit: (String) async throws -> Void
+    @State private var message = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $message)
+                        .frame(minHeight: 160)
+                } header: {
+                    Text("What should I know?")
+                } footer: {
+                    Text("Includes \(AppConfiguration.buildLabel) so issues are easier to trace.")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(Theme.danger)
+                    }
+                }
+            }
+            .navigationTitle("Send Feedback")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSending)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSending ? "Sending..." : "Send") {
+                        Task {
+                            isSending = true
+                            defer { isSending = false }
+                            do {
+                                try await onSubmit(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                                dismiss()
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+                }
+            }
         }
     }
 }

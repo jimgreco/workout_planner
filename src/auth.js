@@ -1,19 +1,23 @@
-// Session management — stores the signed-in Google profile and credential in localStorage.
-// The `sub` field (Google's stable user ID) is used to namespace all workout data.
+// Session management — stores the signed-in profile and app session token.
+// Provider ID tokens are exchanged once at /auth/* and are not reused for data calls.
 
 const AUTH_KEY       = 'wp_auth';
-const CRED_KEY       = 'wp_credential';
-const CRED_EXP_KEY   = 'wp_credential_exp';
+const CRED_KEY       = 'wp_session_token';
+const CRED_EXP_KEY   = 'wp_session_exp';
+const EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 // ── Dev bypass ─────────────────────────────────────────────────────────────────
 // Set VITE_DEV_BYPASS_AUTH=true in .env to skip Google sign-in during local dev.
-// The backend accepts DEV_BYPASS_TOKEN only when AWS_SAM_LOCAL=true (sam local).
+// The backend accepts DEV_BYPASS_TOKEN only when LOCAL_AUTH_BYPASS=true.
 // NEVER ALLOWED IN PRODUCTION.
 const isProd = import.meta.env.PROD;
-export const DEV_BYPASS = !isProd && import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+const isTest = import.meta.env.MODE === 'test';
+export const DEV_BYPASS = !isProd && !isTest && import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
 export const DEV_BYPASS_TOKEN = 'dev-bypass-token';
 export const DEV_USER = {
   sub:     'dev-user-local',
+  provider: 'demo',
   name:    'Dev User',
   email:   'dev@localhost',
   picture: '',
@@ -35,30 +39,64 @@ export function clearStoredUser() {
   clearStoredCredential();
 }
 
-// ── Credential (raw Google ID token JWT) ───────────────────────────────────────
+// ── App session token ──────────────────────────────────────────────────────────
 /**
- * Persist the raw credential alongside its expiry so api.js can attach it
- * to every request without requiring a re-auth on each page refresh.
+ * Persist the signed app session so api.js can attach it to every data request.
  */
-export function storeCredential(credential) {
-  const { exp } = parseJwt(credential);
-  localStorage.setItem(CRED_KEY, credential);
-  localStorage.setItem(CRED_EXP_KEY, String(exp));
+export function storeCredential(token, expiresAt) {
+  localStorage.setItem(CRED_KEY, token);
+  localStorage.setItem(CRED_EXP_KEY, expiresAt);
+}
+
+export function storeSession(session) {
+  storeCredential(session.token, session.expiresAt);
+  if (session.user) storeUser(session.user);
 }
 
 /**
- * Returns the stored credential if it is still valid (more than 5 minutes
- * left before expiry), otherwise returns null so the caller can trigger
- * re-authentication.
+ * Returns the stored app session token if it is still valid (with a 5 minute
+ * buffer), otherwise returns null so callers can trigger re-authentication.
  */
 export function getStoredCredential() {
   if (DEV_BYPASS) return DEV_BYPASS_TOKEN;
-  return localStorage.getItem(CRED_KEY);
+  const token = localStorage.getItem(CRED_KEY);
+  const expiresAt = localStorage.getItem(CRED_EXP_KEY);
+  if (!token || !expiresAt) return null;
+  const expiresMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresMs) || expiresMs - Date.now() <= EXPIRY_BUFFER_MS) {
+    clearStoredCredential();
+    return null;
+  }
+  return token;
 }
 
 export function clearStoredCredential() {
   localStorage.removeItem(CRED_KEY);
   localStorage.removeItem(CRED_EXP_KEY);
+}
+
+export async function exchangeGoogleCredential(credential) {
+  const res = await fetch(`${BASE_URL}/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential }),
+  });
+  const payload = await parseResponse(res);
+  storeSession(payload);
+  return payload.user;
+}
+
+async function parseResponse(res) {
+  const text = await res.text();
+  let payload = null;
+  if (text) {
+    try { payload = JSON.parse(text); }
+    catch { payload = null; }
+  }
+  if (!res.ok) {
+    throw new Error(payload?.error || `Authentication failed (${res.status})`);
+  }
+  return payload;
 }
 
 // ── JWT decode ─────────────────────────────────────────────────────────────────

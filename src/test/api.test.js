@@ -14,6 +14,7 @@ import {
   getTemplates, saveTemplate, deleteTemplate,
   getLogs, saveLog, deleteLog, getLogsByDate,
   getSettings,
+  exportData, submitFeedback, deleteAccount,
 } from '../api.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -25,6 +26,8 @@ vi.mock('../auth.js', () => ({
   storeUser:            vi.fn(),
   clearStoredUser:      vi.fn(),
   storeCredential:      vi.fn(),
+  storeSession:         vi.fn(),
+  exchangeGoogleCredential: vi.fn(),
   clearStoredCredential: vi.fn(),
   parseJwt:             vi.fn(() => ({ sub: 'u1', name: 'Test', email: 't@t.com', picture: '' })),
 }));
@@ -192,5 +195,40 @@ describe('auth errors', () => {
 
     await expect(initData()).rejects.toThrow('Session expired');
     expect(events).toHaveLength(1);
+  });
+});
+
+// ── Account / Support ────────────────────────────────────────────────────────
+describe('account and support', () => {
+  it('exportData fetches the full export payload', async () => {
+    const payload = { exercises: [EX], templates: [TMPL], logs: [LOG], settings: { defaultSets: 4, defaultReps: 8 } };
+    mockFetch({ 'GET /export': () => ({ body: payload }) });
+    await expect(exportData()).resolves.toEqual(payload);
+  });
+
+  it('submitFeedback posts message and build metadata', async () => {
+    mockFetch({
+      'POST /feedback': () => {
+        const [, opts] = globalThis.fetch.mock.calls.at(-1);
+        expect(JSON.parse(opts.body)).toEqual({ message: 'Nice app', build: 'web test' });
+        return { status: 201, body: { id: 'feedback-1' } };
+      },
+    });
+    await expect(submitFeedback('Nice app', 'web test')).resolves.toEqual({ id: 'feedback-1' });
+  });
+
+  it('deleteAccount clears the cache after backend delete', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [EX] }),
+      'GET /templates': () => ({ body: [TMPL] }),
+      'GET /logs':      () => ({ body: [LOG] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+      'DELETE /account': () => ({ body: { deleted: 4 } }),
+    });
+    await initData();
+    await expect(deleteAccount()).resolves.toEqual({ deleted: 4 });
+    expect(getExercises()).toEqual([]);
+    expect(getTemplates()).toEqual([]);
+    expect(getLogs()).toEqual([]);
   });
 });

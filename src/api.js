@@ -13,7 +13,12 @@ import { getStoredCredential, DEV_BYPASS } from './auth.js';
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 /** Thrown when the session credential is missing or the server returns 401. */
-export class AuthError extends Error {}
+export class AuthError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
 
 // ── In-memory cache ────────────────────────────────────────────────────────────
 const cache = {
@@ -55,9 +60,24 @@ async function request(method, path, body) {
     throw new AuthError('Session expired — please sign in again');
   }
 
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const message = await responseErrorMessage(res);
+    window.dispatchEvent(new CustomEvent('wp:api-error', { detail: { message } }));
+    throw new Error(message);
+  }
   if (res.status === 204) return null;
   return res.json();
+}
+
+async function responseErrorMessage(res) {
+  const text = await res.text();
+  if (!text) return `API ${res.status}`;
+  try {
+    const payload = JSON.parse(text);
+    return payload?.error || `API ${res.status}: ${text}`;
+  } catch {
+    return `API ${res.status}: ${text}`;
+  }
 }
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
@@ -160,4 +180,19 @@ export async function deleteLog(id) {
 
 export function getLogsByDate(dateStr) {
   return (cache.logs ?? []).filter((l) => l.date === dateStr);
+}
+
+// ── Account / Support ─────────────────────────────────────────────────────────
+export async function exportData() {
+  return request('GET', '/export');
+}
+
+export async function submitFeedback(message, build = '') {
+  return request('POST', '/feedback', { message, build });
+}
+
+export async function deleteAccount() {
+  const result = await request('DELETE', '/account');
+  resetData();
+  return result;
 }
