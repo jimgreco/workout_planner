@@ -32,3 +32,9 @@ The returned app session token is stored in Keychain and used for normal
 `Authorization: Bearer <token>` data requests. Production backend configuration
 must include the iOS OAuth client ID in `GOOGLE_CLIENT_IDS` and
 `com.workoutplanner.ios` in `APPLE_CLIENT_IDS`.
+
+Apple only returns the email/full-name fields the first time a user authorizes
+the app, and the user may choose a private relay address. To keep Google and
+Apple sign-ins pointed at the same Forge data, sign in with Google and use
+Account → Link Apple ID. That links Apple's stable user id to the current
+backend account even if Apple does not return an email on later sign-ins.

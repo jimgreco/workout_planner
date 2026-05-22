@@ -61,8 +61,8 @@ final class AuthManager: ObservableObject {
         if AppConfiguration.isGoogleConfigured {
             do {
                 let gidUser = try await restorePreviousSignIn()
-                try await ensureGoogleSession(for: gidUser)
-                user = profile(from: gidUser)
+                let sessionProfile = try await ensureGoogleSession(for: gidUser)
+                user = sessionProfile ?? profile(from: gidUser)
                 currentProvider = .google
                 isDemoMode = false
                 AppleSessionStore.storeProvider(.google)
@@ -97,8 +97,7 @@ final class AuthManager: ObservableObject {
                     }
                 }
             }
-            try await ensureGoogleSession(for: result.user)
-            user = profile(from: result.user)
+            user = try await ensureGoogleSession(for: result.user) ?? profile(from: result.user)
             currentProvider = .google
             isDemoMode = false
             AppleSessionStore.clearApple()
@@ -130,11 +129,12 @@ final class AuthManager: ObservableObject {
             let profile = UserProfile(sub: credential.user, name: displayName, email: email, picture: nil)
 
             do {
-                try await exchangeAppleSession(identityToken: token, profile: profile)
+                let response = try await exchangeAppleSession(identityToken: token, profile: profile)
+                let sessionProfile = response.user ?? profile
                 GIDSignIn.sharedInstance.signOut()
-                AppleSessionStore.saveApple(userID: credential.user, identityToken: token, profile: profile)
+                AppleSessionStore.saveApple(userID: credential.user, identityToken: token, profile: sessionProfile)
                 AppleSessionStore.storeProvider(.apple)
-                user = profile
+                user = sessionProfile
                 currentProvider = .apple
                 isDemoMode = false
             } catch {
@@ -146,6 +146,49 @@ final class AuthManager: ObservableObject {
                 return
             }
             self.authError = error.localizedDescription
+        }
+    }
+
+    func handleAppleAccountLink(_ result: Result<ASAuthorization, Error>) async -> Bool {
+        authError = nil
+
+        switch result {
+        case let .success(authorization):
+            guard AppSessionStore.validToken() != nil else {
+                authError = "Session expired. Please sign in again."
+                return false
+            }
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let token = String(data: tokenData, encoding: .utf8)
+            else {
+                authError = "Apple did not return a usable identity token."
+                return false
+            }
+
+            let nameParts = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+            let displayName = nameParts.isEmpty ? (user?.name ?? "Apple User") : nameParts.joined(separator: " ")
+            let email = credential.email ?? user?.email ?? ""
+            let profile = UserProfile(sub: credential.user, name: displayName, email: email, picture: user?.picture)
+
+            do {
+                let response = try await exchangeAppleSession(identityToken: token, profile: profile, linkToCurrentAccount: true)
+                user = response.user ?? user
+                isDemoMode = false
+                return true
+            } catch {
+                authError = error.localizedDescription
+                return false
+            }
+
+        case let .failure(error):
+            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                return false
+            }
+            self.authError = error.localizedDescription
+            return false
         }
     }
 
@@ -194,7 +237,7 @@ final class AuthManager: ObservableObject {
         guard let token = refreshed.idToken?.tokenString else {
             throw WorkoutAPIError.unauthorized
         }
-        return try await exchangeGoogleSession(idToken: token)
+        return try await exchangeGoogleSession(idToken: token).token
     }
 
     private func restorePreviousSignIn() async throws -> GIDGoogleUser {
@@ -211,9 +254,10 @@ final class AuthManager: ObservableObject {
         }
     }
 
-    private func ensureGoogleSession(for gidUser: GIDGoogleUser) async throws {
-        if AppConfiguration.apiBaseURL == nil { return }
-        if AppSessionStore.validToken() != nil { return }
+    @discardableResult
+    private func ensureGoogleSession(for gidUser: GIDGoogleUser) async throws -> UserProfile? {
+        if AppConfiguration.apiBaseURL == nil { return nil }
+        if AppSessionStore.validToken() != nil { return nil }
         let refreshed: GIDGoogleUser = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
             gidUser.refreshTokensIfNeeded { user, error in
                 if let error {
@@ -228,32 +272,33 @@ final class AuthManager: ObservableObject {
         guard let token = refreshed.idToken?.tokenString else {
             throw WorkoutAPIError.unauthorized
         }
-        _ = try await exchangeGoogleSession(idToken: token)
+        return try await exchangeGoogleSession(idToken: token).user
     }
 
     @discardableResult
-    private func exchangeGoogleSession(idToken: String) async throws -> String {
+    private func exchangeGoogleSession(idToken: String) async throws -> AuthSessionResponse {
         let response: AuthSessionResponse = try await exchangeSession(
             path: "auth/google",
             body: GoogleAuthRequest(credential: idToken)
         )
         AppSessionStore.save(token: response.token, expiresAt: response.expiresAt)
-        return response.token
+        return response
     }
 
-    private func exchangeAppleSession(identityToken: String, profile: UserProfile) async throws {
-        guard AppConfiguration.apiBaseURL != nil else { return }
+    private func exchangeAppleSession(identityToken: String, profile: UserProfile, linkToCurrentAccount: Bool = false) async throws -> AuthSessionResponse {
         let response: AuthSessionResponse = try await exchangeSession(
             path: "auth/apple",
             body: AppleAuthRequest(
                 identityToken: identityToken,
                 profile: AppleProfilePayload(name: profile.name, email: profile.email, picture: profile.picture)
-            )
+            ),
+            includeAuthorization: linkToCurrentAccount
         )
         AppSessionStore.save(token: response.token, expiresAt: response.expiresAt)
+        return response
     }
 
-    private func exchangeSession<Body: Encodable>(path: String, body: Body) async throws -> AuthSessionResponse {
+    private func exchangeSession<Body: Encodable>(path: String, body: Body, includeAuthorization: Bool = false) async throws -> AuthSessionResponse {
         guard let baseURL = AppConfiguration.apiBaseURL else { throw WorkoutAPIError.missingConfiguration }
         var url = baseURL
         for component in path.split(separator: "/") {
@@ -263,6 +308,10 @@ final class AuthManager: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if includeAuthorization {
+            guard let token = AppSessionStore.validToken() else { throw WorkoutAPIError.unauthorized }
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

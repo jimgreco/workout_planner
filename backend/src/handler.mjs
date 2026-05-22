@@ -27,6 +27,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { OAuth2Client } from 'google-auth-library';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { isVerifiedEmail, resolveAccountUser } from './account-linking.mjs';
 import { DEFAULT_EXERCISES } from './default-exercises.mjs';
 import { createAppSession, hashUserId, verifyAppSession } from './session.mjs';
 import {
@@ -149,9 +150,11 @@ async function verifyGoogleCredential(credential) {
   if (!payload?.sub) throw new Error('Google token did not include a subject');
   return {
     sub: payload.sub,
+    providerSub: payload.sub,
     provider: 'google',
     name: payload.name ?? '',
     email: payload.email ?? '',
+    emailVerified: isVerifiedEmail(payload.email_verified),
     picture: payload.picture ?? '',
   };
 }
@@ -162,24 +165,34 @@ async function verifyAppleIdentityToken(identityToken, profile = {}) {
     audience: audienceFor(APPLE_AUDIENCES, 'Apple'),
   });
   if (!payload.sub) throw new Error('Apple token did not include a subject');
+  const providerSub = `apple:${payload.sub}`;
   return {
-    sub: `apple:${payload.sub}`,
+    sub: providerSub,
+    providerSub,
     provider: 'apple',
     name: profile.name || '',
     email: typeof payload.email === 'string' ? payload.email : (profile.email || ''),
+    emailVerified: isVerifiedEmail(payload.email_verified),
     picture: profile.picture || '',
   };
 }
 
-async function handleAuth(provider, body) {
+async function handleAuth(provider, body, event) {
   const parsed = validateAuthBody(body, provider);
+  const requestedAccount = await verifyOptionalRequestSession(event);
   const user = provider === 'google'
     ? await verifyGoogleCredential(parsed.credential)
     : await verifyAppleIdentityToken(parsed.identityToken, parsed.profile);
-  return ok(await createAppSession(user));
+  const accountUser = await resolveAccountUser({
+    db,
+    tableName: TABLE,
+    user,
+    requestedAccount,
+  });
+  return ok(await createAppSession(accountUser));
 }
 
-async function verifyRequestUser(event) {
+async function verifyRequestSession(event) {
   const internalSecret = process.env.INTERNAL_SYNC_SECRET;
   const providedSecret = event.headers?.['x-internal-sync-secret'] || event.headers?.['X-Internal-Sync-Secret'];
   const internalUserId = event.headers?.['x-internal-user-id'] || event.headers?.['X-Internal-User-Id'];
@@ -187,15 +200,27 @@ async function verifyRequestUser(event) {
     if (typeof internalUserId !== 'string' || !/^[A-Za-z0-9:_-]{1,255}$/.test(internalUserId)) {
       throw new Error('Invalid session');
     }
-    return internalUserId;
+    return { sub: internalUserId, provider: 'internal', name: '', email: '', picture: '' };
   }
 
   const header = event.headers?.authorization ?? event.headers?.Authorization;
   if (!header?.startsWith('Bearer ')) throw new Error('Missing token');
   const token = header.slice(7);
-  if (IS_LOCAL && token === DEV_BYPASS_TOKEN) return DEV_USER_SUB;
-  const session = await verifyAppSession(token);
-  return session.sub;
+  if (IS_LOCAL && token === DEV_BYPASS_TOKEN) {
+    return { sub: DEV_USER_SUB, provider: 'demo', name: 'Dev User', email: 'dev@localhost', picture: '' };
+  }
+  return verifyAppSession(token);
+}
+
+async function verifyOptionalRequestSession(event) {
+  const hasBearer = (event.headers?.authorization ?? event.headers?.Authorization)?.startsWith('Bearer ');
+  const hasInternalSecret = Boolean(event.headers?.['x-internal-sync-secret'] || event.headers?.['X-Internal-Sync-Secret']);
+  if (!hasBearer && !hasInternalSecret) return undefined;
+  return verifyRequestSession(event);
+}
+
+async function verifyRequestUser(event) {
+  return (await verifyRequestSession(event)).sub;
 }
 
 async function queryCollection(PK, prefix) {
@@ -236,6 +261,13 @@ async function batchDelete(items) {
       },
     }));
   }
+}
+
+function deletionItems(items) {
+  const aliasTargets = items
+    .filter((item) => typeof item.aliasPK === 'string' && typeof item.aliasSK === 'string')
+    .map((item) => ({ PK: item.aliasPK, SK: item.aliasSK }));
+  return [...items, ...aliasTargets];
 }
 
 async function seedDefaultExercises(PK) {
@@ -288,7 +320,7 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK) {
 
   if (resource === 'account' && method === 'DELETE' && !id) {
     const items = await queryAllUserItems(PK);
-    await batchDelete(items);
+    await batchDelete(deletionItems(items));
     return ok({ deleted: items.length });
   }
 
@@ -389,7 +421,7 @@ export const handler = async (event) => {
     if (resource === 'auth' && id && method === 'POST') {
       if (id !== 'google' && id !== 'apple') return finish(err(404, 'Not found'));
       try {
-        return finish(await handleAuth(id, parseJsonBody(event)));
+        return finish(await handleAuth(id, parseJsonBody(event), event));
       } catch (error) {
         if (error instanceof ValidationError) return finish(err(400, error.message));
         return finish(err(401, 'Invalid credentials'));

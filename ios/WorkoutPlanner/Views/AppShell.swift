@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 enum AppPage: String, CaseIterable, Identifiable {
@@ -78,6 +79,7 @@ private struct TopNav: View {
     @Binding var page: AppPage
     let onSignOut: () -> Void
     @State private var showingFeedback = false
+    @State private var showingAppleLink = false
     @State private var confirmingDelete = false
     @State private var accountBusy = false
     @State private var exportFile: ExportFile?
@@ -123,6 +125,13 @@ private struct TopNav: View {
                 } label: {
                     Label("Send feedback", systemImage: "message")
                 }
+                if !auth.isDemoMode {
+                    Button {
+                        showingAppleLink = true
+                    } label: {
+                        Label("Link Apple ID", systemImage: "apple.logo")
+                    }
+                }
                 Button(role: .destructive) {
                     confirmingDelete = true
                 } label: {
@@ -153,6 +162,19 @@ private struct TopNav: View {
         .sheet(isPresented: $showingFeedback) {
             FeedbackSheet(isSending: $accountBusy) { message in
                 try await store.submitFeedback(message)
+            }
+        }
+        .sheet(isPresented: $showingAppleLink) {
+            AppleLinkSheet(isLinking: $accountBusy) { result in
+                let linked = await auth.handleAppleAccountLink(result)
+                if linked {
+                    await store.loadData()
+                    return true
+                }
+                if let error = auth.authError {
+                    store.errorMessage = error
+                }
+                return false
             }
         }
         .sheet(item: $exportFile) { file in
@@ -266,6 +288,53 @@ private struct FeedbackSheet: View {
                 }
             }
         }
+    }
+}
+
+private struct AppleLinkSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var isLinking: Bool
+    let onComplete: (Result<ASAuthorization, Error>) async -> Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                Image(systemName: "apple.logo")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Text("Link Apple ID")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Theme.text)
+
+                SignInWithAppleButton(.continue) { request in
+                    request.requestedScopes = [.fullName, .email]
+                } onCompletion: { result in
+                    Task {
+                        isLinking = true
+                        defer { isLinking = false }
+                        if await onComplete(result) {
+                            dismiss()
+                        }
+                    }
+                }
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                .frame(height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .disabled(isLinking)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background)
+            .navigationTitle("Account")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isLinking)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
