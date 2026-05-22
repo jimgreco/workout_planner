@@ -4,7 +4,7 @@ import Logo from '../components/Logo.jsx';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, previousUser = null, autoSelect = true }) {
   const btnRef = useRef(null);
   const [error, setError] = useState('');
 
@@ -21,7 +21,8 @@ export default function Login({ onLogin }) {
 
       window.google.accounts.id.initialize({
         client_id: CLIENT_ID,
-        auto_select: true,
+        auto_select: autoSelect,
+        login_hint: previousUser?.email || undefined,
         callback: async (response) => {
           try {
             setError('');
@@ -48,7 +49,7 @@ export default function Login({ onLogin }) {
     }
 
     return () => clearInterval(intervalId);
-  }, [onLogin]);
+  }, [onLogin, previousUser, autoSelect]);
 
   return (
     <div className="login-page">

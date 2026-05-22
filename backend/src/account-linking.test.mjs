@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import {
   emailAliasPk,
   providerAliasPk,
@@ -22,6 +22,13 @@ function fakeDb(seed = []) {
         const item = command.input.Item;
         items.set(`${item.PK}|${item.SK}`, item);
         return {};
+      }
+      if (command instanceof QueryCommand) {
+        const { ':pk': PK, ':prefix': prefix } = command.input.ExpressionAttributeValues;
+        const queryItems = [...items.values()].filter((item) => (
+          item.PK === PK && item.SK.startsWith(prefix)
+        ));
+        return { Items: queryItems.slice(0, command.input.Limit ?? queryItems.length) };
       }
       throw new Error(`Unexpected command ${command.constructor.name}`);
     },
@@ -71,6 +78,74 @@ test('apple sign-in with the same verified email resolves to the existing google
   assert.equal(resolved.sub, 'google-sub-1');
   assert.equal(db.items.get(`${providerAliasPk('apple:apple-sub-1')}|ALIAS`).accountSub, 'google-sub-1');
   assert.equal(db.items.get('USER#google-sub-1|AUTH#apple:apple-sub-1').aliasPK, providerAliasPk('apple:apple-sub-1'));
+});
+
+test('verified email alias does not hide existing provider account data', async () => {
+  const db = fakeDb([
+    {
+      PK: emailAliasPk('test@example.com'),
+      SK: 'ALIAS',
+      accountSub: 'google-sub-1',
+      email: 'test@example.com',
+    },
+    {
+      PK: 'USER#apple:apple-sub-1',
+      SK: 'LOG#old-log',
+      id: 'old-log',
+      name: 'Existing Apple workout',
+    },
+  ]);
+  const user = {
+    sub: 'apple:apple-sub-1',
+    providerSub: 'apple:apple-sub-1',
+    provider: 'apple',
+    name: 'Test User',
+    email: 'test@example.com',
+    emailVerified: true,
+    picture: '',
+  };
+
+  const resolved = await resolveAccountUser({ db, tableName: TABLE, user });
+
+  assert.equal(resolved.sub, 'apple:apple-sub-1');
+  assert.equal(db.items.get(`${providerAliasPk('apple:apple-sub-1')}|ALIAS`).accountSub, 'apple:apple-sub-1');
+  assert.equal(db.items.get(`${emailAliasPk('test@example.com')}|ALIAS`).accountSub, 'google-sub-1');
+});
+
+test('explicit account link can still override existing provider account data', async () => {
+  const db = fakeDb([{
+    PK: 'USER#apple:apple-sub-1',
+    SK: 'LOG#old-log',
+    id: 'old-log',
+    name: 'Existing Apple workout',
+  }]);
+  const user = {
+    sub: 'apple:apple-sub-1',
+    providerSub: 'apple:apple-sub-1',
+    provider: 'apple',
+    name: '',
+    email: '',
+    emailVerified: false,
+    picture: '',
+  };
+
+  const resolved = await resolveAccountUser({
+    db,
+    tableName: TABLE,
+    user,
+    requestedAccount: {
+      sub: 'google-sub-1',
+      provider: 'google',
+      name: 'Test User',
+      email: 'test@example.com',
+      picture: 'https://example.com/avatar.png',
+    },
+  });
+
+  const alias = db.items.get(`${providerAliasPk('apple:apple-sub-1')}|ALIAS`);
+  assert.equal(resolved.sub, 'google-sub-1');
+  assert.equal(alias.accountSub, 'google-sub-1');
+  assert.equal(alias.linkType, 'explicit');
 });
 
 test('apple sign-in still resolves through provider alias after Apple stops returning email', async () => {

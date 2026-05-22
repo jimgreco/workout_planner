@@ -43,7 +43,9 @@ export default function App() {
   // Dev bypass: skip login entirely with a mock user (VITE_DEV_BYPASS_AUTH=true).
   // Normal: require a stored profile + a still-valid Google credential.
   const storedUser = DEV_BYPASS ? DEV_USER : getStoredUser();
-  const hasValidSession = DEV_BYPASS || (!!storedUser && !!getStoredCredential());
+  const storedCredential = DEV_BYPASS ? 'dev-bypass-token' : getStoredCredential();
+  const hasValidSession = DEV_BYPASS || (!!storedUser && !!storedCredential);
+  const shouldAutoSelectLogin = !storedUser || hasValidSession;
 
   const [user, setUser]           = useState(hasValidSession ? storedUser : null);
   const [loading, setLoading]     = useState(hasValidSession); // fetch data on first render
@@ -222,7 +224,13 @@ export default function App() {
 
   // ── Not logged in ──────────────────────────────────────────────────────────
   if (!user) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <Login
+        onLogin={handleLogin}
+        previousUser={storedUser}
+        autoSelect={shouldAutoSelectLogin}
+      />
+    );
   }
 
   // ── Loading initial data ───────────────────────────────────────────────────
