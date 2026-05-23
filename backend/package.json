@@ -5,6 +5,7 @@
   "description": "Node API handler for the Workout Planner API",
   "scripts": {
     "backup": "node backup-table.mjs",
+    "recovery:check": "node recovery-check.mjs",
     "test": "node --test"
   },
   "dependencies": {

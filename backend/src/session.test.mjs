@@ -22,6 +22,7 @@ test('creates and verifies an app session', async () => {
   const verified = await verifyAppSession(session.token);
   assert.equal(verified.sub, 'user-1');
   assert.equal(verified.provider, 'google');
+  assert.equal(typeof verified.issuedAt, 'number');
 });
 
 test('rejects a tampered app session', async () => {

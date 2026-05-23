@@ -19,6 +19,18 @@ enum AppConfiguration {
         googleClientID != nil
     }
 
+    static var allowsLocalFallback: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
+    static var isAPIConfigured: Bool {
+        apiBaseURL != nil
+    }
+
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
     }

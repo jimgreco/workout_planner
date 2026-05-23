@@ -21,6 +21,9 @@ web app's workout logging, exercise library, workout templates, and history.
 5. Enable **Sign in with Apple** for `com.workoutplanner.ios` in the Apple Developer portal.
 6. Regenerate the project after editing `project.yml`.
 
+Release builds require a real `API_BASE_URL`. Placeholder or empty values block
+sign-in instead of falling back to demo/local data.
+
 ## Auth Contract
 
 The app exchanges Google or Apple identity tokens for a backend app session:

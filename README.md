@@ -83,6 +83,13 @@ node backend/init-table.mjs
 node backend/local-server.mjs
 ```
 
+Production recovery preflight:
+
+```bash
+cd backend
+USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run recovery:check
+```
+
 ## Required Environment
 
 Copy `.env.example` to `.env` for local development. Production values are
@@ -99,6 +106,7 @@ Important production variables:
 | `TABLE_NAME` | DynamoDB table name |
 | `AWS_REGION` | DynamoDB region |
 | `ALLOWED_ORIGINS` | comma-separated browser origins allowed by the API |
+| `APP_VERSION` / `GIT_COMMIT` / `BUILD_TIME` | release metadata returned by `/version` |
 | `VITE_GOOGLE_CLIENT_ID` | web Google client ID baked into the Vite build |
 | `VITE_API_URL` | API base URL for the web build, usually `/api` in Docker |
 

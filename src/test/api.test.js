@@ -39,10 +39,13 @@ function mockFetch(responseMap) {
     const key    = `${method} ${path}`;
     const handler = responseMap[key] ?? responseMap[`${method} *`];
     if (!handler) throw new Error(`Unmocked fetch: ${key}`);
-    const { status = 200, body = null } = handler();
+    const { status = 200, body = null, headers = {} } = handler();
     return {
       ok: status < 400,
       status,
+      headers: {
+        get: (name) => headers[name] ?? headers[name.toLowerCase()] ?? null,
+      },
       json: async () => body,
       text: async () => JSON.stringify(body),
     };
@@ -195,6 +198,19 @@ describe('auth errors', () => {
 
     await expect(initData()).rejects.toThrow('Session expired');
     expect(events).toHaveLength(1);
+  });
+
+  it('includes request IDs in non-auth API error messages', async () => {
+    mockFetch({
+      'PUT *': () => ({
+        status: 409,
+        body: { error: 'Resource was updated elsewhere' },
+        headers: { 'X-Request-Id': 'req-test-1' },
+      }),
+    });
+
+    await expect(saveExercise({ id: 'ex-1', name: 'Bench Press', muscleGroup: 'Chest' }))
+      .rejects.toThrow('Resource was updated elsewhere (Request ID: req-test-1)');
   });
 });
 

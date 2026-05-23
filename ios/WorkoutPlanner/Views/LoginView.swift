@@ -34,6 +34,7 @@ struct LoginView: View {
                 .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .disabled(!AppConfiguration.isAPIConfigured)
 
                 Button {
                     Task {
@@ -47,22 +48,30 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(!AppConfiguration.isGoogleConfigured)
+                .disabled(!AppConfiguration.isAPIConfigured || !AppConfiguration.isGoogleConfigured)
 
-                Button {
-                    auth.useDemoMode()
-                    Task { await store.loadData() }
-                } label: {
-                    Text("Try Demo Data")
-                        .frame(maxWidth: .infinity)
+                if AppConfiguration.allowsLocalFallback {
+                    Button {
+                        auth.useDemoMode()
+                        Task { await store.loadData() }
+                    } label: {
+                        Text("Try Demo Data")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
                 }
-                .buttonStyle(SecondaryButtonStyle())
             }
 
             if let authError = auth.authError {
                 Text(authError)
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.danger)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 16)
+            } else if !AppConfiguration.isAPIConfigured {
+                Text("This build is missing its API configuration. Install a production-configured build to sign in.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.muted)
                     .multilineTextAlignment(.center)
                     .padding(.top, 16)
             } else if !AppConfiguration.isGoogleConfigured {

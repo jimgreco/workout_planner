@@ -45,6 +45,10 @@ jobs:
           test -n "$IOS_API_BASE_URL"
           test -n "$GOOGLE_IOS_CLIENT_ID"
           test -n "$GOOGLE_IOS_REVERSED_CLIENT_ID"
+          if [[ "$IOS_API_BASE_URL" == *YOUR_API_ID* || "$GOOGLE_IOS_CLIENT_ID" == *YOUR_IOS_CLIENT_ID* ]]; then
+            echo "iOS release configuration still contains placeholder values."
+            exit 1
+          fi
 
           PLIST="ios/WorkoutPlanner/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :API_BASE_URL $IOS_API_BASE_URL" "$PLIST"

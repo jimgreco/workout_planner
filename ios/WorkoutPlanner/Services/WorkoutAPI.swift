@@ -4,7 +4,7 @@ enum WorkoutAPIError: LocalizedError {
     case missingConfiguration
     case unauthorized
     case invalidResponse
-    case server(Int, String)
+    case server(Int, String, requestID: String?)
 
     var errorDescription: String? {
         switch self {
@@ -14,10 +14,18 @@ enum WorkoutAPIError: LocalizedError {
             return "Session expired. Please sign in again."
         case .invalidResponse:
             return "The API returned an invalid response."
-        case let .server(code, body):
-            return "API \(code): \(body)"
+        case let .server(code, message, requestID):
+            if let requestID, !requestID.isEmpty {
+                return "API \(code): \(message) (Request ID: \(requestID))"
+            }
+            return "API \(code): \(message)"
         }
     }
+}
+
+private struct APIErrorResponse: Decodable {
+    let error: String?
+    let requestId: String?
 }
 
 struct WorkoutAPI {
@@ -106,7 +114,10 @@ struct WorkoutAPI {
         if http.statusCode == 401 { throw WorkoutAPIError.unauthorized }
         if http.statusCode == 204 { return Data("null".utf8) }
         guard (200..<300).contains(http.statusCode) else {
-            throw WorkoutAPIError.server(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            let decodedError = try? decoder.decode(APIErrorResponse.self, from: data)
+            let message = decodedError?.error ?? String(data: data, encoding: .utf8) ?? ""
+            let requestID = decodedError?.requestId ?? http.value(forHTTPHeaderField: "X-Request-Id")
+            throw WorkoutAPIError.server(http.statusCode, message, requestID: requestID)
         }
         return data
     }

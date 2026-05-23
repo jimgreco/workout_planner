@@ -1,0 +1,36 @@
+services:
+  workout:
+    build:
+      context: ../workout_planner
+      target: frontend
+      args:
+        VITE_API_URL: /api
+        VITE_DEV_BYPASS_AUTH: "false"
+        VITE_GIT_COMMIT: ${GIT_COMMIT:-local}
+        VITE_APP_VERSION: ${APP_VERSION:-1.0.0}
+    depends_on:
+      - workout_api
+    restart: unless-stopped
+
+  workout_api:
+    build:
+      context: ../workout_planner
+      target: backend
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
+        BUILD_TIME: ${BUILD_TIME:-local}
+    environment:
+      NODE_ENV: production
+      LOCAL_AUTH_BYPASS: "false"
+      APP_SESSION_SECRET: ${APP_SESSION_SECRET}
+      TABLE_NAME: ${WORKOUT_TABLE_NAME:-workout-planner}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      GOOGLE_CLIENT_ID: ${WORKOUT_GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
+      APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      BUILD_TIME: ${BUILD_TIME:-local}
+    restart: unless-stopped

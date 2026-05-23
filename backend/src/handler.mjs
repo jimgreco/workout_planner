@@ -3,6 +3,7 @@
  *
  * Public routes:
  *   GET    /healthz
+ *   GET    /version
  *   POST   /auth/google
  *   POST   /auth/apple
  *
@@ -42,7 +43,7 @@ import {
   validateTemplate,
 } from './validation.mjs';
 
-const db = DynamoDBDocumentClient.from(new DynamoDBClient({
+let db = DynamoDBDocumentClient.from(new DynamoDBClient({
   endpoint: process.env.AWS_ENDPOINT_URL_DYNAMODB,
   region: process.env.AWS_REGION || 'us-east-1',
 }));
@@ -68,18 +69,30 @@ const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
 const IS_LOCAL = process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test';
 const DEV_BYPASS_TOKEN = 'dev-bypass-token';
 const DEV_USER_SUB = 'dev-user-local';
+const SERVICE_NAME = 'workout-planner-api';
+const BUILD_INFO = {
+  service: SERVICE_NAME,
+  version: process.env.APP_VERSION || '1.0.0',
+  commit: process.env.GIT_COMMIT || process.env.SHORT_SHA || 'local',
+  builtAt: process.env.BUILD_TIME || 'local',
+};
+
+export function __setTestDb(testDb) {
+  if (process.env.NODE_ENV !== 'test') throw new Error('__setTestDb is test-only');
+  db = testDb;
+}
 
 function audienceFor(audiences, provider) {
   if (audiences.length === 0) throw new Error(`${provider} audience not configured`);
   return audiences.length > 1 ? audiences : audiences[0];
 }
 
-function ok(body) {
-  return response(200, body);
+function ok(body, headers = {}) {
+  return response(200, body, headers);
 }
 
-function created(body) {
-  return response(201, body);
+function created(body, headers = {}) {
+  return response(201, body, headers);
 }
 
 function noContent() {
@@ -94,13 +107,14 @@ function err(status, message) {
   return response(status, { error: message });
 }
 
-function response(statusCode, body) {
+function response(statusCode, body, headers = {}) {
   return {
     statusCode,
     headers: {
       ...securityHeaders(),
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
+      ...headers,
     },
     body: JSON.stringify(body),
   };
@@ -117,6 +131,37 @@ function strip({ PK, SK, ...rest }) {
   return rest;
 }
 
+function requestHeader(headers, name) {
+  const lowerName = name.toLowerCase();
+  return Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === lowerName)?.[1];
+}
+
+function requestIdFrom(event) {
+  const provided = requestHeader(event.headers, 'x-request-id');
+  if (typeof provided === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(provided)) return provided;
+  return randomUUID();
+}
+
+function attachRequestId(result, requestId) {
+  const headers = {
+    ...(result.headers ?? {}),
+    'X-Request-Id': requestId,
+  };
+  let body = result.body;
+  const contentType = headers['Content-Type'] || headers['content-type'] || '';
+  if (result.statusCode >= 400 && body && contentType.includes('application/json')) {
+    try {
+      const payload = JSON.parse(body);
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        body = JSON.stringify({ ...payload, requestId });
+      }
+    } catch {
+      body = result.body;
+    }
+  }
+  return { ...result, headers, body };
+}
+
 function cleanPath(rawPath = '/') {
   const parts = rawPath
     .replace(/\?.*$/, '')
@@ -126,6 +171,16 @@ function cleanPath(rawPath = '/') {
     .map((part) => decodeURIComponent(part));
   if (parts[0] === 'api') parts.shift();
   return parts;
+}
+
+function queryParams(event, rawPath) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(event.queryStringParameters ?? {})) {
+    if (value !== undefined && value !== null) params.set(key, String(value));
+  }
+  if ([...params.keys()].length > 0) return params;
+  const rawQuery = event.rawQueryString || rawPath.split('?')[1] || '';
+  return new URLSearchParams(rawQuery);
 }
 
 function parseJsonBody(event) {
@@ -194,8 +249,8 @@ async function handleAuth(provider, body, event) {
 
 async function verifyRequestSession(event) {
   const internalSecret = process.env.INTERNAL_SYNC_SECRET;
-  const providedSecret = event.headers?.['x-internal-sync-secret'] || event.headers?.['X-Internal-Sync-Secret'];
-  const internalUserId = event.headers?.['x-internal-user-id'] || event.headers?.['X-Internal-User-Id'];
+  const providedSecret = requestHeader(event.headers, 'x-internal-sync-secret');
+  const internalUserId = requestHeader(event.headers, 'x-internal-user-id');
   if (internalSecret && providedSecret === internalSecret && internalUserId) {
     if (typeof internalUserId !== 'string' || !/^[A-Za-z0-9:_-]{1,255}$/.test(internalUserId)) {
       throw new Error('Invalid session');
@@ -203,7 +258,7 @@ async function verifyRequestSession(event) {
     return { sub: internalUserId, provider: 'internal', name: '', email: '', picture: '' };
   }
 
-  const header = event.headers?.authorization ?? event.headers?.Authorization;
+  const header = requestHeader(event.headers, 'authorization');
   if (!header?.startsWith('Bearer ')) throw new Error('Missing token');
   const token = header.slice(7);
   if (IS_LOCAL && token === DEV_BYPASS_TOKEN) {
@@ -213,14 +268,18 @@ async function verifyRequestSession(event) {
 }
 
 async function verifyOptionalRequestSession(event) {
-  const hasBearer = (event.headers?.authorization ?? event.headers?.Authorization)?.startsWith('Bearer ');
-  const hasInternalSecret = Boolean(event.headers?.['x-internal-sync-secret'] || event.headers?.['X-Internal-Sync-Secret']);
+  const hasBearer = requestHeader(event.headers, 'authorization')?.startsWith('Bearer ');
+  const hasInternalSecret = Boolean(requestHeader(event.headers, 'x-internal-sync-secret'));
   if (!hasBearer && !hasInternalSecret) return undefined;
-  return verifyRequestSession(event);
+  const session = await verifyRequestSession(event);
+  await ensureSessionNotRevoked(session);
+  return session;
 }
 
 async function verifyRequestUser(event) {
-  return (await verifyRequestSession(event)).sub;
+  const session = await verifyRequestSession(event);
+  await ensureSessionNotRevoked(session);
+  return session.sub;
 }
 
 async function queryCollection(PK, prefix) {
@@ -233,6 +292,23 @@ async function queryCollection(PK, prefix) {
     },
   }));
   return result.Items ?? [];
+}
+
+async function getAccountMetadata(PK) {
+  const result = await db.send(new GetCommand({
+    TableName: TABLE,
+    Key: { PK, SK: 'ACCOUNT' },
+  }));
+  return result.Item;
+}
+
+async function ensureSessionNotRevoked(session) {
+  if (!session?.sub || session.provider === 'internal' || session.issuedAt === undefined) return;
+  const metadata = await getAccountMetadata(`USER#${session.sub}`);
+  const revokedBefore = Date.parse(metadata?.tokenRevokedBefore ?? '');
+  if (Number.isFinite(revokedBefore) && session.issuedAt <= Math.floor(revokedBefore / 1000)) {
+    throw new Error('Invalid session');
+  }
 }
 
 async function queryAllUserItems(PK) {
@@ -313,7 +389,89 @@ function exportPayload(items) {
   return data;
 }
 
-async function handleAuthenticatedRoute(method, resource, id, event, PK) {
+function decodeCursor(cursor) {
+  if (!cursor) return 0;
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (Number.isInteger(decoded.offset) && decoded.offset >= 0) return decoded.offset;
+  } catch {
+    throw new ValidationError('cursor is invalid');
+  }
+  throw new ValidationError('cursor is invalid');
+}
+
+function encodeCursor(offset) {
+  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url');
+}
+
+function parseOptionalLogQuery(params) {
+  const fields = ['from', 'to', 'limit', 'cursor'];
+  if (!fields.some((field) => params.has(field))) return undefined;
+  const from = params.get('from') || undefined;
+  const to = params.get('to') || undefined;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (from && !datePattern.test(from)) throw new ValidationError('from must use YYYY-MM-DD');
+  if (to && !datePattern.test(to)) throw new ValidationError('to must use YYYY-MM-DD');
+  const limitValue = params.get('limit');
+  const limit = limitValue === null || limitValue === '' ? 50 : Number(limitValue);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new ValidationError('limit must be an integer between 1 and 100');
+  }
+  return {
+    from,
+    to,
+    limit,
+    offset: decodeCursor(params.get('cursor')),
+  };
+}
+
+function filteredLogPage(items, query) {
+  const logs = items
+    .map(strip)
+    .filter((log) => (!query.from || log.date >= query.from) && (!query.to || log.date <= query.to))
+    .sort((a, b) => (
+      b.date.localeCompare(a.date)
+      || String(b.endTime ?? b.startTime ?? '').localeCompare(String(a.endTime ?? a.startTime ?? ''))
+      || b.id.localeCompare(a.id)
+    ));
+  const page = logs.slice(query.offset, query.offset + query.limit);
+  const nextOffset = query.offset + page.length;
+  return {
+    items: page,
+    nextCursor: nextOffset < logs.length ? encodeCursor(nextOffset) : undefined,
+  };
+}
+
+async function putAccountTombstone(PK, now) {
+  await db.send(new PutCommand({
+    TableName: TABLE,
+    Item: {
+      PK,
+      SK: 'ACCOUNT',
+      deletedAt: now,
+      tokenRevokedBefore: now,
+    },
+  }));
+}
+
+async function itemWithRevision(PK, SK, body, expectedRevision) {
+  const result = await db.send(new GetCommand({
+    TableName: TABLE,
+    Key: { PK, SK },
+  }));
+  const existing = result.Item;
+  if (expectedRevision !== undefined && (existing?.revision ?? 0) !== expectedRevision) {
+    throw new ValidationError('Resource was updated elsewhere. Reload and try again.', { cause: 'conflict' });
+  }
+  const now = new Date().toISOString();
+  return {
+    ...body,
+    updatedAt: now,
+    revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,
+  };
+}
+
+async function handleAuthenticatedRoute(method, resource, id, event, PK, params) {
   if (resource === 'export' && method === 'GET' && !id) {
     return ok(exportPayload(await queryAllUserItems(PK)));
   }
@@ -321,6 +479,7 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK) {
   if (resource === 'account' && method === 'DELETE' && !id) {
     const items = await queryAllUserItems(PK);
     await batchDelete(deletionItems(items));
+    await putAccountTombstone(PK, new Date().toISOString());
     return ok({ deleted: items.length });
   }
 
@@ -363,13 +522,23 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK) {
     if (resource === 'exercises' && items.length === 0) {
       items = await seedDefaultExercises(PK);
     }
+    if (resource === 'logs') {
+      const logQuery = parseOptionalLogQuery(params);
+      if (logQuery) {
+        const { items: page, nextCursor } = filteredLogPage(items, logQuery);
+        return ok(page, nextCursor ? { 'X-Next-Cursor': nextCursor } : {});
+      }
+    }
     return ok(items.map(strip));
   }
 
   if (method === 'PUT' && id) {
     validateId(id);
-    const body = validateResourceBody(resource, parseJsonBody(event), id);
-    const item = { PK, SK: `${prefix}#${id}`, ...body };
+    const rawBody = parseJsonBody(event);
+    const body = validateResourceBody(resource, rawBody, id);
+    const SK = `${prefix}#${id}`;
+    const versioned = await itemWithRevision(PK, SK, body, rawBody.expectedRevision);
+    const item = { PK, SK, ...versioned };
     await db.send(new PutCommand({ TableName: TABLE, Item: item }));
     return ok(strip(item));
   }
@@ -388,21 +557,25 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK) {
 
 export const handler = async (event) => {
   const startedAt = Date.now();
+  const requestId = requestIdFrom(event);
   const method = event.requestContext?.http?.method ?? event.httpMethod ?? 'GET';
   const rawPath = event.rawPath ?? event.path ?? '/';
   const [resource, id, ...rest] = cleanPath(rawPath);
+  const params = queryParams(event, rawPath);
   let userId;
 
   const finish = (result) => {
+    const responseWithRequestId = attachRequestId(result, requestId);
     console.log(JSON.stringify({
       event: 'request',
+      requestId,
       method,
       path: `/${[resource, id].filter(Boolean).join('/')}`,
-      statusCode: result.statusCode,
+      statusCode: responseWithRequestId.statusCode,
       user: hashUserId(userId),
       durationMs: Date.now() - startedAt,
     }));
-    return result;
+    return responseWithRequestId;
   };
 
   try {
@@ -412,10 +585,14 @@ export const handler = async (event) => {
     if (resource === 'healthz' && method === 'GET' && !id) {
       return finish(ok({
         ok: true,
-        service: 'workout-planner-api',
+        service: SERVICE_NAME,
         tableConfigured: Boolean(TABLE),
         timestamp: new Date().toISOString(),
       }));
+    }
+
+    if (resource === 'version' && method === 'GET' && !id) {
+      return finish(ok(BUILD_INFO));
     }
 
     if (resource === 'auth' && id && method === 'POST') {
@@ -429,14 +606,17 @@ export const handler = async (event) => {
     }
 
     userId = await verifyRequestUser(event);
-    return finish(await handleAuthenticatedRoute(method, resource, id, event, `USER#${userId}`));
+    return finish(await handleAuthenticatedRoute(method, resource, id, event, `USER#${userId}`, params));
   } catch (error) {
-    if (error instanceof ValidationError) return finish(err(400, error.message));
+    if (error instanceof ValidationError) {
+      return finish(err(error.cause === 'conflict' ? 409 : 400, error.message));
+    }
     if (error?.message === 'Missing token' || error?.message === 'Invalid session') {
       return finish(err(401, 'Unauthorized'));
     }
     console.error(JSON.stringify({
       event: 'handler_error',
+      requestId,
       method,
       path: rawPath,
       user: hashUserId(userId),

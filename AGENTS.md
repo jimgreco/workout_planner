@@ -77,6 +77,8 @@ cd backend
 npm ci
 npm test
 npm audit --omit=dev
+# requires DynamoDB Local or USE_AWS=true AWS credentials
+npm run recovery:check
 ```
 
 Local API:
@@ -97,3 +99,6 @@ node backend/local-server.mjs
   local defaults only apply when not production.
 - Use `docs/OPERATIONS.md` for release, backup, restore, rollback, and support
   checks.
+- `GET /healthz` and `GET /version` are public production smoke endpoints.
+- Server errors include `requestId` and `X-Request-Id`; preserve those in
+  support-facing client messages.

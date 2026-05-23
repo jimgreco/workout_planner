@@ -71,12 +71,14 @@ async function request(method, path, body) {
 
 async function responseErrorMessage(res) {
   const text = await res.text();
-  if (!text) return `API ${res.status}`;
+  const requestId = res.headers?.get?.('X-Request-Id') || res.headers?.get?.('x-request-id') || '';
+  const withRequestId = (message) => requestId ? `${message} (Request ID: ${requestId})` : message;
+  if (!text) return withRequestId(`API ${res.status}`);
   try {
     const payload = JSON.parse(text);
-    return payload?.error || `API ${res.status}: ${text}`;
+    return withRequestId(payload?.error || `API ${res.status}: ${text}`);
   } catch {
-    return `API ${res.status}: ${text}`;
+    return withRequestId(`API ${res.status}: ${text}`);
   }
 }
 

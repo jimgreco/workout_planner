@@ -67,6 +67,7 @@ export async function verifyAppSession(token) {
     name: typeof payload.name === 'string' ? payload.name : '',
     email: typeof payload.email === 'string' ? payload.email : '',
     picture: typeof payload.picture === 'string' ? payload.picture : '',
+    issuedAt: typeof payload.iat === 'number' ? payload.iat : undefined,
   };
 }
 

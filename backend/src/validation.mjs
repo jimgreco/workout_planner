@@ -1,7 +1,8 @@
 export class ValidationError extends Error {
-  constructor(message) {
+  constructor(message, options = undefined) {
     super(message);
     this.name = 'ValidationError';
+    if (options?.cause) this.cause = options.cause;
   }
 }
 
@@ -96,6 +97,14 @@ function idArray(value, label) {
   return value.map((item, index) => validateId(item, `${label}[${index}]`));
 }
 
+function optionalRevision(value, label) {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
+    fail(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
 function personalBest(value) {
   if (value === undefined || value === null) return undefined;
   assertObject(value, 'personalBest');
@@ -162,8 +171,9 @@ export function validateSettings(body) {
 
 export function validateExercise(body, pathId) {
   assertObject(body, 'exercise');
-  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'personalBest']), 'exercise');
+  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'personalBest', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
   requireMatchingId(body, pathId);
+  optionalRevision(body.expectedRevision, 'expectedRevision');
   const muscleGroup = stringValue(body.muscleGroup, 'muscleGroup', { max: 60 }) ?? 'Other';
   if (!MUSCLE_GROUPS.has(muscleGroup)) fail('muscleGroup is invalid');
   const exercise = {
@@ -180,8 +190,9 @@ export function validateExercise(body, pathId) {
 
 export function validateTemplate(body, pathId) {
   assertObject(body, 'template');
-  assertAllowedKeys(body, new Set(['id', 'name', 'description', 'exerciseItems']), 'template');
+  assertAllowedKeys(body, new Set(['id', 'name', 'description', 'exerciseItems', 'updatedAt', 'revision', 'expectedRevision']), 'template');
   requireMatchingId(body, pathId);
+  optionalRevision(body.expectedRevision, 'expectedRevision');
   const template = {
     id: pathId,
     name: stringValue(body.name, 'name', { required: true, max: 120, allowEmpty: false }),
@@ -196,10 +207,11 @@ export function validateLog(body, pathId) {
   assertObject(body, 'log');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'date', 'notes', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds']),
+    new Set(['id', 'name', 'date', 'notes', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
     'log',
   );
   requireMatchingId(body, pathId);
+  optionalRevision(body.expectedRevision, 'expectedRevision');
   const status = stringValue(body.status, 'status', { max: 16 }) ?? 'active';
   if (!LOG_STATUSES.has(status)) fail('status is invalid');
   const log = {

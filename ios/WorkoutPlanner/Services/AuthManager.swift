@@ -17,6 +17,11 @@ private struct AuthSessionResponse: Decodable {
     let user: UserProfile?
 }
 
+private struct AuthErrorResponse: Decodable {
+    let error: String?
+    let requestId: String?
+}
+
 private struct GoogleAuthRequest: Encodable {
     let credential: String
 }
@@ -193,6 +198,10 @@ final class AuthManager: ObservableObject {
     }
 
     func useDemoMode() {
+        guard AppConfiguration.allowsLocalFallback else {
+            authError = "Demo mode is not available in release builds."
+            return
+        }
         user = UserProfile(sub: "dev-user-local", name: "Dev User", email: "dev@localhost", picture: nil)
         currentProvider = .demo
         isDemoMode = true
@@ -317,7 +326,10 @@ final class AuthManager: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw WorkoutAPIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw WorkoutAPIError.server(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            let decodedError = try? JSONDecoder().decode(AuthErrorResponse.self, from: data)
+            let message = decodedError?.error ?? String(data: data, encoding: .utf8) ?? ""
+            let requestID = decodedError?.requestId ?? http.value(forHTTPHeaderField: "X-Request-Id")
+            throw WorkoutAPIError.server(http.statusCode, message, requestID: requestID)
         }
         return try JSONDecoder().decode(AuthSessionResponse.self, from: data)
     }

@@ -44,12 +44,19 @@ jobs:
         working-directory: backend
         run: npm audit --omit=dev
 
+      - name: Check release hardening config
+        run: |
+          set -euo pipefail
+          grep -q 'FROM node:22' Dockerfile
+          grep -q 'StrictHostKeyChecking=yes' .github/workflows/deploy.yml
+
   deploy:
     runs-on: ubuntu-latest
     needs: verify
     env:
       WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://workout-planner.jim-greco.com' }}
       ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://workout-planner.jim-greco.com' }}
+      APP_VERSION: ${{ vars.APP_VERSION || '1.0.0' }}
       APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
       GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
       APPLE_CLIENT_IDS: ${{ secrets.APPLE_CLIENT_IDS || vars.IOS_BUNDLE_ID || 'com.workoutplanner.ios' }}
@@ -68,12 +75,23 @@ jobs:
           test -n "$GOOGLE_IOS_CLIENT_ID"
           test -n "$APPLE_CLIENT_IDS"
 
+      - name: Prepare SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$EC2_SSH_KEY"
+          test -n "$EC2_HOST"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/workout_planner_key
+          chmod 600 ~/.ssh/workout_planner_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
       - name: Transfer files to EC2
         run: |
           set -euo pipefail
-          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
-          chmod 600 key.pem
-          rsync -avz -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
+          rsync -avz -e "ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" \
             --exclude '.git' \
             --exclude '.env' \
             --exclude '.env.*' \
@@ -85,12 +103,15 @@ jobs:
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::7}"
-          ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
             "APP_SESSION_SECRET='$APP_SESSION_SECRET' \
              ALLOWED_ORIGINS='$ALLOWED_ORIGINS' \
+             APP_VERSION='$APP_VERSION' \
              GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID' \
              APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS' \
              SHORT_SHA='$SHORT_SHA' \
+             BUILD_TIME='$BUILD_TIME' \
              bash -s" <<'REMOTE_DEPLOY'
           set -euo pipefail
           cd ~/deploy
@@ -126,7 +147,10 @@ jobs:
 
           export APP_SESSION_SECRET
           export ALLOWED_ORIGINS
+          export APP_VERSION
           export LOCAL_AUTH_BYPASS
+          export SHORT_SHA
+          export BUILD_TIME
           export WORKOUT_GOOGLE_CLIENT_ID
           export WORKOUT_GOOGLE_CLIENT_IDS
           export WORKOUT_APPLE_CLIENT_IDS
@@ -140,6 +164,9 @@ jobs:
                 APP_SESSION_SECRET: ${APP_SESSION_SECRET}
                 ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
                 LOCAL_AUTH_BYPASS: ${LOCAL_AUTH_BYPASS}
+                APP_VERSION: ${APP_VERSION}
+                GIT_COMMIT: ${SHORT_SHA}
+                BUILD_TIME: ${BUILD_TIME}
                 GOOGLE_CLIENT_ID: ${WORKOUT_GOOGLE_CLIENT_ID}
                 GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
                 APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
@@ -148,6 +175,10 @@ jobs:
           docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" build --no-cache \
             --build-arg VITE_DEV_BYPASS_AUTH=false \
             --build-arg VITE_GIT_COMMIT="$SHORT_SHA" \
+            --build-arg VITE_APP_VERSION="$APP_VERSION" \
+            --build-arg APP_VERSION="$APP_VERSION" \
+            --build-arg GIT_COMMIT="$SHORT_SHA" \
+            --build-arg BUILD_TIME="$BUILD_TIME" \
             workout workout_api
           docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" up -d --force-recreate workout workout_api
           docker system prune -f
@@ -157,4 +188,5 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "$WEB_BASE_URL/api/healthz"
+          curl --fail --silent --show-error "$WEB_BASE_URL/api/version"
           curl --fail --silent --show-error "$WEB_BASE_URL" >/dev/null

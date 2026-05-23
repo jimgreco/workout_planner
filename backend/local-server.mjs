@@ -6,8 +6,10 @@
  */
 
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { originPolicyError, parseAllowedOrigins } from './src/http-policy.mjs';
 import { MAX_BODY_BYTES } from './src/validation.mjs';
 
 // Load .env from parent directory
@@ -43,10 +45,7 @@ const { handler } = await import('./src/handler.mjs');
 const PORT = Number(process.env.PORT || 3001);
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_PER_MINUTE || (isProduction ? 120 : 600));
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || (isProduction ? '' : 'http://localhost:5173,http://127.0.0.1:5173'))
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS || (isProduction ? '' : 'http://localhost:5173,http://127.0.0.1:5173'));
 const rateBuckets = new Map();
 
 function corsHeaders(origin) {
@@ -75,19 +74,47 @@ function rateLimited(ip) {
   return bucket.length > RATE_LIMIT_MAX;
 }
 
+function requestId(req) {
+  const value = req.headers['x-request-id'];
+  if (typeof value === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value)) return value;
+  return randomUUID();
+}
+
+function jsonError(res, statusCode, headers, message, id) {
+  res.writeHead(statusCode, {
+    ...headers,
+    'Content-Type': 'application/json',
+    'X-Request-Id': id,
+  });
+  res.end(JSON.stringify({ error: message, requestId: id }));
+}
+
 const server = createServer(async (req, res) => {
+  const id = requestId(req);
   const origin = req.headers.origin;
   const baseHeaders = corsHeaders(origin);
+  const policyError = originPolicyError({
+    method: req.method,
+    origin,
+    allowedOrigins,
+    requestedMethod: req.headers['access-control-request-method'],
+  });
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, baseHeaders);
+    if (policyError) {
+      return jsonError(res, 403, baseHeaders, policyError, id);
+    }
+    res.writeHead(204, { ...baseHeaders, 'X-Request-Id': id });
     return res.end();
   }
 
+  if (policyError) {
+    return jsonError(res, 403, baseHeaders, policyError, id);
+  }
+
   if (rateLimited(clientIp(req))) {
-    res.writeHead(429, { ...baseHeaders, 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: 'Too many requests' }));
+    return jsonError(res, 429, baseHeaders, 'Too many requests', id);
   }
 
   // Read body
@@ -96,8 +123,7 @@ const server = createServer(async (req, res) => {
   for await (const chunk of req) {
     totalBytes += chunk.length;
     if (totalBytes > MAX_BODY_BYTES) {
-      res.writeHead(413, { ...baseHeaders, 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Request body is too large' }));
+      return jsonError(res, 413, baseHeaders, 'Request body is too large', id);
     }
     chunks.push(chunk);
   }
@@ -106,7 +132,11 @@ const server = createServer(async (req, res) => {
   // Build a minimal request event matching the handler's expected shape.
   const event = {
     rawPath: req.url.split('?')[0],
-    headers: req.headers,
+    rawQueryString: req.url.split('?')[1] || '',
+    headers: {
+      ...req.headers,
+      'x-request-id': id,
+    },
     requestContext: {
       http: { method: req.method },
     },
@@ -123,8 +153,7 @@ const server = createServer(async (req, res) => {
     res.end(result.body ?? '');
   } catch (e) {
     console.error(e);
-    res.writeHead(500, { ...baseHeaders, 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Internal server error' }));
+    jsonError(res, 500, baseHeaders, 'Internal server error', id);
   }
 });
 

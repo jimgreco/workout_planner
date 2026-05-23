@@ -13,9 +13,13 @@ Before inviting more testers:
 2. Run or confirm the `Deploy to EC2` workflow passed:
    - web lint, tests, build, and production audit
    - backend tests and production audit
-   - live `/api/healthz` smoke check
+   - live `/api/healthz` and `/api/version` smoke checks
 3. Run or confirm the `TestFlight` workflow uploaded successfully and Apple accepted the build.
-4. Smoke test:
+4. Run the recovery preflight and save the manifest path:
+   - `cd backend && USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run recovery:check`
+   - Confirm the output says point-in-time recovery is `ENABLED`.
+   - Confirm the backup file and recovery-check manifest were written.
+5. Smoke test:
    - web sign-in
    - iOS Google sign-in
    - iOS Apple sign-in
@@ -45,6 +49,17 @@ USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run backup
 
 On EC2, run that command from cron at least daily if point-in-time recovery is
 not available for the active datastore.
+
+Recovery preflight:
+
+```bash
+cd backend
+USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run recovery:check
+```
+
+The recovery preflight fails if DynamoDB point-in-time recovery is not enabled
+for the AWS table. It also writes a portable backup plus a
+`*-recovery-check-*.json` manifest under `BACKUP_DIR` or `../backups`.
 
 DynamoDB point-in-time recovery check:
 
@@ -82,14 +97,30 @@ aws dynamodb describe-table \
 
 After the drill, delete the restored table when it is no longer needed.
 
+Record the drill in the next recovery preflight:
+
+```bash
+RESTORE_DRILL_RESULT="restored $RESTORE_TABLE and verified table status ACTIVE" \
+RESTORE_DRILL_NOTES="deleted restored table after validation" \
+USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run recovery:check
+```
+
 ## Rollback
 
 1. Identify the last known-good commit.
 2. Re-run the deploy workflow for that commit or redeploy from EC2 using the
    matching checkout in `~/workout_planner`.
-3. Smoke test `/api/healthz`, web load, sign-in, and a read-only data load.
+3. Smoke test `/api/healthz`, `/api/version`, web load, sign-in, and a read-only data load.
 4. Keep the TestFlight build available unless the issue is native-only; otherwise
    expire the bad build in App Store Connect.
+
+## EC2 Compose Contract
+
+The deploy workflow expects EC2 to have a `~/deploy/docker-compose.yml` with
+`workout` and `workout_api` services. The repo-owned reference is
+`deploy/docker-compose.production.example.yml`; keep the remote compose service
+names compatible with that file so the GitHub Actions override can inject
+release metadata and production auth settings.
 
 ## Support Triage
 
@@ -97,9 +128,11 @@ When a tester reports "it won't load":
 
 1. Ask whether it is web or iOS and what sign-in provider they used.
 2. Check live health: `curl https://workout-planner.jim-greco.com/api/healthz`.
-3. Check recent backend logs for `handler_error` or elevated `401`/`500`.
-4. Ask them to send feedback from the account menu if they can open the app.
-5. For iOS, ask for the version/build shown in the account menu.
+3. Check live version: `curl https://workout-planner.jim-greco.com/api/version`.
+4. Ask for the Request ID shown in the app error, if one appears.
+5. Check recent backend logs for that `requestId`, `handler_error`, or elevated `401`/`500`.
+6. Ask them to send feedback from the account menu if they can open the app.
+7. For iOS, ask for the version/build shown in the account menu.
 
 Do not ask testers for provider tokens, app session tokens, or screenshots that
 show private workout notes unless they volunteer them.

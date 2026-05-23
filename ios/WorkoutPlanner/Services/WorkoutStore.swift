@@ -24,7 +24,7 @@ final class WorkoutStore: ObservableObject {
     }
 
     var usesLocalData: Bool {
-        auth.isDemoMode || api == nil
+        AppConfiguration.allowsLocalFallback && (auth.isDemoMode || api == nil)
     }
 
     func reset() {
@@ -48,7 +48,7 @@ final class WorkoutStore: ObservableObject {
         }
 
         guard let api else {
-            errorMessage = "Add API_BASE_URL in ios/project.yml, then regenerate the project."
+            errorMessage = "API configuration is missing. Install a build configured for Forge production."
             return
         }
 
