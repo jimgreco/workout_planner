@@ -34,28 +34,27 @@ struct AppShell: View {
     @State private var page: AppPage = .log
 
     var body: some View {
-        VStack(spacing: 0) {
-            TopNav(page: $page) {
+        Group {
+            switch page {
+            case .log:
+                WorkoutLogView()
+            case .history:
+                HistoryView(selectedPage: $page)
+            case .templates:
+                TemplatesView(selectedPage: $page)
+            case .exercises:
+                ExercisesView()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            BottomNav(page: $page) {
                 auth.signOut()
                 store.reset()
                 page = .log
             }
-
-            Group {
-                switch page {
-                case .log:
-                    WorkoutLogView()
-                case .history:
-                    HistoryView(selectedPage: $page)
-                case .templates:
-                    TemplatesView(selectedPage: $page)
-                case .exercises:
-                    ExercisesView()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Theme.background)
         .onChange(of: store.pendingTemplate) { _, template in
             if template != nil { page = .log }
         }
@@ -73,7 +72,7 @@ struct AppShell: View {
     }
 }
 
-private struct TopNav: View {
+private struct BottomNav: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var store: WorkoutStore
     @Binding var page: AppPage
@@ -103,6 +102,7 @@ private struct TopNav: View {
             }
             .padding(4)
             .toolbarGlass(in: Capsule())
+            .layoutPriority(1)
 
             Menu {
                 if let user = auth.user {
@@ -150,15 +150,13 @@ private struct TopNav: View {
             .toolbarGlass(in: Circle())
             .accessibilityLabel("Account")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 64)
-        .background(.bar)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Theme.border.opacity(0.65))
-                .frame(height: 1)
-        }
+        .padding(7)
+        .frame(minHeight: 70)
+        .toolbarGlass(in: Capsule(), tint: Theme.accent.opacity(0.04))
+        .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 12)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
         .sheet(isPresented: $showingFeedback) {
             FeedbackSheet(isSending: $accountBusy) { message in
                 try await store.submitFeedback(message)
