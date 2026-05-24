@@ -127,8 +127,11 @@ jobs:
       - name: Compute build number
         run: |
           set -euo pipefail
-          COMMIT_COUNT="$(git rev-list HEAD --count)"
-          BUILD_NUMBER=$((GITHUB_RUN_NUMBER * 1000000 + COMMIT_COUNT * 100 + GITHUB_RUN_ATTEMPT))
+          BUILD_NUMBER="$(git rev-list HEAD --count)"
+          if [ "$BUILD_NUMBER" -lt 1 ]; then
+            echo "Computed build number '$BUILD_NUMBER' from git commit count is invalid."
+            exit 1
+          fi
           echo "IOS_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           echo "Build number: $BUILD_NUMBER"
 
