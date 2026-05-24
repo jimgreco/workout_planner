@@ -9,6 +9,7 @@ import {
   LogOut,
   ChevronRight,
   Download,
+  Upload,
   MessageSquare,
   ShieldAlert,
   LifeBuoy,
@@ -23,10 +24,12 @@ import {
   getLogs,
   getSettings,
   exportData,
+  importData,
+  previewImportData,
   submitFeedback,
   deleteAccount as deleteAccountData,
-  flushPendingLogSaves,
-  pendingLogSaveCount,
+  flushPendingChanges,
+  pendingChangeCount,
 } from './api.js';
 import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
@@ -45,6 +48,17 @@ const PAGES = [
   { id: 'templates', label: 'Routines',         icon: ClipboardList },
   { id: 'exercises', label: 'Exercise Library', icon: BicepsFlexed },
 ];
+const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';
+const CRASH_REPORT_KEY = 'forge.lastCrashReportAt.v1';
+const CRASH_REPORT_COOLDOWN_MS = 30 * 60 * 1000;
+
+const emptyImportDraft = () => ({
+  fileName: '',
+  data: null,
+  preview: null,
+  mode: 'merge',
+  error: '',
+});
 
 export default function App() {
   // Dev bypass: skip login entirely with a mock user (VITE_DEV_BYPASS_AUTH=true).
@@ -61,13 +75,15 @@ export default function App() {
   const [loadRequest, setLoadRequest] = useState(0);
   const [page, setPage]           = useState('log');
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [accountModal, setAccountModal] = useState(null); // null | 'feedback' | 'delete' | 'support'
+  const [accountModal, setAccountModal] = useState(null); // null | 'feedback' | 'import' | 'delete' | 'support'
   const [feedbackText, setFeedbackText] = useState('');
+  const [importDraft, setImportDraft] = useState(emptyImportDraft);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
   const [isOffline, setIsOffline] = useState(() => (
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   ));
-  const [pendingSyncCount, setPendingSyncCount] = useState(() => pendingLogSaveCount());
+  const [pendingSyncCount, setPendingSyncCount] = useState(() => pendingChangeCount());
   const [syncingPending, setSyncingPending] = useState(false);
 
   const [exercises, setExercises] = useState([]);
@@ -115,6 +131,8 @@ export default function App() {
     setPage('log');
     setShowUserMenu(false);
     setAccountModal(null);
+    setImportDraft(emptyImportDraft());
+    setShowOnboarding(false);
   }, []);
 
   const handleLogin = useCallback((profile) => {
@@ -144,15 +162,17 @@ export default function App() {
     return () => window.removeEventListener('wp:api-error', onApiError);
   }, []);
 
-  async function handleFlushPendingLogs() {
+  async function handleFlushPendingChanges() {
     if (syncingPending) return;
     setSyncingPending(true);
     try {
-      const updated = await flushPendingLogSaves();
-      setLogs(updated);
-      setPendingSyncCount(pendingLogSaveCount());
-      if (pendingLogSaveCount() === 0) {
-        setNotice({ type: 'success', message: 'Pending workout changes synced.' });
+      const updated = await flushPendingChanges();
+      setExercises(updated.exercises);
+      setTemplates(updated.templates);
+      setLogs(updated.logs);
+      setPendingSyncCount(pendingChangeCount());
+      if (pendingChangeCount() === 0) {
+        setNotice({ type: 'success', message: 'Pending changes synced.' });
       }
     } finally {
       setSyncingPending(false);
@@ -163,8 +183,8 @@ export default function App() {
     const updateOnlineStatus = () => {
       const offline = !navigator.onLine;
       setIsOffline(offline);
-      if (!offline && pendingLogSaveCount() > 0) {
-        handleFlushPendingLogs();
+      if (!offline && pendingChangeCount() > 0) {
+        handleFlushPendingChanges();
       }
     };
     window.addEventListener('online', updateOnlineStatus);
@@ -178,11 +198,43 @@ export default function App() {
 
   useEffect(() => {
     const onSyncStatus = (event) => {
-      setPendingSyncCount(event.detail?.pendingLogSaves ?? pendingLogSaveCount());
+      setPendingSyncCount(event.detail?.pendingChanges ?? pendingChangeCount());
     };
     window.addEventListener('wp:sync-status', onSyncStatus);
     return () => window.removeEventListener('wp:sync-status', onSyncStatus);
   }, []);
+
+  useEffect(() => {
+    if (loading || dataError || !user) return;
+    const dismissed = window.localStorage.getItem(ONBOARDING_KEY) === 'true';
+    if (!dismissed && logs.length === 0) {
+      setShowOnboarding(true);
+    }
+  }, [dataError, loading, logs.length, user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const report = (message) => {
+      const last = Number(window.localStorage.getItem(CRASH_REPORT_KEY) || 0);
+      if (Date.now() - last < CRASH_REPORT_COOLDOWN_MS) return;
+      window.localStorage.setItem(CRASH_REPORT_KEY, String(Date.now()));
+      submitFeedback(`Client error: ${String(message).slice(0, 500)}`, buildLabel()).catch(() => {});
+    };
+    const onError = (event) => report(event.message || event.error?.message || 'Unknown browser error');
+    const onUnhandledRejection = (event) => report(event.reason?.message || event.reason || 'Unhandled browser promise rejection');
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    };
+  }, [user]);
+
+  function dismissOnboarding(nextPage) {
+    window.localStorage.setItem(ONBOARDING_KEY, 'true');
+    setShowOnboarding(false);
+    if (nextPage) setPage(nextPage);
+  }
 
   function handleStartWorkout(template) {
     setPendingTemplate(template);
@@ -212,6 +264,54 @@ export default function App() {
       URL.revokeObjectURL(url);
       setNotice({ type: 'success', message: 'Export downloaded.' });
       setShowUserMenu(false);
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
+  async function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const preview = previewImportData(data, { exercises, templates, logs });
+      setImportDraft({
+        fileName: file.name,
+        data,
+        preview,
+        mode: preview.targetIsEmpty ? 'emptyOnly' : 'merge',
+        error: '',
+      });
+    } catch (error) {
+      setImportDraft({
+        ...emptyImportDraft(),
+        fileName: file.name,
+        error: error.message || 'Import file could not be read.',
+      });
+    }
+  }
+
+  async function handleImportData() {
+    if (!importDraft.data || accountBusy) return;
+    setAccountBusy(true);
+    try {
+      const result = await importData(importDraft.data, importDraft.mode);
+      setExercises(getExercises());
+      setTemplates(getTemplates());
+      setLogs(getLogs());
+      setSettings(getSettings());
+      setAccountModal(null);
+      setImportDraft(emptyImportDraft());
+      const renamedCount = Object.values(result.renamed ?? {}).reduce((sum, items) => sum + items.length, 0);
+      const skippedCount = Object.values(result.skipped ?? {}).reduce((sum, items) => sum + items.length, 0);
+      setNotice({
+        type: 'success',
+        message: [
+          'Import complete.',
+          renamedCount > 0 ? `${renamedCount} duplicate ${renamedCount === 1 ? 'name was' : 'names were'} renamed.` : '',
+          skippedCount > 0 ? `${skippedCount} existing ${skippedCount === 1 ? 'item was' : 'items were'} skipped.` : '',
+        ].filter(Boolean).join(' '),
+      });
     } finally {
       setAccountBusy(false);
     }
@@ -252,6 +352,9 @@ export default function App() {
         <hr className="dropdown-divider" />
         <button className="dropdown-item" onClick={handleExportData} disabled={accountBusy}>
           <Download size={16} /> Export data
+        </button>
+        <button className="dropdown-item" onClick={() => { setImportDraft(emptyImportDraft()); setAccountModal('import'); setShowUserMenu(false); }}>
+          <Upload size={16} /> Import data
         </button>
         <button className="dropdown-item" onClick={() => { setFeedbackText(''); setAccountModal('feedback'); setShowUserMenu(false); }}>
           <MessageSquare size={16} /> Send feedback
@@ -409,8 +512,8 @@ export default function App() {
         )}
         {pendingSyncCount > 0 && (
           <div className="app-notice warning">
-            <span>{pendingSyncCount} workout {pendingSyncCount === 1 ? 'change is' : 'changes are'} waiting to sync.</span>
-            <button className="btn btn-secondary btn-sm" onClick={handleFlushPendingLogs} disabled={syncingPending || isOffline}>
+            <span>{pendingSyncCount} {pendingSyncCount === 1 ? 'change is' : 'changes are'} waiting to sync.</span>
+            <button className="btn btn-secondary btn-sm" onClick={handleFlushPendingChanges} disabled={syncingPending || isOffline}>
               {syncingPending ? 'Syncing…' : 'Sync now'}
             </button>
           </div>
@@ -482,6 +585,101 @@ export default function App() {
         </Modal>
       )}
 
+      {accountModal === 'import' && (
+        <Modal
+          title="Import Data"
+          onClose={() => !accountBusy && setAccountModal(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setAccountModal(null)} disabled={accountBusy}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleImportData}
+                disabled={!importDraft.data || importDraft.preview?.isEmpty || accountBusy}
+              >
+                {accountBusy ? 'Importing…' : 'Import'}
+              </button>
+            </>
+          }
+        >
+          <div className="import-modal">
+            <div className="form-group">
+              <label htmlFor="import-file">Forge JSON export</label>
+              <input id="import-file" type="file" accept="application/json,.json" onChange={handleImportFile} />
+            </div>
+
+            {importDraft.error && (
+              <p className="inline-error">{importDraft.error}</p>
+            )}
+
+            {importDraft.preview && (
+              <>
+                <div className="import-preview">
+                  <div>
+                    <span>Exercises</span>
+                    <strong>{importDraft.preview.counts.exercises}</strong>
+                  </div>
+                  <div>
+                    <span>Routines</span>
+                    <strong>{importDraft.preview.counts.templates}</strong>
+                  </div>
+                  <div>
+                    <span>Workouts</span>
+                    <strong>{importDraft.preview.counts.logs}</strong>
+                  </div>
+                  <div>
+                    <span>Settings</span>
+                    <strong>{importDraft.preview.counts.settings}</strong>
+                  </div>
+                </div>
+
+                {!importDraft.preview.isEmpty && (
+                  <fieldset className="import-mode">
+                    <legend>Import mode</legend>
+                    <label>
+                      <input
+                        type="radio"
+                        name="import-mode"
+                        value="merge"
+                        checked={importDraft.mode === 'merge'}
+                        onChange={() => setImportDraft((draft) => ({ ...draft, mode: 'merge' }))}
+                      />
+                      <span>
+                        <strong>Merge into this account</strong>
+                        <small>Existing IDs stay untouched; duplicate names are renamed.</small>
+                      </span>
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="import-mode"
+                        value="emptyOnly"
+                        checked={importDraft.mode === 'emptyOnly'}
+                        onChange={() => setImportDraft((draft) => ({ ...draft, mode: 'emptyOnly' }))}
+                      />
+                      <span>
+                        <strong>Restore only if empty</strong>
+                        <small>Best for moving an export into a fresh account.</small>
+                      </span>
+                    </label>
+                  </fieldset>
+                )}
+
+                {Object.values(importDraft.preview.duplicateIds).some((count) => count > 0) && (
+                  <p className="text-muted import-note">
+                    {Object.values(importDraft.preview.duplicateIds).reduce((sum, count) => sum + count, 0)} existing ID {Object.values(importDraft.preview.duplicateIds).reduce((sum, count) => sum + count, 0) === 1 ? 'match' : 'matches'} will be skipped in merge mode.
+                  </p>
+                )}
+
+                {importDraft.preview.isEmpty && (
+                  <p className="text-muted import-note">This file does not contain exercises, routines, or workouts.</p>
+                )}
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+
       {accountModal === 'delete' && (
         <Modal
           title="Delete Account"
@@ -521,6 +719,33 @@ export default function App() {
                 <dd>You can export your data or delete the account from this menu.</dd>
               </div>
             </dl>
+          </div>
+        </Modal>
+      )}
+
+      {showOnboarding && (
+        <Modal
+          title="Start Forge"
+          onClose={() => dismissOnboarding()}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => dismissOnboarding()}>Not Now</button>
+              <button className="btn btn-primary" onClick={() => dismissOnboarding('log')}>Log Workout</button>
+            </>
+          }
+        >
+          <div className="onboarding-modal">
+            <p className="text-muted">Pick a starting point for this account.</p>
+            <div className="onboarding-actions">
+              <button className="support-link" onClick={() => dismissOnboarding('templates')}>
+                <span>Build a Routine</span>
+                <ChevronRight size={16} />
+              </button>
+              <button className="support-link" onClick={() => dismissOnboarding('exercises')}>
+                <span>Browse Exercise Library</span>
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         </Modal>
       )}

@@ -12,6 +12,9 @@
 - Empty template libraries can create starter Push, Pull, and Legs workouts.
 - Workout log saves can queue locally when the network drops, with pending sync state in web and iOS.
 - Support admins have a static secret-protected viewer for feedback, build overview, request-ID helper commands, and email-based account summaries.
+- Web and iOS can import Forge JSON exports with preview counts, empty-account restore, merge mode, duplicate-name handling, and existing-ID skips.
+- Offline queues now cover exercise/routine updates and deletes, plus workout log deletes, with pending sync counts across web and iOS.
+- Web has a first-run start sheet and throttled client-error feedback reports for beta triage.
 
 ### Live Workout Execution
 
@@ -33,15 +36,11 @@
 
 ### Import And Restore
 
-- Add a user-facing import flow for exported Forge JSON.
-- Validate import previews before writing data.
-- Support restore into an empty account first.
-- Add duplicate handling for exercises, templates, and logs.
 - Document the backup/export compatibility contract.
+- Add an import-result history or audit trail if support needs to investigate restores.
 
 ### Offline And Conflict Handling
 
-- Add offline delete/update queues for exercises and templates.
 - Add richer side-by-side conflict recovery for resources updated on another device.
 - Add background retry scheduling and push-visible sync status on iOS.
 - Stress test active workout recovery across app restarts and long offline periods.
@@ -56,8 +55,7 @@
 ### Beta And App Store Polish
 
 - Rebalance iOS tab navigation if six tabs feels too crowded after adding Progress.
-- Add fuller first-run onboarding beyond starter workout templates.
-- Add crash reporting.
+- Add native crash reporting.
 - Add basic privacy-preserving product analytics.
 - Prepare App Store screenshots and review metadata.
 - Review HealthKit, widgets, Live Activities, and Apple Watch after the core workout loop feels complete.

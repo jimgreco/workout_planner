@@ -275,6 +275,99 @@ test('optional expectedRevision protects against stale overwrites', async () => 
   assert.equal(typeof body.updatedAt, 'string');
 });
 
+test('import restores Forge export data into an empty account', async () => {
+  const db = fakeDb();
+  __setTestDb(db);
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+
+  const result = await handler(event('POST', '/import', {
+    mode: 'emptyOnly',
+    data: {
+      settings: { defaultSets: 5, defaultReps: 6 },
+      exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
+      templates: [{ id: 'push', name: 'Push', exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '6', weight: '100' }] }] }],
+      logs: [{ id: 'done', name: 'Done', date: '2026-01-02', exerciseItems: [], status: 'finished' }],
+    },
+  }, headers));
+  const body = JSON.parse(result.body);
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, settings: true });
+  assert.equal(db.items.get('USER#dev-user-local|SETTINGS').defaultSets, 5);
+  assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').revision, 1);
+  assert.equal(db.items.get('USER#dev-user-local|TEMPLATE#push').exerciseItems[0].exerciseId, 'bench');
+  assert.equal(db.items.get('USER#dev-user-local|LOG#done').status, 'finished');
+});
+
+test('empty-only import refuses to restore over existing account data', async () => {
+  __setTestDb(fakeDb([
+    { PK: 'USER#dev-user-local', SK: 'EXERCISE#existing', id: 'existing', name: 'Existing', muscleGroup: 'Chest' },
+  ]));
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+
+  const result = await handler(event('POST', '/import', {
+    mode: 'emptyOnly',
+    data: {
+      exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
+      templates: [],
+      logs: [],
+    },
+  }, headers));
+
+  assert.equal(result.statusCode, 409);
+});
+
+test('merge import renames duplicate exercise and routine names', async () => {
+  const db = fakeDb([
+    { PK: 'USER#dev-user-local', SK: 'EXERCISE#existing-bench', id: 'existing-bench', name: 'Bench', muscleGroup: 'Chest' },
+    { PK: 'USER#dev-user-local', SK: 'TEMPLATE#existing-push', id: 'existing-push', name: 'Push', exerciseItems: [] },
+  ]);
+  __setTestDb(db);
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+
+  const result = await handler(event('POST', '/import', {
+    mode: 'merge',
+    data: {
+      exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
+      templates: [{ id: 'push', name: 'Push', exerciseItems: [] }],
+      logs: [],
+    },
+  }, headers));
+  const body = JSON.parse(result.body);
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(body.renamed.exercises, [{ from: 'Bench', to: 'Bench (imported)' }]);
+  assert.deepEqual(body.renamed.templates, [{ from: 'Push', to: 'Push (imported)' }]);
+  assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').name, 'Bench (imported)');
+  assert.equal(db.items.get('USER#dev-user-local|TEMPLATE#push').name, 'Push (imported)');
+});
+
+test('merge import skips existing IDs instead of overwriting account data', async () => {
+  const db = fakeDb([
+    { PK: 'USER#dev-user-local', SK: 'EXERCISE#bench', id: 'bench', name: 'Current Bench', muscleGroup: 'Chest' },
+    { PK: 'USER#dev-user-local', SK: 'LOG#done', id: 'done', name: 'Current Log', date: '2026-01-02', exerciseItems: [], status: 'finished' },
+  ]);
+  __setTestDb(db);
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+
+  const result = await handler(event('POST', '/import', {
+    mode: 'merge',
+    data: {
+      exercises: [{ id: 'bench', name: 'Imported Bench', muscleGroup: 'Back' }],
+      templates: [],
+      logs: [{ id: 'done', name: 'Imported Log', date: '2026-01-02', exerciseItems: [], status: 'finished' }],
+    },
+  }, headers));
+  const body = JSON.parse(result.body);
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, settings: false });
+  assert.deepEqual(body.skipped.exercises, [{ id: 'bench', name: 'Imported Bench' }]);
+  assert.deepEqual(body.skipped.logs, [{ id: 'done', name: 'Imported Log', date: '2026-01-02' }]);
+  assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').name, 'Current Bench');
+  assert.equal(db.items.get('USER#dev-user-local|LOG#done').name, 'Current Log');
+});
+
 test('account deletion revokes already-issued app sessions', async () => {
   const db = fakeDb([
     { PK: 'USER#user-1', SK: 'LOG#old', id: 'old', name: 'Old', date: '2026-01-01', exerciseItems: [], status: 'finished' },

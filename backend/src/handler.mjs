@@ -13,6 +13,7 @@
  *   PUT    /exercises/:id | /templates/:id | /logs/:id | /settings
  *   DELETE /exercises/:id | /templates/:id | /logs/:id
  *   GET    /export
+ *   POST   /import
  *   POST   /feedback
  *   DELETE /account
  */
@@ -39,6 +40,7 @@ import {
   validateAuthBody,
   validateExercise,
   validateFeedback,
+  validateImport,
   validateId,
   validateLog,
   validateSettings,
@@ -402,6 +404,130 @@ function exportPayload(items) {
   return data;
 }
 
+function collectionItems(items, prefix) {
+  return items.filter((item) => item.SK.startsWith(`${prefix}#`));
+}
+
+function userDataItemCount(items) {
+  return collectionItems(items, 'EXERCISE').length
+    + collectionItems(items, 'TEMPLATE').length
+    + collectionItems(items, 'LOG').length;
+}
+
+function nameKey(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function uniqueImportedName(name, existingNames, renamed, suffix = 'imported') {
+  const base = String(name ?? '').trim() || 'Imported';
+  if (!existingNames.has(nameKey(base))) {
+    existingNames.add(nameKey(base));
+    return base;
+  }
+  let candidate = `${base} (${suffix})`;
+  let index = 2;
+  while (existingNames.has(nameKey(candidate))) {
+    candidate = `${base} (${suffix} ${index})`;
+    index += 1;
+  }
+  existingNames.add(nameKey(candidate));
+  renamed.push({ from: base, to: candidate });
+  return candidate;
+}
+
+function duplicateSafeItems(existingItems, imported) {
+  const renamed = { exercises: [], templates: [], logs: [] };
+  const skipped = { exercises: [], templates: [], logs: [] };
+  const existingExerciseIds = new Set(collectionItems(existingItems, 'EXERCISE').map((item) => item.id));
+  const existingTemplateIds = new Set(collectionItems(existingItems, 'TEMPLATE').map((item) => item.id));
+  const existingLogIds = new Set(collectionItems(existingItems, 'LOG').map((item) => item.id));
+  const exerciseNames = new Set(collectionItems(existingItems, 'EXERCISE').map((item) => nameKey(item.name)));
+  const templateNames = new Set(collectionItems(existingItems, 'TEMPLATE').map((item) => nameKey(item.name)));
+  const logNamesByDate = new Set(collectionItems(existingItems, 'LOG').map((item) => `${item.date}|${nameKey(item.name)}`));
+  const exercises = imported.exercises.flatMap((exercise) => {
+    if (existingExerciseIds.has(exercise.id)) {
+      skipped.exercises.push({ id: exercise.id, name: exercise.name });
+      return [];
+    }
+    return [{
+      ...exercise,
+      name: uniqueImportedName(exercise.name, exerciseNames, renamed.exercises),
+    }];
+  });
+  const templates = imported.templates.flatMap((template) => {
+    if (existingTemplateIds.has(template.id)) {
+      skipped.templates.push({ id: template.id, name: template.name });
+      return [];
+    }
+    return [{
+      ...template,
+      name: uniqueImportedName(template.name, templateNames, renamed.templates),
+    }];
+  });
+  const logs = imported.logs.flatMap((log) => {
+    if (existingLogIds.has(log.id)) {
+      skipped.logs.push({ id: log.id, name: log.name, date: log.date });
+      return [];
+    }
+    const key = `${log.date}|${nameKey(log.name)}`;
+    if (!logNamesByDate.has(key)) {
+      logNamesByDate.add(key);
+      return [log];
+    }
+    const namesForDate = new Set([...logNamesByDate]
+      .filter((value) => value.startsWith(`${log.date}|`))
+      .map((value) => value.slice(log.date.length + 1)));
+    const name = uniqueImportedName(log.name || 'Imported workout', namesForDate, renamed.logs);
+    logNamesByDate.add(`${log.date}|${nameKey(name)}`);
+    return [{ ...log, name }];
+  });
+  return { exercises, templates, logs, settings: imported.settings, renamed, skipped };
+}
+
+async function writeImportedCollection(PK, prefix, items) {
+  for (const body of items) {
+    const SK = `${prefix}#${body.id}`;
+    const versioned = await itemWithRevision(PK, SK, body, undefined);
+    await db.send(new PutCommand({
+      TableName: TABLE,
+      Item: { PK, SK, ...versioned },
+    }));
+  }
+}
+
+async function importPayload(PK, body) {
+  const imported = validateImport(body);
+  const existingItems = await queryAllUserItems(PK);
+  if (imported.mode === 'emptyOnly' && userDataItemCount(existingItems) > 0) {
+    throw new ValidationError('Import can only restore into an empty account.', { cause: 'conflict' });
+  }
+
+  const safe = imported.mode === 'merge'
+    ? duplicateSafeItems(existingItems, imported)
+    : { ...imported, renamed: { exercises: [], templates: [], logs: [] }, skipped: { exercises: [], templates: [], logs: [] } };
+
+  if (safe.settings) {
+    await db.send(new PutCommand({
+      TableName: TABLE,
+      Item: { PK, SK: 'SETTINGS', ...safe.settings },
+    }));
+  }
+  await writeImportedCollection(PK, 'EXERCISE', safe.exercises);
+  await writeImportedCollection(PK, 'TEMPLATE', safe.templates);
+  await writeImportedCollection(PK, 'LOG', safe.logs);
+
+  return {
+    imported: {
+      exercises: safe.exercises.length,
+      templates: safe.templates.length,
+      logs: safe.logs.length,
+      settings: Boolean(safe.settings),
+    },
+    renamed: safe.renamed,
+    skipped: safe.skipped,
+  };
+}
+
 function decodeCursor(cursor) {
   if (!cursor) return 0;
   try {
@@ -624,6 +750,10 @@ async function handleAdminRoute(method, resource, event, params) {
 async function handleAuthenticatedRoute(method, resource, id, event, PK, params) {
   if (resource === 'export' && method === 'GET' && !id) {
     return ok(exportPayload(await queryAllUserItems(PK)));
+  }
+
+  if (resource === 'import' && method === 'POST' && !id) {
+    return ok(await importPayload(PK, parseJsonBody(event)));
   }
 
   if (resource === 'account' && method === 'DELETE' && !id) {

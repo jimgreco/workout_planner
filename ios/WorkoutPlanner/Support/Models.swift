@@ -153,6 +153,94 @@ struct WorkoutSettings: Codable, Equatable {
     static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8)
 }
 
+enum ForgeImportMode: String, Codable, CaseIterable, Identifiable {
+    case merge
+    case emptyOnly
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .merge: return "Merge"
+        case .emptyOnly: return "Empty Account"
+        }
+    }
+}
+
+struct ForgeExportPayload: Codable, Equatable {
+    var exportedAt: String?
+    var exercises: [Exercise]?
+    var templates: [WorkoutTemplate]?
+    var logs: [WorkoutLog]?
+    var settings: WorkoutSettings?
+}
+
+struct ForgeImportRequest: Encodable {
+    var mode: ForgeImportMode
+    var data: ForgeExportPayload
+}
+
+struct ForgeImportCounts: Codable, Equatable {
+    var exercises: Int
+    var templates: Int
+    var logs: Int
+    var settings: Bool?
+}
+
+struct ForgeSkippedExercise: Codable, Equatable {
+    var id: String
+    var name: String?
+}
+
+struct ForgeSkippedLog: Codable, Equatable {
+    var id: String
+    var name: String?
+    var date: String?
+}
+
+struct ForgeImportSkipped: Codable, Equatable {
+    var exercises: [ForgeSkippedExercise]?
+    var templates: [ForgeSkippedExercise]?
+    var logs: [ForgeSkippedLog]?
+}
+
+struct ForgeImportRename: Codable, Equatable {
+    var from: String
+    var to: String
+}
+
+struct ForgeImportRenamed: Codable, Equatable {
+    var exercises: [ForgeImportRename]?
+    var templates: [ForgeImportRename]?
+    var logs: [ForgeImportRename]?
+}
+
+struct ForgeImportResult: Codable, Equatable {
+    var imported: ForgeImportCounts
+    var renamed: ForgeImportRenamed?
+    var skipped: ForgeImportSkipped?
+}
+
+struct ForgeImportPreview: Equatable {
+    struct Counts: Equatable {
+        var exercises: Int
+        var templates: Int
+        var logs: Int
+        var settings: Int
+    }
+
+    struct DuplicateIds: Equatable {
+        var exercises: Int
+        var templates: Int
+        var logs: Int
+    }
+
+    var counts: Counts
+    var duplicateIds: DuplicateIds
+    var isEmpty: Bool
+    var targetIsEmpty: Bool
+}
+
 enum MuscleGroups {
     static let all = [
         "Chest", "Back", "Shoulders", "Biceps", "Triceps",

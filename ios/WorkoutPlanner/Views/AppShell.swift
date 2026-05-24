@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum AppPage: String, CaseIterable, Identifiable, Hashable {
     case log
@@ -147,6 +148,8 @@ private struct SettingsPage: View {
     @State private var confirmingDelete = false
     @State private var accountBusy = false
     @State private var exportFile: ExportFile?
+    @State private var showingImportPicker = false
+    @State private var importDraft: ImportDraft?
 
     var body: some View {
         NavigationStack {
@@ -168,6 +171,13 @@ private struct SettingsPage: View {
                         Task { await exportAccountData() }
                     } label: {
                         Label("Export Data", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(accountBusy)
+
+                    Button {
+                        showingImportPicker = true
+                    } label: {
+                        Label("Import Data", systemImage: "square.and.arrow.up")
                     }
                     .disabled(accountBusy)
 
@@ -275,6 +285,14 @@ private struct SettingsPage: View {
             }
             .presentationDetents([.medium])
         }
+        .sheet(item: $importDraft) { draft in
+            ImportPreviewSheet(draft: draft, isImporting: $accountBusy) { mode in
+                try await store.importData(draft.payload, mode: mode)
+            }
+        }
+        .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json]) { result in
+            loadImportFile(result)
+        }
         .confirmationDialog("Delete Account?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete Everything", role: .destructive) {
                 Task {
@@ -308,11 +326,141 @@ private struct SettingsPage: View {
             store.errorMessage = error.localizedDescription
         }
     }
+
+    @MainActor
+    private func loadImportFile(_ result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let didStartAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccess { url.stopAccessingSecurityScopedResource() }
+            }
+            let data = try Data(contentsOf: url)
+            let payload = try JSONDecoder().decode(ForgeExportPayload.self, from: data)
+            let preview = store.previewImport(payload)
+            importDraft = ImportDraft(
+                fileName: url.lastPathComponent,
+                payload: payload,
+                preview: preview,
+                defaultMode: preview.targetIsEmpty ? .emptyOnly : .merge
+            )
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
 }
 
 private struct ExportFile: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+private struct ImportDraft: Identifiable {
+    let id = UUID()
+    let fileName: String
+    let payload: ForgeExportPayload
+    let preview: ForgeImportPreview
+    let defaultMode: ForgeImportMode
+}
+
+private struct ImportPreviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let draft: ImportDraft
+    @Binding var isImporting: Bool
+    let onImport: (ForgeImportMode) async throws -> ForgeImportResult
+    @State private var mode: ForgeImportMode
+    @State private var errorMessage: String?
+
+    init(
+        draft: ImportDraft,
+        isImporting: Binding<Bool>,
+        onImport: @escaping (ForgeImportMode) async throws -> ForgeImportResult
+    ) {
+        self.draft = draft
+        _isImporting = isImporting
+        self.onImport = onImport
+        _mode = State(initialValue: draft.defaultMode)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("File", value: draft.fileName)
+                    LabeledContent("Exercises", value: "\(draft.preview.counts.exercises)")
+                    LabeledContent("Routines", value: "\(draft.preview.counts.templates)")
+                    LabeledContent("Workouts", value: "\(draft.preview.counts.logs)")
+                    LabeledContent("Settings", value: "\(draft.preview.counts.settings)")
+                } header: {
+                    Text("Preview")
+                }
+
+                if !draft.preview.isEmpty {
+                    Section {
+                        Picker("Mode", selection: $mode) {
+                            ForEach(ForgeImportMode.allCases) { option in
+                                Text(option.label).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    } footer: {
+                        Text(mode == .merge
+                            ? "Existing IDs stay untouched; duplicate names are renamed."
+                            : "Restore only succeeds when this account has no exercises, routines, or workouts.")
+                    }
+                }
+
+                if duplicateIdCount > 0 {
+                    Section {
+                        Text("\(duplicateIdCount) existing ID \(duplicateIdCount == 1 ? "match" : "matches") will be skipped in merge mode.")
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+
+                if draft.preview.isEmpty {
+                    Section {
+                        Text("This file does not contain exercises, routines, or workouts.")
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(Theme.danger)
+                    }
+                }
+            }
+            .navigationTitle("Import Data")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isImporting)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isImporting ? "Importing..." : "Import") {
+                        Task {
+                            isImporting = true
+                            defer { isImporting = false }
+                            do {
+                                _ = try await onImport(mode)
+                                dismiss()
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(draft.preview.isEmpty || isImporting)
+                }
+            }
+        }
+    }
+
+    private var duplicateIdCount: Int {
+        draft.preview.duplicateIds.exercises
+            + draft.preview.duplicateIds.templates
+            + draft.preview.duplicateIds.logs
+    }
 }
 
 private enum SupportLinks {

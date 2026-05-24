@@ -12,9 +12,9 @@ import {
   initData, resetData,
   getExercises, saveExercise, deleteExercise,
   getTemplates, saveTemplate, deleteTemplate,
-  getLogs, saveLog, deleteLog, getLogsByDate, flushPendingLogSaves, pendingLogSaveCount,
+  getLogs, saveLog, deleteLog, getLogsByDate, flushPendingLogSaves, flushPendingResourceChanges, pendingLogSaveCount, pendingChangeCount,
   getSettings,
-  exportData, submitFeedback, deleteAccount,
+  exportData, previewImportData, importData, submitFeedback, deleteAccount,
 } from '../api.js';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -143,6 +143,25 @@ describe('exercises', () => {
 
     expect(bodies.map((body) => body.expectedRevision)).toEqual([2, 5, 7]);
   });
+
+  it('queues exercise saves when the network is unavailable and flushes them later', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    const queued = await saveExercise(EX);
+    expect(queued[0]).toMatchObject({ id: 'ex-1', pendingSync: true });
+    expect(pendingChangeCount()).toBe(1);
+
+    mockFetch({
+      'PUT /exercises/ex-1': () => ({ body: { ...EX, revision: 1, updatedAt: '2026-01-02T00:00:00.000Z' } }),
+    });
+
+    const flushed = await flushPendingResourceChanges();
+    expect(flushed.exercises[0]).toMatchObject({ id: 'ex-1', revision: 1 });
+    expect(flushed.exercises[0].pendingSync).toBeUndefined();
+    expect(pendingChangeCount()).toBe(0);
+  });
 });
 
 // ── Templates ──────────────────────────────────────────────────────────────────
@@ -195,6 +214,32 @@ describe('logs', () => {
     expect(flushed[0]).toMatchObject({ id: 'log-1', revision: 1 });
     expect(flushed[0].pendingSync).toBeUndefined();
     expect(pendingLogSaveCount()).toBe(0);
+  });
+
+  it('queues log deletes when the network is unavailable and flushes them later', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [LOG] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+    });
+    await initData();
+
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    const afterDelete = await deleteLog(LOG.id);
+    expect(afterDelete).toEqual([]);
+    expect(pendingChangeCount()).toBe(1);
+
+    mockFetch({
+      'DELETE /logs/log-1': () => ({ status: 204, body: null }),
+    });
+
+    const flushed = await flushPendingLogSaves();
+    expect(flushed).toEqual([]);
+    expect(pendingChangeCount()).toBe(0);
   });
 
   it('deleteLog removes from cache', async () => {
@@ -259,6 +304,45 @@ describe('account and support', () => {
     const payload = { exercises: [EX], templates: [TMPL], logs: [LOG], settings: { defaultSets: 4, defaultReps: 8 } };
     mockFetch({ 'GET /export': () => ({ body: payload }) });
     await expect(exportData()).resolves.toEqual(payload);
+  });
+
+  it('previewImportData summarizes imported data and duplicate IDs', () => {
+    const preview = previewImportData({
+      exercises: [EX],
+      templates: [TMPL],
+      logs: [LOG],
+      settings: { defaultSets: 4, defaultReps: 8 },
+    }, {
+      exercises: [EX],
+      templates: [],
+      logs: [LOG],
+    });
+
+    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, settings: 1 });
+    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1 });
+    expect(preview.targetIsEmpty).toBe(false);
+  });
+
+  it('importData posts the import envelope and refreshes the cache', async () => {
+    const imported = { exercises: [EX], templates: [TMPL], logs: [LOG] };
+    mockFetch({
+      'POST /import': () => {
+        const [, opts] = globalThis.fetch.mock.calls.at(-1);
+        expect(JSON.parse(opts.body)).toEqual({ mode: 'merge', data: imported });
+        return { body: { imported: { exercises: 1, templates: 1, logs: 1, settings: false }, renamed: {}, skipped: {} } };
+      },
+      'GET /exercises': () => ({ body: [EX] }),
+      'GET /templates': () => ({ body: [TMPL] }),
+      'GET /logs':      () => ({ body: [LOG] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+    });
+
+    await expect(importData(imported, 'merge')).resolves.toMatchObject({
+      imported: { exercises: 1, templates: 1, logs: 1, settings: false },
+    });
+    expect(getExercises()).toEqual([EX]);
+    expect(getTemplates()).toEqual([TMPL]);
+    expect(getLogs()).toEqual([LOG]);
   });
 
   it('submitFeedback posts message and build metadata', async () => {

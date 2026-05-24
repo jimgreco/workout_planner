@@ -79,6 +79,10 @@ struct WorkoutAPI {
         try await perform("GET", path: "/export", body: Optional<Data>.none)
     }
 
+    func importData(_ data: ForgeExportPayload, mode: ForgeImportMode) async throws -> ForgeImportResult {
+        try await request("POST", path: "/import", body: ForgeImportRequest(mode: mode, data: data))
+    }
+
     func deleteAccount() async throws {
         _ = try await perform("DELETE", path: "/account", body: Optional<Data>.none)
     }

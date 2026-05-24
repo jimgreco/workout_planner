@@ -6,7 +6,7 @@ export class ValidationError extends Error {
   }
 }
 
-export const MAX_BODY_BYTES = 128 * 1024;
+export const MAX_BODY_BYTES = 512 * 1024;
 
 const MUSCLE_GROUPS = new Set([
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
@@ -241,6 +241,48 @@ export function validateFeedback(body) {
     message: stringValue(body.message, 'message', { required: true, max: 2000, allowEmpty: false }),
     build: stringValue(body.build, 'build', { max: 500 }) ?? '',
   };
+}
+
+function importArray(value, label, max) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > max) fail(`${label} must contain at most ${max} items`);
+  return value;
+}
+
+export function validateImport(body) {
+  assertObject(body, 'import');
+  assertAllowedKeys(body, new Set(['mode', 'data']), 'import');
+  const mode = stringValue(body.mode, 'mode', { max: 20 }) ?? 'merge';
+  if (!['merge', 'emptyOnly'].includes(mode)) fail('mode is invalid');
+
+  const data = body.data;
+  assertObject(data, 'data');
+  assertAllowedKeys(
+    data,
+    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'settings', 'feedback']),
+    'data',
+  );
+
+  const exercises = importArray(data.exercises, 'exercises', 1000)
+    .map((exercise, index) => {
+      assertObject(exercise, `exercises[${index}]`);
+      return validateExercise(exercise, exercise.id);
+    });
+  const templates = importArray(data.templates, 'templates', 1000)
+    .map((template, index) => {
+      assertObject(template, `templates[${index}]`);
+      return validateTemplate(template, template.id);
+    });
+  const logs = importArray(data.logs, 'logs', 2000)
+    .map((log, index) => {
+      assertObject(log, `logs[${index}]`);
+      return validateLog(log, log.id);
+    });
+  const settings = data.settings === undefined || data.settings === null
+    ? undefined
+    : validateSettings(data.settings);
+
+  return { mode, exercises, templates, logs, settings };
 }
 
 export function validateAuthBody(body, provider) {
