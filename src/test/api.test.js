@@ -14,6 +14,7 @@ import {
   getTemplates, saveTemplate, deleteTemplate,
   getPrograms, saveProgram, deleteProgram,
   getLogs, saveLog, deleteLog, getLogsByDate, flushPendingLogSaves, flushPendingResourceChanges, pendingLogSaveCount, pendingChangeCount,
+  getPendingConflicts, pendingConflictCount, resolvePendingConflict,
   getSettings,
   exportData, previewImportData, importData, submitFeedback, deleteAccount,
 } from '../api.js';
@@ -268,6 +269,28 @@ describe('logs', () => {
     expect(pendingLogSaveCount()).toBe(0);
   });
 
+  it('keeps a queued active workout available after data reload', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    await saveLog({ ...LOG, status: 'active', exerciseItems: [{ exerciseId: 'ex-1', sets: [{ reps: '8', weight: '135' }] }] });
+    expect(pendingLogSaveCount()).toBe(1);
+
+    mockFetch({
+      'GET /exercises': () => ({ body: [] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [] }),
+      'GET /programs':  () => ({ body: [] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+    });
+
+    await initData();
+    expect(getLogs()).toHaveLength(1);
+    expect(getLogs()[0]).toMatchObject({ id: 'log-1', status: 'active', pendingSync: true });
+    expect(pendingLogSaveCount()).toBe(1);
+  });
+
   it('queues log deletes when the network is unavailable and flushes them later', async () => {
     mockFetch({
       'GET /exercises': () => ({ body: [] }),
@@ -350,6 +373,49 @@ describe('auth errors', () => {
 
     await expect(saveExercise({ id: 'ex-1', name: 'Bench Press', muscleGroup: 'Chest' }))
       .rejects.toThrow('Resource was updated elsewhere (Request ID: req-test-1)');
+  });
+
+  it('records side-by-side conflicts and can keep the local copy', async () => {
+    const remote = { ...EX, name: 'Cloud Bench', revision: 2, updatedAt: '2026-01-03T00:00:00.000Z' };
+    const bodies = [];
+    mockFetch({
+      'GET /exercises': () => ({ body: [{ ...EX, revision: 1, updatedAt: '2026-01-02T00:00:00.000Z' }] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [] }),
+      'GET /programs':  () => ({ body: [] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+      'PUT /exercises/ex-1': () => {
+        const [, opts] = globalThis.fetch.mock.calls.at(-1);
+        const body = JSON.parse(opts.body);
+        bodies.push(body);
+        if (bodies.length === 1) {
+          return {
+            status: 409,
+            body: {
+              error: 'Resource was updated elsewhere. Reload and try again.',
+              conflict: { expectedRevision: 1, actualRevision: 2, remote },
+            },
+            headers: { 'X-Request-Id': 'req-conflict-1' },
+          };
+        }
+        return { body: { ...body, revision: 3, updatedAt: '2026-01-04T00:00:00.000Z' } };
+      },
+    });
+    await initData();
+
+    await expect(saveExercise({ ...EX, name: 'Local Bench', revision: 1 })).rejects.toThrow('Resource was updated elsewhere');
+    expect(pendingConflictCount()).toBe(1);
+    expect(getPendingConflicts()[0]).toMatchObject({
+      id: 'exercises:ex-1',
+      resource: 'exercises',
+      local: { name: 'Local Bench' },
+      remote: { name: 'Cloud Bench', revision: 2 },
+    });
+
+    const resolved = await resolvePendingConflict('exercises:ex-1', 'local');
+    expect(bodies.map((body) => body.expectedRevision)).toEqual([1, 2]);
+    expect(resolved.exercises[0]).toMatchObject({ name: 'Local Bench', revision: 3 });
+    expect(pendingConflictCount()).toBe(0);
   });
 });
 

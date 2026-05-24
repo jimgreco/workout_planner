@@ -31,6 +31,9 @@ import {
   deleteAccount as deleteAccountData,
   flushPendingChanges,
   pendingChangeCount,
+  pendingConflictCount,
+  getPendingConflicts,
+  resolvePendingConflict,
 } from './api.js';
 import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
@@ -61,6 +64,56 @@ const emptyImportDraft = () => ({
   error: '',
 });
 
+const RESOURCE_LABELS = {
+  exercises: 'Exercise',
+  templates: 'Routine',
+  programs: 'Program',
+  logs: 'Workout',
+};
+
+function conflictTitle(conflict) {
+  const item = conflict.local || conflict.remote || {};
+  return item.name || `${RESOURCE_LABELS[conflict.resource] || 'Item'} ${conflict.itemId}`;
+}
+
+function formatConflictRevision(item) {
+  if (!item) return 'Missing';
+  const bits = [];
+  if (Number.isInteger(item.revision)) bits.push(`Rev ${item.revision}`);
+  if (item.updatedAt) bits.push(new Date(item.updatedAt).toLocaleString());
+  return bits.join(' · ') || 'Unsynced';
+}
+
+function conflictDetails(item, resource) {
+  if (!item) return ['Deleted or unavailable'];
+  if (resource === 'logs') {
+    const setCount = (item.exerciseItems || []).reduce((sum, ex) => sum + (ex.sets?.length || 0), 0);
+    return [
+      item.date ? `Date: ${item.date}` : '',
+      item.status ? `Status: ${item.status}` : '',
+      `${item.exerciseItems?.length || 0} exercises · ${setCount} sets`,
+    ].filter(Boolean);
+  }
+  if (resource === 'exercises') {
+    return [
+      item.muscleGroup ? `Group: ${item.muscleGroup}` : '',
+      item.personalBest?.weight ? `PB: ${item.personalBest.weight}` : '',
+      item.notes ? `Notes: ${item.notes}` : '',
+    ].filter(Boolean);
+  }
+  if (resource === 'programs') {
+    return [
+      item.active ? 'Active program' : 'Inactive program',
+      `${item.schedule?.length || 0} scheduled days`,
+      item.progressionRule ? `Rule: ${item.progressionRule}` : '',
+    ].filter(Boolean);
+  }
+  return [
+    item.description ? `Description: ${item.description}` : '',
+    `${item.exerciseItems?.length || 0} exercises`,
+  ].filter(Boolean);
+}
+
 export default function App() {
   // Dev bypass: skip login entirely with a mock user (VITE_DEV_BYPASS_AUTH=true).
   // Normal: require a stored profile + a still-valid Google credential.
@@ -85,6 +138,10 @@ export default function App() {
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   ));
   const [pendingSyncCount, setPendingSyncCount] = useState(() => pendingChangeCount());
+  const [conflictCount, setConflictCount] = useState(() => pendingConflictCount());
+  const [conflicts, setConflicts] = useState(() => getPendingConflicts());
+  const [reviewingConflicts, setReviewingConflicts] = useState(false);
+  const [resolvingConflictId, setResolvingConflictId] = useState(null);
   const [syncingPending, setSyncingPending] = useState(false);
 
   const [exercises, setExercises] = useState([]);
@@ -176,6 +233,8 @@ export default function App() {
       setLogs(updated.logs);
       setPrograms(updated.programs);
       setPendingSyncCount(pendingChangeCount());
+      setConflictCount(pendingConflictCount());
+      setConflicts(getPendingConflicts());
       if (pendingChangeCount() === 0) {
         setNotice({ type: 'success', message: 'Pending changes synced.' });
       }
@@ -204,6 +263,8 @@ export default function App() {
   useEffect(() => {
     const onSyncStatus = (event) => {
       setPendingSyncCount(event.detail?.pendingChanges ?? pendingChangeCount());
+      setConflictCount(event.detail?.pendingConflicts ?? pendingConflictCount());
+      setConflicts(getPendingConflicts());
     };
     window.addEventListener('wp:sync-status', onSyncStatus);
     return () => window.removeEventListener('wp:sync-status', onSyncStatus);
@@ -239,6 +300,31 @@ export default function App() {
     window.localStorage.setItem(ONBOARDING_KEY, 'true');
     setShowOnboarding(false);
     if (nextPage) setPage(nextPage);
+  }
+
+  async function handleResolveConflict(conflict, resolution) {
+    if (resolvingConflictId) return;
+    setResolvingConflictId(conflict.id);
+    try {
+      const updated = await resolvePendingConflict(conflict.id, resolution);
+      setExercises(updated.exercises);
+      setTemplates(updated.templates);
+      setPrograms(updated.programs);
+      setLogs(updated.logs);
+      setPendingSyncCount(pendingChangeCount());
+      setConflictCount(pendingConflictCount());
+      const remaining = getPendingConflicts();
+      setConflicts(remaining);
+      if (remaining.length === 0) setReviewingConflicts(false);
+      setNotice({
+        type: 'success',
+        message: resolution === 'local' ? 'Kept this device copy and synced it.' : 'Kept the cloud copy.',
+      });
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message || 'Could not resolve conflict.' });
+    } finally {
+      setResolvingConflictId(null);
+    }
   }
 
   function handleStartWorkout(template) {
@@ -524,6 +610,14 @@ export default function App() {
             </button>
           </div>
         )}
+        {conflictCount > 0 && (
+          <div className="app-notice error">
+            <span>{conflictCount} sync {conflictCount === 1 ? 'conflict needs' : 'conflicts need'} review.</span>
+            <button className="btn btn-secondary btn-sm" onClick={() => setReviewingConflicts(true)}>
+              Review
+            </button>
+          </div>
+        )}
         {page === 'exercises' && (
           <Exercises exercises={exercises} logs={logs} onUpdate={setExercises} />
         )}
@@ -566,6 +660,64 @@ export default function App() {
           />
         )}
       </main>
+
+      {reviewingConflicts && (
+        <Modal
+          title="Review Sync Conflicts"
+          onClose={() => !resolvingConflictId && setReviewingConflicts(false)}
+          footer={
+            <button className="btn btn-secondary" onClick={() => setReviewingConflicts(false)} disabled={!!resolvingConflictId}>
+              Done
+            </button>
+          }
+        >
+          <div className="conflict-modal">
+            {conflicts.length === 0 ? (
+              <p className="text-muted">No pending conflicts.</p>
+            ) : conflicts.map((conflict) => (
+              <div className="conflict-card" key={conflict.id}>
+                <div className="conflict-card-header">
+                  <div>
+                    <span className="section-kicker">{RESOURCE_LABELS[conflict.resource] || 'Item'}</span>
+                    <h3>{conflictTitle(conflict)}</h3>
+                  </div>
+                  {conflict.requestId && <span className="conflict-request-id">Request {conflict.requestId}</span>}
+                </div>
+                <div className="conflict-comparison">
+                  <div className="conflict-side">
+                    <span className="conflict-side-label">This device</span>
+                    <strong>{conflict.local?.name || 'Untitled'}</strong>
+                    <small>{formatConflictRevision(conflict.local)}</small>
+                    {conflictDetails(conflict.local, conflict.resource).map((line) => <p key={line}>{line}</p>)}
+                  </div>
+                  <div className="conflict-side">
+                    <span className="conflict-side-label">Cloud</span>
+                    <strong>{conflict.remote?.name || 'Untitled'}</strong>
+                    <small>{formatConflictRevision(conflict.remote)}</small>
+                    {conflictDetails(conflict.remote, conflict.resource).map((line) => <p key={line}>{line}</p>)}
+                  </div>
+                </div>
+                <div className="conflict-actions">
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleResolveConflict(conflict, 'remote')}
+                    disabled={!!resolvingConflictId}
+                  >
+                    Use Cloud Copy
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleResolveConflict(conflict, 'local')}
+                    disabled={!!resolvingConflictId}
+                  >
+                    {resolvingConflictId === conflict.id ? 'Saving...' : 'Keep This Device'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {accountModal === 'feedback' && (
         <Modal

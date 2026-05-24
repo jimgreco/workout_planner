@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct WorkoutPlannerApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var auth: AuthManager
     @StateObject private var store: WorkoutStore
 
@@ -24,6 +25,11 @@ struct WorkoutPlannerApp: App {
                     await auth.restore()
                     if auth.user != nil {
                         await store.loadData()
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active, auth.user != nil {
+                        store.appBecameActive()
                     }
                 }
         }

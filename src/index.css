@@ -752,6 +752,104 @@ input:focus, select:focus, textarea:focus {
   gap: 16px;
 }
 
+.conflict-modal {
+  display: grid;
+  gap: 14px;
+}
+
+.conflict-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.conflict-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conflict-card-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.conflict-request-id {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflict-comparison {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.conflict-side {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.conflict-side-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.conflict-side strong,
+.conflict-side small,
+.conflict-side p {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.conflict-side strong {
+  font-size: 14px;
+  margin-bottom: 3px;
+}
+
+.conflict-side small {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.conflict-side p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (min-width: 640px) {
+  .conflict-comparison {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .import-modal input[type="file"] {
   width: 100%;
   padding: 12px;

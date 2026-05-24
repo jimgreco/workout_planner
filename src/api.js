@@ -32,6 +32,7 @@ const cache = {
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
 const PENDING_LOG_QUEUE_KEY = 'forge.pendingLogSaves.v1';
 const PENDING_RESOURCE_QUEUE_KEY = 'forge.pendingResourceChanges.v1';
+const PENDING_CONFLICTS_KEY = 'forge.pendingConflicts.v1';
 
 function withExpectedRevision(item) {
   if (!Number.isInteger(item.revision)) return item;
@@ -62,6 +63,16 @@ function readPendingResourceQueue() {
   }
 }
 
+function readPendingConflicts() {
+  try {
+    const raw = storage()?.getItem(PENDING_CONFLICTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function writePendingLogQueue(queue) {
   const next = queue.filter((entry) => entry?.id);
   if (next.length === 0) {
@@ -82,13 +93,25 @@ function writePendingResourceQueue(queue) {
   dispatchSyncStatus();
 }
 
+function writePendingConflicts(conflicts) {
+  const next = conflicts.filter((entry) => entry?.id && entry?.resource);
+  if (next.length === 0) {
+    storage()?.removeItem(PENDING_CONFLICTS_KEY);
+  } else {
+    storage()?.setItem(PENDING_CONFLICTS_KEY, JSON.stringify(next));
+  }
+  dispatchSyncStatus();
+}
+
 function dispatchSyncStatus(extra = {}) {
   const pendingLogSaves = readPendingLogQueue().length;
   const pendingResourceChanges = readPendingResourceQueue().length;
+  const pendingConflicts = readPendingConflicts().length;
   window.dispatchEvent(new CustomEvent('wp:sync-status', {
     detail: {
       pendingLogSaves,
       pendingResourceChanges,
+      pendingConflicts,
       pendingChanges: pendingLogSaves + pendingResourceChanges,
       ...extra,
     },
@@ -100,6 +123,7 @@ function stripLocalLogFields(log) {
   delete clean.pendingSync;
   delete clean.pendingSyncAt;
   delete clean.syncError;
+  delete clean.syncConflict;
   delete clean.operation;
   return clean;
 }
@@ -110,6 +134,7 @@ function stripLocalResourceFields(item) {
   delete clean.pendingSyncAt;
   delete clean.pendingDelete;
   delete clean.syncError;
+  delete clean.syncConflict;
   return clean;
 }
 
@@ -220,6 +245,38 @@ function removePendingResourceChange(resource, id) {
   writePendingResourceQueue(readPendingResourceQueue().filter((entry) => !(entry.resource === resource && entry.id === id)));
 }
 
+function removePendingConflict(conflictId) {
+  writePendingConflicts(readPendingConflicts().filter((entry) => entry.id !== conflictId));
+}
+
+function pendingConflictId(resource, id) {
+  return `${resource}:${id}`;
+}
+
+function storePendingConflict(resource, operation, local, error) {
+  const id = local?.id;
+  if (!id) return undefined;
+  const conflictId = pendingConflictId(resource, id);
+  const conflict = {
+    id: conflictId,
+    resource,
+    operation,
+    itemId: id,
+    local,
+    remote: error?.conflict?.remote ?? null,
+    expectedRevision: error?.conflict?.expectedRevision,
+    actualRevision: error?.conflict?.actualRevision,
+    message: error?.message || 'This item changed on another device.',
+    requestId: error?.requestId || '',
+    createdAt: new Date().toISOString(),
+  };
+  writePendingConflicts([
+    ...readPendingConflicts().filter((entry) => entry.id !== conflictId),
+    conflict,
+  ]);
+  return conflict;
+}
+
 function isNetworkError(error) {
   return error instanceof TypeError || error?.name === 'TypeError' || error?.name === 'NetworkError';
 }
@@ -232,6 +289,14 @@ export function pendingChangeCount() {
   return readPendingLogQueue().length + readPendingResourceQueue().length;
 }
 
+export function pendingConflictCount() {
+  return readPendingConflicts().length;
+}
+
+export function getPendingConflicts() {
+  return readPendingConflicts();
+}
+
 /** Clear the cache (called on sign-out). */
 export function resetData() {
   cache.exercises = null;
@@ -241,6 +306,7 @@ export function resetData() {
   cache.settings  = null;
   writePendingLogQueue([]);
   writePendingResourceQueue([]);
+  writePendingConflicts([]);
 }
 
 // ── HTTP helper ────────────────────────────────────────────────────────────────
@@ -266,10 +332,11 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
-    const { message, requestId } = await responseError(res);
+    const { message, requestId, payload } = await responseError(res);
     const error = new Error(message);
     error.status = res.status;
     error.requestId = requestId;
+    error.conflict = payload?.conflict;
     window.dispatchEvent(new CustomEvent('wp:api-error', {
       detail: { message, status: res.status, requestId, conflict: res.status === 409 },
     }));
@@ -286,9 +353,9 @@ async function responseError(res) {
   if (!text) return { message: withRequestId(`API ${res.status}`), requestId };
   try {
     const payload = JSON.parse(text);
-    return { message: withRequestId(payload?.error || `API ${res.status}: ${text}`), requestId };
+    return { message: withRequestId(payload?.error || `API ${res.status}: ${text}`), requestId, payload };
   } catch {
-    return { message: withRequestId(`API ${res.status}: ${text}`), requestId };
+    return { message: withRequestId(`API ${res.status}: ${text}`), requestId, payload: null };
   }
 }
 
@@ -344,7 +411,9 @@ export async function saveExercise(exercise) {
     try {
       saved = await request('PUT', `/exercises/${id}`, withExpectedRevision(item));
       removePendingResourceChange('exercises', id);
+      removePendingConflict(pendingConflictId('exercises', id));
     } catch (error) {
+      if (error.status === 409) storePendingConflict('exercises', 'put', item, error);
       if (!isNetworkError(error)) throw error;
       saved = pendingResourceItem(item);
       queuePendingResourceChange('exercises', 'put', item);
@@ -383,7 +452,9 @@ export async function saveTemplate(template) {
     try {
       saved = await request('PUT', `/templates/${id}`, withExpectedRevision(item));
       removePendingResourceChange('templates', id);
+      removePendingConflict(pendingConflictId('templates', id));
     } catch (error) {
+      if (error.status === 409) storePendingConflict('templates', 'put', item, error);
       if (!isNetworkError(error)) throw error;
       saved = pendingResourceItem(item);
       queuePendingResourceChange('templates', 'put', item);
@@ -425,7 +496,9 @@ export async function saveProgram(program) {
     try {
       saved = await request('PUT', `/programs/${id}`, withExpectedRevision(item));
       removePendingResourceChange('programs', id);
+      removePendingConflict(pendingConflictId('programs', id));
     } catch (error) {
+      if (error.status === 409) storePendingConflict('programs', 'put', item, error);
       if (!isNetworkError(error)) throw error;
       saved = pendingResourceItem(item);
       queuePendingResourceChange('programs', 'put', item);
@@ -462,7 +535,9 @@ export async function saveLog(log) {
     try {
       saved = await request('PUT', `/logs/${id}`, withExpectedRevision(item));
       removePendingLogSave(id);
+      removePendingConflict(pendingConflictId('logs', id));
     } catch (error) {
+      if (error.status === 409) storePendingConflict('logs', 'put', item, error);
       if (!isNetworkError(error)) throw error;
       saved = queuePendingLogSave(item);
     }
@@ -503,16 +578,19 @@ export async function flushPendingLogSaves() {
         const saved = await request('PUT', `/logs/${entry.id}`, withExpectedRevision(stripLocalLogFields(entry)));
         upsertLogItem(saved);
       }
+      removePendingConflict(pendingConflictId('logs', entry.id));
     } catch (error) {
       remaining.push(entry);
       remaining.push(...queue.slice(index + 1));
       if (error.status === 409) {
+        const conflict = storePendingConflict('logs', entry.operation, entry, error);
         dispatchSyncStatus({ syncIssue: error.message });
         window.dispatchEvent(new CustomEvent('wp:api-error', {
           detail: {
             message: `A pending workout could not sync because it changed elsewhere. Reload before editing it again. ${error.message}`,
             status: 409,
             conflict: true,
+            conflictId: conflict?.id,
           },
         }));
         break;
@@ -551,16 +629,19 @@ export async function flushPendingResourceChanges() {
         const saved = await request('PUT', `/${entry.resource}/${entry.id}`, withExpectedRevision(stripLocalResourceFields(entry.item)));
         upsertCached(entry.resource, saved);
       }
+      removePendingConflict(pendingConflictId(entry.resource, entry.id));
     } catch (error) {
       remaining.push(entry);
       remaining.push(...queue.slice(index + 1));
       if (error.status === 409) {
+        const conflict = storePendingConflict(entry.resource, entry.operation, entry.item ?? { id: entry.id }, error);
         dispatchSyncStatus({ syncIssue: error.message });
         window.dispatchEvent(new CustomEvent('wp:api-error', {
           detail: {
             message: `A pending library change could not sync because it changed elsewhere. Reload before editing it again. ${error.message}`,
             status: 409,
             conflict: true,
+            conflictId: conflict?.id,
           },
         }));
         break;
@@ -588,6 +669,70 @@ export async function flushPendingChanges() {
     ...resources,
     logs: updatedLogs,
   };
+}
+
+function currentCollections() {
+  return {
+    exercises: getExercises(),
+    templates: getTemplates(),
+    programs: getPrograms(),
+    logs: getLogs(),
+  };
+}
+
+function removePendingChangeForConflict(conflict) {
+  if (conflict.resource === 'logs') {
+    removePendingLogSave(conflict.itemId);
+  } else {
+    removePendingResourceChange(conflict.resource, conflict.itemId);
+  }
+}
+
+function applyRemoteConflictItem(conflict) {
+  if (!conflict.remote) {
+    if (conflict.resource === 'logs') {
+      cache.logs = (cache.logs ?? []).filter((item) => item.id !== conflict.itemId);
+    } else {
+      cache[conflict.resource] = (cache[conflict.resource] ?? []).filter((item) => item.id !== conflict.itemId);
+    }
+    return;
+  }
+  if (conflict.resource === 'logs') {
+    upsertLogItem(conflict.remote);
+  } else {
+    upsertCached(conflict.resource, conflict.remote);
+  }
+}
+
+export async function resolvePendingConflict(conflictId, resolution) {
+  const conflict = readPendingConflicts().find((entry) => entry.id === conflictId);
+  if (!conflict) throw new Error('Conflict is no longer pending.');
+  if (!['local', 'remote'].includes(resolution)) throw new Error('Conflict resolution is invalid.');
+
+  if (resolution === 'remote') {
+    removePendingChangeForConflict(conflict);
+    applyRemoteConflictItem(conflict);
+    removePendingConflict(conflict.id);
+    return currentCollections();
+  }
+
+  const local = conflict.resource === 'logs'
+    ? stripLocalLogFields(conflict.local)
+    : stripLocalResourceFields(conflict.local);
+  const body = Number.isInteger(conflict.remote?.revision)
+    ? { ...local, revision: conflict.remote.revision }
+    : { ...local, revision: undefined };
+  const saved = (DEV_BYPASS && !BASE_URL)
+    ? { ...local, revision: Number.isInteger(conflict.remote?.revision) ? conflict.remote.revision + 1 : local.revision }
+    : await request('PUT', `/${conflict.resource}/${conflict.itemId}`, withExpectedRevision(body));
+  if (conflict.resource === 'logs') {
+    upsertLogItem(saved);
+  } else {
+    upsertCached(conflict.resource, saved);
+  }
+  removePendingChangeForConflict(conflict);
+  removePendingConflict(conflict.id);
+  return currentCollections();
 }
 
 export function getLogsByDate(dateStr) {

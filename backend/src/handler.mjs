@@ -109,8 +109,8 @@ function noContent() {
   };
 }
 
-function err(status, message) {
-  return response(status, { error: message });
+function err(status, message, details = undefined) {
+  return response(status, details ? { error: message, ...details } : { error: message });
 }
 
 function response(statusCode, body, headers = {}) {
@@ -633,7 +633,16 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
   }));
   const existing = result.Item;
   if (expectedRevision !== undefined && (existing?.revision ?? 0) !== expectedRevision) {
-    throw new ValidationError('Resource was updated elsewhere. Reload and try again.', { cause: 'conflict' });
+    throw new ValidationError('Resource was updated elsewhere. Reload and try again.', {
+      cause: 'conflict',
+      details: {
+        conflict: {
+          expectedRevision,
+          actualRevision: existing?.revision ?? 0,
+          remote: existing ? strip(existing) : null,
+        },
+      },
+    });
   }
   const now = new Date().toISOString();
   return {
@@ -925,7 +934,7 @@ export const handler = async (event) => {
     return finish(await handleAuthenticatedRoute(method, resource, id, event, `USER#${userId}`, params));
   } catch (error) {
     if (error instanceof ValidationError) {
-      return finish(err(error.cause === 'conflict' ? 409 : 400, error.message));
+      return finish(err(error.cause === 'conflict' ? 409 : 400, error.message, error.details));
     }
     if (error?.message === 'Missing token' || error?.message === 'Invalid session') {
       return finish(err(401, 'Unauthorized'));

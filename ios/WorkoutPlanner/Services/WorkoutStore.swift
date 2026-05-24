@@ -12,8 +12,12 @@ final class WorkoutStore: ObservableObject {
     @Published var pendingTemplate: WorkoutTemplate?
     @Published var editingLog: WorkoutLog?
     @Published var pendingSyncCount = 0
+    @Published var isSyncingPending = false
+    @Published var syncIssueMessage: String?
+    @Published var lastSyncAttemptAt: Date?
 
     private let auth: AuthManager
+    private var pendingRetryTask: Task<Void, Never>?
     private var api: WorkoutAPI? {
         guard let baseURL = AppConfiguration.apiBaseURL else { return nil }
         return WorkoutAPI(baseURL: baseURL) { [auth] in
@@ -33,9 +37,21 @@ final class WorkoutStore: ObservableObject {
     var syncStatusText: String {
         if usesLocalData { return "Local demo data" }
         if pendingSyncCount > 0 {
+            if isSyncingPending { return "Syncing \(pendingSyncCount) pending" }
             return "\(pendingSyncCount) pending \(pendingSyncCount == 1 ? "change" : "changes")"
         }
         return "Cloud sync"
+    }
+
+    var syncDetailText: String? {
+        if let syncIssueMessage {
+            return syncIssueMessage
+        }
+        if pendingSyncCount > 0 {
+            let retryText = lastSyncAttemptAt.map { "Last retry \(Self.syncAttemptFormatter.string(from: $0))" } ?? "Will retry automatically"
+            return "\(retryText) while Forge is open."
+        }
+        return nil
     }
 
     func reset() {
@@ -50,12 +66,16 @@ final class WorkoutStore: ObservableObject {
         PendingWorkoutLogQueue.clear()
         PendingResourceQueue.clear()
         refreshPendingSyncCount()
+        stopPendingSyncRetryLoop()
     }
 
     func loadData() async {
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            refreshPendingSyncCount()
+        }
 
         if usesLocalData {
             loadDemoDataIfNeeded()
@@ -239,12 +259,27 @@ final class WorkoutStore: ObservableObject {
     }
 
     func syncPendingChanges() async {
+        guard !isSyncingPending else { return }
         guard !usesLocalData else { return }
         guard let api else {
             errorMessage = "API configuration is missing. Install a build configured for Forge production."
             return
         }
+        isSyncingPending = true
+        lastSyncAttemptAt = Date()
+        syncIssueMessage = nil
+        defer {
+            isSyncingPending = false
+            refreshPendingSyncCount()
+        }
         await flushPendingChanges(using: api)
+    }
+
+    func appBecameActive() {
+        refreshPendingSyncCount()
+        guard pendingSyncCount > 0 else { return }
+        startPendingSyncRetryLoop()
+        Task { await syncPendingChanges() }
     }
 
     func submitFeedback(_ message: String) async throws {
@@ -497,6 +532,32 @@ final class WorkoutStore: ObservableObject {
 
     private func refreshPendingSyncCount() {
         pendingSyncCount = PendingWorkoutLogQueue.count + PendingResourceQueue.count
+        if usesLocalData {
+            stopPendingSyncRetryLoop()
+            return
+        }
+        if pendingSyncCount > 0 {
+            startPendingSyncRetryLoop()
+        } else {
+            syncIssueMessage = nil
+            stopPendingSyncRetryLoop()
+        }
+    }
+
+    private func startPendingSyncRetryLoop() {
+        guard pendingRetryTask == nil else { return }
+        pendingRetryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.syncPendingChanges()
+            }
+        }
+    }
+
+    private func stopPendingSyncRetryLoop() {
+        pendingRetryTask?.cancel()
+        pendingRetryTask = nil
     }
 
     private func mergePendingExercises(_ cloudExercises: [Exercise]) -> [Exercise] {
@@ -591,7 +652,8 @@ final class WorkoutStore: ObservableObject {
                 break
             } catch {
                 if !isNetworkAvailabilityError(error) {
-                    errorMessage = "A pending library change could not sync: \(error.localizedDescription)"
+                    syncIssueMessage = "A pending library change could not sync: \(error.localizedDescription)"
+                    errorMessage = syncIssueMessage
                 }
                 break
             }
@@ -625,13 +687,23 @@ final class WorkoutStore: ObservableObject {
                 break
             } catch {
                 if !isNetworkAvailabilityError(error) {
-                    errorMessage = "A pending workout could not sync: \(error.localizedDescription)"
+                    syncIssueMessage = "A pending workout could not sync: \(error.localizedDescription)"
+                    errorMessage = syncIssueMessage
                 }
                 break
             }
         }
         refreshPendingSyncCount()
     }
+}
+
+private extension WorkoutStore {
+    static let syncAttemptFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
 }
 
 private enum PendingResourceKind: String, Codable {

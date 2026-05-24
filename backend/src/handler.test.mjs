@@ -261,7 +261,11 @@ test('optional expectedRevision protects against stale overwrites', async () => 
     muscleGroup: 'Chest',
     expectedRevision: 1,
   }, headers));
+  const staleBody = JSON.parse(stale.body);
   assert.equal(stale.statusCode, 409);
+  assert.equal(staleBody.conflict.expectedRevision, 1);
+  assert.equal(staleBody.conflict.actualRevision, 2);
+  assert.equal(staleBody.conflict.remote.name, 'Bench');
 
   const fresh = await handler(event('PUT', '/exercises/bench', {
     id: 'bench',

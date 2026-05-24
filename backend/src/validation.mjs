@@ -3,6 +3,7 @@ export class ValidationError extends Error {
     super(message);
     this.name = 'ValidationError';
     if (options?.cause) this.cause = options.cause;
+    if (options?.details) this.details = options.details;
   }
 }
 

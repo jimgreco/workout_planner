@@ -16,6 +16,7 @@
 - Offline queues now cover exercise/routine updates and deletes, plus workout log deletes, with pending sync counts across web and iOS.
 - Web has a first-run start sheet and throttled client-error feedback reports for beta triage.
 - Web and iOS now have a server-backed program layer with weekday routine scheduling and next-workout starts.
+- Conflict responses now include the cloud copy, web can resolve side-by-side sync conflicts, iOS retries pending sync automatically while active, and active-workout offline recovery is covered by regression tests.
 
 ### Live Workout Execution
 
@@ -39,9 +40,9 @@
 
 ### Offline And Conflict Handling
 
-- Add richer side-by-side conflict recovery for resources updated on another device.
-- Add background retry scheduling and push-visible sync status on iOS.
-- Stress test active workout recovery across app restarts and long offline periods.
+- Add native side-by-side conflict choices on iOS if tester traffic shows multi-device edits are common.
+- Consider true iOS background task registration if automatic in-app retry is not enough.
+- Expand active-workout recovery tests to browser-level restart coverage once the local dev auth path has stable fixtures.
 
 ### Support And Admin
 
