@@ -12,7 +12,18 @@ struct TemplatesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if store.templates.isEmpty {
-                        EmptyState(icon: "square.grid.2x2", text: "No templates yet. Tap + to save your favorite workouts.")
+                        VStack(spacing: 12) {
+                            EmptyState(icon: "square.grid.2x2", text: "No templates yet. Tap + to save your favorite workouts.")
+
+                            Button {
+                                Task { await createStarterTemplates() }
+                            } label: {
+                                Label("Add Starter Workouts", systemImage: "plus")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(isSaving || store.exercises.isEmpty)
+                        }
                     } else {
                         VStack(spacing: 12) {
                             ForEach(store.templates) { template in
@@ -83,6 +94,51 @@ struct TemplatesView: View {
         } message: {
             Text("Delete \(deleteTarget?.name ?? "this template")? This cannot be undone.")
         }
+    }
+
+    private func createStarterTemplates() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            for template in StarterTemplates.makeTemplates(exercises: store.exercises, settings: store.settings) {
+                try await store.saveTemplate(template)
+            }
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private enum StarterTemplates {
+    private struct Starter {
+        let name: String
+        let description: String
+        let exerciseNames: [String]
+    }
+
+    private static let templates = [
+        Starter(name: "Push Starter", description: "Chest, shoulders, and triceps", exerciseNames: ["Bench Press", "Overhead Press", "Tricep Pushdown"]),
+        Starter(name: "Pull Starter", description: "Back and biceps", exerciseNames: ["Lat Pulldown", "Seated Cable Row", "Dumbbell Curl"]),
+        Starter(name: "Legs Starter", description: "Quads, hamstrings, and calves", exerciseNames: ["Barbell Squat", "Romanian Deadlift", "Standing Calf Raise"]),
+    ]
+
+    static func makeTemplates(exercises: [Exercise], settings: WorkoutSettings) -> [WorkoutTemplate] {
+        var exercisesByName: [String: Exercise] = [:]
+        for exercise in exercises where exercisesByName[exercise.name.lowercased()] == nil {
+            exercisesByName[exercise.name.lowercased()] = exercise
+        }
+        return templates.compactMap { starter in
+            let items = starter.exerciseNames.compactMap { exercisesByName[$0.lowercased()] }.map { exercise in
+                ExerciseItem(exerciseId: exercise.id, sets: defaultSets(settings))
+            }
+            guard !items.isEmpty else { return nil }
+            return WorkoutTemplate(name: starter.name, description: starter.description, exerciseItems: items)
+        }
+    }
+
+    private static func defaultSets(_ settings: WorkoutSettings) -> [WorkoutSet] {
+        Array(repeating: WorkoutSet(reps: String(settings.defaultReps), weight: ""), count: settings.defaultSets)
     }
 }
 

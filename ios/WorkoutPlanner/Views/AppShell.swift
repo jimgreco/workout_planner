@@ -3,6 +3,7 @@ import SwiftUI
 
 enum AppPage: String, CaseIterable, Identifiable, Hashable {
     case log
+    case progress
     case history
     case templates
     case exercises
@@ -13,6 +14,7 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
     var label: String {
         switch self {
         case .log: return "Burn!"
+        case .progress: return "Progress"
         case .history: return "History"
         case .templates: return "Workouts"
         case .exercises: return "Exercises"
@@ -23,6 +25,7 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
     var symbol: String {
         switch self {
         case .log: return "dumbbell.fill"
+        case .progress: return "chart.bar.fill"
         case .history: return "calendar"
         case .templates: return "list.clipboard"
         case .exercises: return "figure.strengthtraining.traditional"
@@ -73,6 +76,10 @@ struct AppShell: View {
                 tabContent(for: .log)
             }
 
+            Tab(AppPage.progress.label, systemImage: AppPage.progress.symbol, value: AppPage.progress) {
+                tabContent(for: .progress)
+            }
+
             Tab(AppPage.history.label, systemImage: AppPage.history.symbol, value: AppPage.history) {
                 tabContent(for: .history)
             }
@@ -109,6 +116,8 @@ struct AppShell: View {
         switch item {
         case .log:
             WorkoutLogView()
+        case .progress:
+            ProgressDashboardView()
         case .history:
             HistoryView(selectedPage: $page)
         case .templates:
@@ -186,8 +195,26 @@ private struct SettingsPage: View {
                     .disabled(accountBusy)
                 }
 
+                Section("Privacy & Support") {
+                    Link(destination: SupportLinks.support) {
+                        Label("Support", systemImage: "questionmark.circle")
+                    }
+
+                    Link(destination: SupportLinks.privacy) {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                    }
+
+                    LabeledContent("Sync", value: store.syncStatusText)
+                }
+
                 Section("App") {
                     LabeledContent("Build", value: AppConfiguration.buildLabel)
+                }
+
+                Section("Beta") {
+                    Text("Use TestFlight feedback or Send Feedback for issues. Export data before broad test runs.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.muted)
                 }
 
                 Section {
@@ -277,6 +304,11 @@ private struct SettingsPage: View {
 private struct ExportFile: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+private enum SupportLinks {
+    static let support = URL(string: "https://workout-planner.jim-greco.com/support.html")!
+    static let privacy = URL(string: "https://workout-planner.jim-greco.com/privacy.html")!
 }
 
 private struct FeedbackSheet: View {

@@ -5,11 +5,14 @@ import {
   Calendar as CalendarIcon, 
   ClipboardList,
   BicepsFlexed,
+  TrendingUp,
   LogOut,
   ChevronRight,
   Download,
   MessageSquare,
-  ShieldAlert
+  ShieldAlert,
+  LifeBuoy,
+  ExternalLink,
 } from 'lucide-react';
 import { getStoredUser, getStoredCredential, storeUser, clearStoredUser, DEV_BYPASS, DEV_USER } from './auth.js';
 import {
@@ -29,11 +32,13 @@ import Exercises from './pages/Exercises.jsx';
 import Templates from './pages/Templates.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
+import Progress from './pages/Progress.jsx';
 import Logo from './components/Logo.jsx';
 import Modal from './components/Modal.jsx';
 
 const PAGES = [
   { id: 'log',       label: 'Burn!',    icon: Dumbbell },
+  { id: 'progress',  label: 'Progress', icon: TrendingUp },
   { id: 'history',   label: 'History',   icon: CalendarIcon },
   { id: 'templates', label: 'Workouts',  icon: ClipboardList },
   { id: 'exercises', label: 'Exercises', icon: BicepsFlexed },
@@ -54,9 +59,12 @@ export default function App() {
   const [loadRequest, setLoadRequest] = useState(0);
   const [page, setPage]           = useState('log');
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [accountModal, setAccountModal] = useState(null); // null | 'feedback' | 'delete'
+  const [accountModal, setAccountModal] = useState(null); // null | 'feedback' | 'delete' | 'support'
   const [feedbackText, setFeedbackText] = useState('');
   const [accountBusy, setAccountBusy] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => (
+    typeof navigator !== 'undefined' ? !navigator.onLine : false
+  ));
 
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -131,6 +139,17 @@ export default function App() {
     return () => window.removeEventListener('wp:api-error', onApiError);
   }, []);
 
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOffline(!navigator.onLine);
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
   function handleStartWorkout(template) {
     setPendingTemplate(template);
     setPage('log');
@@ -202,6 +221,9 @@ export default function App() {
         </button>
         <button className="dropdown-item" onClick={() => { setFeedbackText(''); setAccountModal('feedback'); setShowUserMenu(false); }}>
           <MessageSquare size={16} /> Send feedback
+        </button>
+        <button className="dropdown-item" onClick={() => { setAccountModal('support'); setShowUserMenu(false); }}>
+          <LifeBuoy size={16} /> Privacy & support
         </button>
         <button className="dropdown-item danger-text" onClick={() => { setAccountModal('delete'); setShowUserMenu(false); }}>
           <ShieldAlert size={16} /> Delete account
@@ -346,8 +368,16 @@ export default function App() {
             <button className="btn-icon" onClick={() => setNotice(null)} aria-label="Dismiss notice">×</button>
           </div>
         )}
+        {isOffline && (
+          <div className="app-notice warning">
+            <span>Offline. Cloud saves are unavailable until your connection returns.</span>
+          </div>
+        )}
         {page === 'exercises' && (
-          <Exercises exercises={exercises} onUpdate={setExercises} />
+          <Exercises exercises={exercises} logs={logs} onUpdate={setExercises} />
+        )}
+        {page === 'progress' && (
+          <Progress logs={logs} exercises={exercises} />
         )}
         {page === 'templates' && (
           <Templates
@@ -424,6 +454,32 @@ export default function App() {
           }
         >
           <p>This permanently deletes your exercises, workouts, templates, settings, and feedback from the backend.</p>
+        </Modal>
+      )}
+
+      {accountModal === 'support' && (
+        <Modal title="Privacy & Support" onClose={() => setAccountModal(null)}>
+          <div className="support-modal">
+            <p className="support-build">Build {buildLabel()}</p>
+            <div className="support-links">
+              <a href="/support.html" target="_blank" rel="noreferrer" className="support-link">
+                Support <ExternalLink size={14} />
+              </a>
+              <a href="/privacy.html" target="_blank" rel="noreferrer" className="support-link">
+                Privacy Policy <ExternalLink size={14} />
+              </a>
+            </div>
+            <dl className="support-facts">
+              <div>
+                <dt>Request IDs</dt>
+                <dd>Error banners include a Request ID when the backend returns one.</dd>
+              </div>
+              <div>
+                <dt>Data controls</dt>
+                <dd>You can export your data or delete the account from this menu.</dd>
+              </div>
+            </dl>
+          </div>
         </Modal>
       )}
     </div>

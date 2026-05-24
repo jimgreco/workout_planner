@@ -48,7 +48,7 @@ struct WorkoutAPI {
     }
 
     func saveExercise(_ exercise: Exercise) async throws -> Exercise {
-        try await request("PUT", path: "/exercises/\(exercise.id)", body: exercise)
+        try await requestVersioned("PUT", path: "/exercises/\(exercise.id)", body: exercise)
     }
 
     func deleteExercise(_ id: String) async throws {
@@ -56,7 +56,7 @@ struct WorkoutAPI {
     }
 
     func saveTemplate(_ template: WorkoutTemplate) async throws -> WorkoutTemplate {
-        try await request("PUT", path: "/templates/\(template.id)", body: template)
+        try await requestVersioned("PUT", path: "/templates/\(template.id)", body: template)
     }
 
     func deleteTemplate(_ id: String) async throws {
@@ -64,7 +64,7 @@ struct WorkoutAPI {
     }
 
     func saveLog(_ log: WorkoutLog) async throws -> WorkoutLog {
-        try await request("PUT", path: "/logs/\(log.id)", body: log)
+        try await requestVersioned("PUT", path: "/logs/\(log.id)", body: log)
     }
 
     func deleteLog(_ id: String) async throws {
@@ -90,6 +90,12 @@ struct WorkoutAPI {
 
     private func request<T: Decodable, Body: Encodable>(_ method: String, path: String, body: Body) async throws -> T {
         let data = try encoder.encode(body)
+        let response = try await perform(method, path: path, body: data)
+        return try decoder.decode(T.self, from: response)
+    }
+
+    private func requestVersioned<T: Decodable, Body: VersionedRequestBody>(_ method: String, path: String, body: Body) async throws -> T {
+        let data = try encodeVersioned(body)
         let response = try await perform(method, path: path, body: data)
         return try decoder.decode(T.self, from: response)
     }
@@ -121,7 +127,23 @@ struct WorkoutAPI {
         }
         return data
     }
+
+    private func encodeVersioned<Body: VersionedRequestBody>(_ body: Body) throws -> Data {
+        let data = try encoder.encode(body)
+        guard let revision = body.revision else { return data }
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return data }
+        object["expectedRevision"] = revision
+        return try JSONSerialization.data(withJSONObject: object)
+    }
 }
+
+private protocol VersionedRequestBody: Encodable {
+    var revision: Int? { get }
+}
+
+extension Exercise: VersionedRequestBody {}
+extension WorkoutTemplate: VersionedRequestBody {}
+extension WorkoutLog: VersionedRequestBody {}
 
 private struct FeedbackRequest: Encodable {
     let message: String

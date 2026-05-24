@@ -10,6 +10,7 @@ Before inviting more testers:
    - `GOOGLE_CLIENT_IDS` includes web and iOS client IDs in the production backend environment.
    - `APPLE_CLIENT_IDS` includes `com.workoutplanner.ios`.
    - `ALLOWED_ORIGINS` includes only trusted web origins.
+   - `ADMIN_SUPPORT_SECRET` is set to a 32+ character random value for support-only routes.
 2. Run or confirm the `Deploy to EC2` workflow passed:
    - web lint, tests, build, and production audit
    - backend tests and production audit
@@ -133,6 +134,17 @@ When a tester reports "it won't load":
 5. Check recent backend logs for that `requestId`, `handler_error`, or elevated `401`/`500`.
 6. Ask them to send feedback from the account menu if they can open the app.
 7. For iOS, ask for the version/build shown in the account menu.
+
+Recent in-app feedback is available through the secret-protected support route:
+
+```bash
+curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
+  "https://workout-planner.jim-greco.com/api/admin/feedback?limit=25"
+```
+
+The support response intentionally returns a short `userHash` instead of raw
+provider IDs or email addresses. Use the hash only to group related feedback
+while triaging an issue.
 
 Do not ask testers for provider tokens, app session tokens, or screenshots that
 show private workout notes unless they volunteer them.

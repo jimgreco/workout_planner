@@ -187,8 +187,9 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   height: 100%;
+  min-width: 0;
 }
 
 .mobile-nav-item {
@@ -201,10 +202,13 @@ html, body, #root {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 4px 12px;
+  padding: 4px 4px;
   font-family: inherit;
   transition: all 0.2s;
   border-radius: var(--radius-sm);
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 62px;
 }
 .mobile-nav-item.active {
   color: var(--accent);
@@ -213,6 +217,9 @@ html, body, #root {
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mobile-nav-right {
@@ -282,6 +289,10 @@ html, body, #root {
 .app-notice.success {
   border-color: color-mix(in srgb, var(--success) 40%, var(--border));
   color: var(--success);
+}
+.app-notice.warning {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  color: var(--text);
 }
 .page {
   padding: 24px 16px;
@@ -522,6 +533,62 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+.support-modal {
+  display: grid;
+  gap: 18px;
+}
+
+.support-build {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.support-links {
+  display: grid;
+  gap: 10px;
+}
+
+.support-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+  background: var(--surface);
+}
+
+.support-facts {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.support-facts div {
+  display: grid;
+  gap: 4px;
+}
+
+.support-facts dt {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.support-facts dd {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 /* ── Page Layout ────────────────────────────────────────── */
 .action-row {
   display: flex;
@@ -746,6 +813,355 @@ input:focus, select:focus, textarea:focus {
   box-shadow: var(--shadow-sm);
 }
 .exercise-item .ex-name { font-weight: 700; font-size: 16px; }
+
+/* ── Progress Dashboard ────────────────────────────────── */
+.progress-heading {
+  align-items: center;
+}
+
+.range-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.range-toggle button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.range-toggle button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.metric-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  color: var(--accent);
+}
+
+.metric-value {
+  font-size: 19px;
+  font-weight: 850;
+  line-height: 1.1;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.metric-label,
+.metric-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.metric-detail {
+  font-weight: 600;
+}
+
+.progress-callout {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+}
+
+.progress-callout-title {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.progress-callout-meta {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.progress-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.progress-panel {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.panel-heading h2 {
+  margin: 0;
+}
+
+.weekly-bars {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  min-height: 172px;
+}
+
+.weekly-bar-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.weekly-bar-track {
+  width: 100%;
+  height: 116px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.weekly-bar-fill {
+  width: 100%;
+  min-height: 8px;
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+}
+
+.weekly-bar-label,
+.weekly-bar-value {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.weekly-bar-value {
+  min-height: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.split-list,
+.progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.split-row-header,
+.progress-list-item,
+.exercise-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.split-row-header {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.split-row-header span:last-child {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.split-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.split-bar div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+}
+
+.progress-list-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--surface);
+}
+
+.progress-list-item:last-child {
+  border-bottom: 0;
+}
+
+.progress-list-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.progress-list-meta {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.progress-list-value {
+  flex-shrink: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.empty-state.compact {
+  padding: 20px 0;
+}
+
+.empty-state.compact p {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+@media (min-width: 768px) {
+  .metric-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .progress-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .progress-panel-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Exercise Detail ────────────────────────────────────── */
+.exercise-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.exercise-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-stat {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.detail-stat span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.detail-stat strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.detail-section h3 {
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.exercise-trend,
+.exercise-trend-empty {
+  width: 100%;
+  min-height: 132px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(to bottom, transparent 32%, var(--surface) 32% 33%, transparent 33% 65%, var(--surface) 65% 66%, transparent 66%);
+}
+
+.exercise-trend-empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.exercise-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exercise-session {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.exercise-session .history-sets {
+  margin-top: 10px;
+}
 
 /* ── Sets Table ─────────────────────────────────────────── */
 .badge {
@@ -1066,6 +1482,11 @@ input:focus, select:focus, textarea:focus {
 .mb-0 { margin-bottom: 0 !important; }
 .text-muted { color: var(--text-muted); font-size: 13px; }
 .w-full { width: 100%; }
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

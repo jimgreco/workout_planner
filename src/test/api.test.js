@@ -123,6 +123,26 @@ describe('exercises', () => {
     const list = await deleteExercise(EX.id);
     expect(list).toHaveLength(0);
   });
+
+  it('sends expectedRevision for versioned writes', async () => {
+    const bodies = [];
+    mockFetch({
+      'PUT *': () => {
+        const [, opts] = globalThis.fetch.mock.calls.at(-1);
+        const body = JSON.parse(opts.body);
+        bodies.push(body);
+        const saved = { ...body };
+        delete saved.expectedRevision;
+        return { body: saved };
+      },
+    });
+
+    await saveExercise({ ...EX, revision: 2 });
+    await saveTemplate({ ...TMPL, revision: 5 });
+    await saveLog({ ...LOG, revision: 7 });
+
+    expect(bodies.map((body) => body.expectedRevision)).toEqual([2, 5, 7]);
+  });
 });
 
 // ── Templates ──────────────────────────────────────────────────────────────────

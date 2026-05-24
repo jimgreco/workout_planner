@@ -30,6 +30,11 @@ const cache = {
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
 
+function withExpectedRevision(item) {
+  if (!Number.isInteger(item.revision)) return item;
+  return { ...item, expectedRevision: item.revision };
+}
+
 /** Clear the cache (called on sign-out). */
 export function resetData() {
   cache.exercises = null;
@@ -120,7 +125,7 @@ export function getExercises() { return cache.exercises ?? []; }
 export async function saveExercise(exercise) {
   const id = exercise.id ?? crypto.randomUUID();
   const item = { ...exercise, id };
-  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/exercises/${id}`, item);
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/exercises/${id}`, withExpectedRevision(item));
   const list = cache.exercises ?? [];
   const idx = list.findIndex((e) => e.id === id);
   cache.exercises = idx >= 0
@@ -143,7 +148,7 @@ export function getTemplates() {
 export async function saveTemplate(template) {
   const id = template.id ?? crypto.randomUUID();
   const item = { ...template, id };
-  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/templates/${id}`, item);
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/templates/${id}`, withExpectedRevision(item));
   const list = cache.templates ?? [];
   const idx = list.findIndex((t) => t.id === id);
   const updated = idx >= 0
@@ -165,7 +170,7 @@ export function getLogs() { return cache.logs ?? []; }
 export async function saveLog(log) {
   const id = log.id ?? crypto.randomUUID();
   const item = { ...log, id };
-  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/logs/${id}`, item);
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/logs/${id}`, withExpectedRevision(item));
   const list = cache.logs ?? [];
   const idx = list.findIndex((l) => l.id === id);
   cache.logs = idx >= 0

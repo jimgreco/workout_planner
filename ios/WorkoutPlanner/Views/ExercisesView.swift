@@ -33,6 +33,7 @@ struct ExercisesView: View {
                             ForEach(filtered) { exercise in
                                 ExerciseRow(
                                     exercise: exercise,
+                                    onDetail: { sheet = .detail(exercise) },
                                     onPB: { sheet = .personalBest(exercise) },
                                     onEdit: { sheet = .form(exercise) },
                                     onDelete: { deleteTarget = exercise }
@@ -59,6 +60,8 @@ struct ExercisesView: View {
                 ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
             case let .personalBest(exercise):
                 PersonalBestSheet(exercise: exercise, isSaving: $isSaving)
+            case let .detail(exercise):
+                ExerciseDetailSheet(exercise: exercise)
             }
         }
         .alert("Delete Exercise", isPresented: Binding(
@@ -133,17 +136,20 @@ private struct ExerciseSearchBar: View {
 private enum ExerciseSheet: Identifiable {
     case form(Exercise)
     case personalBest(Exercise)
+    case detail(Exercise)
 
     var id: String {
         switch self {
         case let .form(exercise): return "form-\(exercise.id)"
         case let .personalBest(exercise): return "pb-\(exercise.id)"
+        case let .detail(exercise): return "detail-\(exercise.id)"
         }
     }
 }
 
 private struct ExerciseRow: View {
     let exercise: Exercise
+    let onDetail: () -> Void
     let onPB: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -175,6 +181,7 @@ private struct ExerciseRow: View {
             Spacer()
 
             HStack(spacing: 8) {
+                IconCircleButton(systemName: "chart.bar", action: onDetail)
                 IconCircleButton(systemName: "star", tint: exercise.personalBest == nil ? Theme.text : Theme.accent, action: onPB)
                 IconCircleButton(systemName: "pencil", action: onEdit)
                 IconCircleButton(systemName: "trash", tint: Theme.danger, action: onDelete)
@@ -188,6 +195,149 @@ private struct ExerciseRow: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+    }
+}
+
+private struct ExerciseDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: WorkoutStore
+    let exercise: Exercise
+
+    private var summary: ExerciseProgressSummary {
+        ExerciseProgressSummary(exercise: exercise, logs: store.logs)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ExerciseDetailMetric(title: "Sessions", value: "\(summary.sessions)")
+                        ExerciseDetailMetric(title: "Total Volume", value: formatVolume(summary.totalVolume))
+                        ExerciseDetailMetric(title: "Total Sets", value: "\(summary.totalSets)")
+                        ExerciseDetailMetric(title: "Best Set", value: summary.bestSet.map { setLabel($0.set, weightType: $0.weightType) } ?? "-")
+                    }
+
+                    ProgressPanel(title: "Trend") {
+                        ExerciseDetailTrend(history: summary.history)
+                    }
+
+                    ProgressPanel(title: "Sessions") {
+                        if summary.history.isEmpty {
+                            EmptyState(icon: "calendar", text: "No finished workouts include this exercise yet.")
+                                .padding(.vertical, -12)
+                        } else {
+                            VStack(spacing: 14) {
+                                ForEach(summary.history) { entry in
+                                    ExerciseSessionDetail(entry: entry)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .navigationTitle(exercise.name)
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct ExerciseDetailMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 16, weight: .heavy))
+                .foregroundStyle(Theme.text)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private struct ExerciseDetailTrend: View {
+    let history: [ExerciseHistoryEntry]
+
+    var body: some View {
+        let values = history.reversed().map { $0.volume > 0 ? $0.volume : Double($0.setCount) }
+        if values.count < 2 {
+            EmptyState(icon: "chart.bar", text: "More sessions needed for a trend.")
+                .padding(.vertical, -12)
+        } else {
+            let maxValue = max(values.max() ?? 1, 1)
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Theme.accent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: max(10, CGFloat(value / maxValue) * 128))
+                }
+            }
+            .frame(height: 140)
+        }
+    }
+}
+
+private struct ExerciseSessionDetail: View {
+    let entry: ExerciseHistoryEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.logName)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                    Text(DateHelpers.date(from: entry.date).formatted(.dateTime.month(.abbreviated).day().year()))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                }
+                Spacer()
+                Text(formatVolume(entry.volume))
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+            }
+
+            FlowLayout(spacing: 6) {
+                ForEach(entry.item.sets.indices, id: \.self) { index in
+                    Text(setLabel(entry.item.sets[index], weightType: entry.item.weightType))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Theme.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 }
 

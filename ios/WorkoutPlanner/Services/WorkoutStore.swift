@@ -27,6 +27,10 @@ final class WorkoutStore: ObservableObject {
         AppConfiguration.allowsLocalFallback && (auth.isDemoMode || api == nil)
     }
 
+    var syncStatusText: String {
+        usesLocalData ? "Local demo data" : "Cloud sync"
+    }
+
     func reset() {
         exercises = []
         templates = []

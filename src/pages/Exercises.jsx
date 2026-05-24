@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
+import { BarChart3, Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
+import { formatVolume, getExerciseHistory, setLabel, summarizeExercise } from '../progress.js';
 
 const MUSCLE_GROUPS = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
@@ -11,13 +12,117 @@ const MUSCLE_GROUPS = [
 
 const empty = () => ({ name: '', muscleGroup: 'Other', notes: '' });
 
-export default function Exercises({ exercises, onUpdate }) {
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function ExerciseTrend({ history }) {
+  const data = [...history].reverse().map((entry) => entry.volume || entry.setCount);
+  if (data.length < 2) {
+    return (
+      <div className="exercise-trend-empty">
+        <BarChart3 size={28} />
+      </div>
+    );
+  }
+
+  const width = 420;
+  const height = 132;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const span = max - min || 1;
+  const points = data.map((value, index) => {
+    const x = data.length === 1 ? width / 2 : (index / (data.length - 1)) * width;
+    const y = height - ((value - min) / span) * (height - 18) - 9;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <svg className="exercise-trend" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Exercise trend">
+      <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      {points.split(' ').map((point) => {
+        const [x, y] = point.split(',');
+        return <circle key={point} cx={x} cy={y} r="4" fill="var(--accent)" />;
+      })}
+    </svg>
+  );
+}
+
+function ExerciseDetail({ exercise, logs }) {
+  const summary = summarizeExercise(exercise, logs);
+  const history = getExerciseHistory(exercise.id, logs);
+  const bestLabel = summary.best ? setLabel(summary.best.set, summary.best.item.weightType) : '—';
+
+  return (
+    <div className="exercise-detail">
+      <div className="exercise-detail-summary">
+        <div className="detail-stat">
+          <span>Sessions</span>
+          <strong>{summary.sessions}</strong>
+        </div>
+        <div className="detail-stat">
+          <span>Total Volume</span>
+          <strong>{formatVolume(summary.totalVolume)}</strong>
+        </div>
+        <div className="detail-stat">
+          <span>Total Sets</span>
+          <strong>{summary.totalSets}</strong>
+        </div>
+        <div className="detail-stat">
+          <span>Best Set</span>
+          <strong>{bestLabel}</strong>
+        </div>
+      </div>
+
+      <section className="detail-section">
+        <h3>Trend</h3>
+        <ExerciseTrend history={history} />
+      </section>
+
+      <section className="detail-section">
+        <h3>Sessions</h3>
+        {history.length === 0 ? (
+          <p className="text-muted">No finished workouts include this exercise yet.</p>
+        ) : (
+          <div className="exercise-session-list">
+            {history.map((entry) => (
+              <div className="exercise-session" key={entry.id}>
+                <div className="exercise-session-header">
+                  <div>
+                    <div className="progress-list-title">{entry.logName}</div>
+                    <div className="progress-list-meta">{formatDate(entry.date)}</div>
+                  </div>
+                  <div className="progress-list-value">{formatVolume(entry.volume)}</div>
+                </div>
+                <div className="history-sets">
+                  {entry.sets.map((set, index) => (
+                    <span className="history-set" key={`${entry.id}-${index}`}>
+                      {setLabel(set, entry.item.weightType)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export default function Exercises({ exercises, logs = [], onUpdate }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'pb'
   const [form, setForm]                 = useState(empty());
   const [search, setSearch]             = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saving, setSaving]             = useState(false);
   const [pbForm, setPbForm]             = useState(null);
+  const [detailExercise, setDetailExercise] = useState(null);
 
   const filtered = exercises
     .filter(
@@ -123,6 +228,9 @@ export default function Exercises({ exercises, onUpdate }) {
               </div>
             </div>
             <div className="card-actions" style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-icon" title="View progress" onClick={() => setDetailExercise(ex)}>
+                <BarChart3 size={16} />
+              </button>
               <button className="btn-icon" title="Edit PB" onClick={() => openPB(ex)}>
                 <Star size={16} fill={ex.personalBest ? 'currentColor' : 'none'} />
               </button>
@@ -233,6 +341,18 @@ export default function Exercises({ exercises, onUpdate }) {
           }
         >
           <p>Delete <strong>{confirmDelete.name}</strong>? This cannot be undone.</p>
+        </Modal>
+      )}
+
+      {detailExercise && (
+        <Modal
+          title={detailExercise.name}
+          onClose={() => setDetailExercise(null)}
+          footer={
+            <button className="btn btn-primary" onClick={() => setDetailExercise(null)}>Done</button>
+          }
+        >
+          <ExerciseDetail exercise={detailExercise} logs={logs} />
         </Modal>
       )}
     </div>

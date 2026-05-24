@@ -6,6 +6,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 
 process.env.NODE_ENV = 'test';
@@ -17,7 +18,7 @@ process.env.APP_VERSION = 'test-version';
 process.env.GIT_COMMIT = 'abcdef1';
 process.env.BUILD_TIME = '2026-05-22T00:00:00Z';
 
-const { createAppSession } = await import('./session.mjs');
+const { createAppSession, hashUserId } = await import('./session.mjs');
 const { __setTestDb, handler } = await import('./handler.mjs');
 
 function event(method, rawPath, body, headers = {}) {
@@ -64,6 +65,13 @@ function fakeDb(seed = []) {
         ));
         return { Items: queryItems.slice(0, command.input.Limit ?? queryItems.length) };
       }
+      if (command instanceof ScanCommand) {
+        const prefix = command.input.ExpressionAttributeValues?.[':prefix'];
+        const scanItems = [...items.values()].filter((item) => (
+          !prefix || item.SK.startsWith(prefix)
+        ));
+        return { Items: scanItems.slice(0, command.input.Limit ?? scanItems.length) };
+      }
       throw new Error(`Unexpected command ${command.constructor.name}`);
     },
   };
@@ -93,6 +101,56 @@ test('data routes require an app session', async () => {
   const result = await handler(event('GET', '/exercises'));
   assert.equal(result.statusCode, 401);
   assert.equal(typeof JSON.parse(result.body).requestId, 'string');
+});
+
+test('admin feedback route requires support secret', async () => {
+  const originalSecret = process.env.ADMIN_SUPPORT_SECRET;
+  __setTestDb(fakeDb());
+
+  try {
+    delete process.env.ADMIN_SUPPORT_SECRET;
+    const unconfigured = await handler(event('GET', '/admin/feedback'));
+    assert.equal(unconfigured.statusCode, 401);
+
+    process.env.ADMIN_SUPPORT_SECRET = 'test-admin-support-secret';
+    const wrongSecret = await handler(event('GET', '/admin/feedback', undefined, {
+      'X-Admin-Support-Secret': 'wrong-secret',
+    }));
+    assert.equal(wrongSecret.statusCode, 401);
+  } finally {
+    if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
+    else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
+  }
+});
+
+test('admin feedback route returns sanitized recent feedback', async () => {
+  const originalSecret = process.env.ADMIN_SUPPORT_SECRET;
+  process.env.ADMIN_SUPPORT_SECRET = 'test-admin-support-secret';
+  __setTestDb(fakeDb([
+    { PK: 'USER#user-1', SK: 'FEEDBACK#2026-01-01T00:00:00.000Z#a', id: 'a', createdAt: '2026-01-01T00:00:00.000Z', message: 'Older', build: '1.0' },
+    { PK: 'USER#user-2', SK: 'FEEDBACK#2026-01-02T00:00:00.000Z#b', id: 'b', createdAt: '2026-01-02T00:00:00.000Z', message: 'Newer', build: '1.1' },
+    { PK: 'USER#user-2', SK: 'LOG#ignored', id: 'ignored', name: 'Ignored', date: '2026-01-02', exerciseItems: [], status: 'finished' },
+  ]));
+
+  try {
+    const result = await handler(event('GET', '/admin/feedback?limit=1', undefined, {
+      'X-Admin-Support-Secret': 'test-admin-support-secret',
+    }));
+    const body = JSON.parse(result.body);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.items.length, 1);
+    assert.deepEqual(body.items[0], {
+      id: 'b',
+      createdAt: '2026-01-02T00:00:00.000Z',
+      message: 'Newer',
+      build: '1.1',
+      userHash: hashUserId('user-2'),
+    });
+  } finally {
+    if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
+    else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
+  }
 });
 
 test('auth routes reject malformed JSON before provider verification', async () => {

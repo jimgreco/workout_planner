@@ -18,13 +18,25 @@ struct Exercise: Codable, Identifiable, Equatable {
     var muscleGroup: String
     var notes: String?
     var personalBest: PersonalBest?
+    var updatedAt: String?
+    var revision: Int?
 
-    init(id: String = UUID().uuidString, name: String, muscleGroup: String = "Other", notes: String? = nil, personalBest: PersonalBest? = nil) {
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        muscleGroup: String = "Other",
+        notes: String? = nil,
+        personalBest: PersonalBest? = nil,
+        updatedAt: String? = nil,
+        revision: Int? = nil
+    ) {
         self.id = id
         self.name = name
         self.muscleGroup = muscleGroup
         self.notes = notes
         self.personalBest = personalBest
+        self.updatedAt = updatedAt
+        self.revision = revision
     }
 }
 
@@ -71,12 +83,23 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
     var name: String
     var description: String?
     var exerciseItems: [ExerciseItem]
+    var updatedAt: String?
+    var revision: Int?
 
-    init(id: String = UUID().uuidString, name: String, description: String? = "", exerciseItems: [ExerciseItem] = []) {
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        description: String? = "",
+        exerciseItems: [ExerciseItem] = [],
+        updatedAt: String? = nil,
+        revision: Int? = nil
+    ) {
         self.id = id
         self.name = name
         self.description = description
         self.exerciseItems = exerciseItems
+        self.updatedAt = updatedAt
+        self.revision = revision
     }
 }
 
@@ -91,6 +114,8 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
     var status: String?
     var hasPB: Bool?
     var pbExerciseIds: [String]?
+    var updatedAt: String?
+    var revision: Int?
 
     init(
         id: String = UUID().uuidString,
@@ -102,7 +127,9 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         endTime: String? = nil,
         status: String? = nil,
         hasPB: Bool? = nil,
-        pbExerciseIds: [String]? = nil
+        pbExerciseIds: [String]? = nil,
+        updatedAt: String? = nil,
+        revision: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -114,6 +141,8 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         self.status = status
         self.hasPB = hasPB
         self.pbExerciseIds = pbExerciseIds
+        self.updatedAt = updatedAt
+        self.revision = revision
     }
 }
 

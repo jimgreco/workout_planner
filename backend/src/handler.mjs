@@ -6,6 +6,7 @@
  *   GET    /version
  *   POST   /auth/google
  *   POST   /auth/apple
+ *   GET    /admin/feedback (requires X-Admin-Support-Secret)
  *
  * Authenticated routes require an app session token minted by the auth routes:
  *   GET    /exercises | /templates | /logs | /settings
@@ -16,7 +17,7 @@
  *   DELETE /account
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -25,6 +26,7 @@ import {
   DeleteCommand,
   GetCommand,
   BatchWriteCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { OAuth2Client } from 'google-auth-library';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -134,6 +136,17 @@ function strip({ PK, SK, ...rest }) {
 function requestHeader(headers, name) {
   const lowerName = name.toLowerCase();
   return Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === lowerName)?.[1];
+}
+
+function secretMatches(provided, expected) {
+  if (typeof provided !== 'string' || typeof expected !== 'string' || !expected) return false;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return providedBuffer.length === expectedBuffer.length && timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+function hasAdminSupportAccess(event) {
+  return secretMatches(requestHeader(event.headers, 'x-admin-support-secret'), process.env.ADMIN_SUPPORT_SECRET);
 }
 
 function requestIdFrom(event) {
@@ -425,6 +438,15 @@ function parseOptionalLogQuery(params) {
   };
 }
 
+function parseAdminLimit(params) {
+  const raw = params.get('limit') ?? '50';
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new ValidationError('limit must be an integer between 1 and 100');
+  }
+  return limit;
+}
+
 function filteredLogPage(items, query) {
   const logs = items
     .map(strip)
@@ -469,6 +491,48 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
     updatedAt: now,
     revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,
   };
+}
+
+function supportFeedbackItem(item) {
+  const userId = String(item.PK ?? '').replace(/^USER#/, '');
+  return {
+    id: item.id,
+    createdAt: item.createdAt,
+    message: item.message ?? '',
+    build: item.build ?? '',
+    userHash: hashUserId(userId),
+  };
+}
+
+async function scanFeedback(limit) {
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const result = await db.send(new ScanCommand({
+      TableName: TABLE,
+      FilterExpression: 'begins_with(#sk, :prefix)',
+      ExpressionAttributeNames: { '#sk': 'SK' },
+      ExpressionAttributeValues: { ':prefix': 'FEEDBACK#' },
+      Limit: Math.max(limit, 25),
+      ExclusiveStartKey,
+    }));
+    items.push(...(result.Items ?? []));
+    ExclusiveStartKey = result.LastEvaluatedKey;
+  } while (ExclusiveStartKey && items.length < limit);
+
+  return items
+    .map(supportFeedbackItem)
+    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+    .slice(0, limit);
+}
+
+async function handleAdminRoute(method, resource, event, params) {
+  if (!hasAdminSupportAccess(event)) return err(401, 'Unauthorized');
+  if (resource === 'feedback' && method === 'GET') {
+    const limit = parseAdminLimit(params);
+    return ok({ items: await scanFeedback(limit) });
+  }
+  return err(404, 'Not found');
 }
 
 async function handleAuthenticatedRoute(method, resource, id, event, PK, params) {
@@ -609,6 +673,10 @@ export const handler = async (event) => {
         }));
         return finish(err(401, 'Invalid credentials'));
       }
+    }
+
+    if (resource === 'admin' && id) {
+      return finish(await handleAdminRoute(method, id, event, params));
     }
 
     userId = await verifyRequestUser(event);

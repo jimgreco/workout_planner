@@ -5,6 +5,38 @@ import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import { saveTemplate, deleteTemplate, saveSettings } from '../api.js';
 
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
+const STARTER_TEMPLATES = [
+  {
+    name: 'Push Starter',
+    description: 'Chest, shoulders, and triceps',
+    exerciseNames: ['Bench Press', 'Overhead Press', 'Tricep Pushdown'],
+  },
+  {
+    name: 'Pull Starter',
+    description: 'Back and biceps',
+    exerciseNames: ['Lat Pulldown', 'Seated Cable Row', 'Dumbbell Curl'],
+  },
+  {
+    name: 'Legs Starter',
+    description: 'Quads, hamstrings, and calves',
+    exerciseNames: ['Barbell Squat', 'Romanian Deadlift', 'Standing Calf Raise'],
+  },
+];
+
+function starterSets(settings) {
+  return Array.from({ length: settings.defaultSets }, () => ({ reps: String(settings.defaultReps), weight: '' }));
+}
+
+function buildStarterTemplates(exercises, settings) {
+  const byName = new Map(exercises.map((exercise) => [exercise.name.toLowerCase(), exercise]));
+  return STARTER_TEMPLATES.map((starter) => {
+    const exerciseItems = starter.exerciseNames
+      .map((name) => byName.get(name.toLowerCase()))
+      .filter(Boolean)
+      .map((exercise) => ({ exerciseId: exercise.id, weightType: 'weight', sets: starterSets(settings) }));
+    return { name: starter.name, description: starter.description, exerciseItems };
+  }).filter((template) => template.exerciseItems.length > 0);
+}
 
 export default function Templates({ templates, exercises, settings, onUpdate, onSettingsUpdate, onStartWorkout }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view' | 'settings'
@@ -45,6 +77,20 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
     }
   }
 
+  async function handleCreateStarters() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      let updated = templates;
+      for (const template of buildStarterTemplates(exercises, settings)) {
+        updated = await saveTemplate(template);
+      }
+      onUpdate(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleDelete(id) {
     setSaving(true);
     try {
@@ -76,7 +122,12 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
         {templates.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon"><LayoutGrid size={48} /></div>
-            <p>No templates yet. Create one to save your favourite workouts!</p>
+            <p>No templates yet. Create one to save your favorite workouts!</p>
+            <div className="empty-actions">
+              <button className="btn btn-primary" onClick={handleCreateStarters} disabled={saving || exercises.length === 0}>
+                <Plus size={16} /> Add Starter Workouts
+              </button>
+            </div>
           </div>
         )}
 
