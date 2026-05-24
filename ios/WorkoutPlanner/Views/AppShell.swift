@@ -6,8 +6,11 @@ enum AppPage: String, CaseIterable, Identifiable {
     case history
     case templates
     case exercises
+    case settings
 
     var id: String { rawValue }
+
+    static let tabPages: [AppPage] = [.log, .history, .templates, .exercises]
 
     var label: String {
         switch self {
@@ -15,6 +18,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .history: return "History"
         case .templates: return "Workouts"
         case .exercises: return "Exercises"
+        case .settings: return "Settings"
         }
     }
 
@@ -24,6 +28,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .history: return "calendar"
         case .templates: return "list.clipboard"
         case .exercises: return "figure.strengthtraining.traditional"
+        case .settings: return "gearshape.fill"
         }
     }
 }
@@ -44,16 +49,16 @@ struct AppShell: View {
                 TemplatesView(selectedPage: $page)
             case .exercises:
                 ExercisesView()
+            case .settings:
+                SettingsPage {
+                    signOut()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomNav(page: $page) {
-                auth.signOut()
-                store.reset()
-                page = .log
-            }
+            BottomNav(page: $page)
         }
         .onChange(of: store.pendingTemplate) { _, template in
             if template != nil { page = .log }
@@ -70,27 +75,21 @@ struct AppShell: View {
             Text(store.errorMessage ?? "")
         }
     }
+
+    private func signOut() {
+        auth.signOut()
+        store.reset()
+        page = .log
+    }
 }
 
 private struct BottomNav: View {
-    @EnvironmentObject private var auth: AuthManager
-    @EnvironmentObject private var store: WorkoutStore
     @Binding var page: AppPage
-    let onSignOut: () -> Void
-    @State private var showingFeedback = false
-    @State private var showingAppleLink = false
-    @State private var confirmingDelete = false
-    @State private var accountBusy = false
-    @State private var exportFile: ExportFile?
 
     var body: some View {
         HStack(spacing: 10) {
-            ToolbarIconButton(systemName: "flame.fill", tint: Theme.accent) {
-                page = .log
-            }
-
             HStack(spacing: 4) {
-                ForEach(AppPage.allCases) { item in
+                ForEach(AppPage.tabPages) { item in
                     ToolbarPageButton(
                         item: item,
                         isSelected: page == item,
@@ -104,51 +103,14 @@ private struct BottomNav: View {
             .toolbarGlass(in: Capsule())
             .layoutPriority(1)
 
-            Menu {
-                if let user = auth.user {
-                    Text(user.name)
-                    if !user.email.isEmpty {
-                        Text(user.email)
-                    }
-                    Divider()
-                }
-
-                Text(AppConfiguration.buildLabel)
-                Divider()
-                Button {
-                    Task { await exportAccountData() }
-                } label: {
-                    Label("Export data", systemImage: "square.and.arrow.down")
-                }
-                Button {
-                    showingFeedback = true
-                } label: {
-                    Label("Send feedback", systemImage: "message")
-                }
-                if !auth.isDemoMode {
-                    Button {
-                        showingAppleLink = true
-                    } label: {
-                        Label("Link Apple ID", systemImage: "apple.logo")
-                    }
-                }
-                Button(role: .destructive) {
-                    confirmingDelete = true
-                } label: {
-                    Label("Delete account", systemImage: "exclamationmark.triangle")
-                }
-                Divider()
-                Button(role: .destructive, action: onSignOut) {
-                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
-                }
-            } label: {
-                AvatarView(urlString: auth.user?.picture)
+            ToolbarIconButton(
+                systemName: "gearshape.fill",
+                accessibilityLabel: "Settings",
+                tint: page == .settings ? Theme.accent : Theme.muted,
+                isSelected: page == .settings
+            ) {
+                page = .settings
             }
-            .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-            .toolbarGlass(in: Circle())
-            .accessibilityLabel("Account")
         }
         .padding(7)
         .frame(minHeight: 70)
@@ -157,6 +119,79 @@ private struct BottomNav: View {
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 8)
+    }
+}
+
+private struct SettingsPage: View {
+    @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject private var store: WorkoutStore
+    let onSignOut: () -> Void
+    @State private var showingFeedback = false
+    @State private var showingAppleLink = false
+    @State private var confirmingDelete = false
+    @State private var accountBusy = false
+    @State private var exportFile: ExportFile?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Account") {
+                    if let user = auth.user {
+                        LabeledContent("Name", value: user.name)
+                        if !user.email.isEmpty {
+                            LabeledContent("Email", value: user.email)
+                        }
+                    }
+                    if auth.isDemoMode {
+                        LabeledContent("Mode", value: "Demo")
+                    }
+                }
+
+                Section("Data & Support") {
+                    Button {
+                        Task { await exportAccountData() }
+                    } label: {
+                        Label("Export Data", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(accountBusy)
+
+                    Button {
+                        showingFeedback = true
+                    } label: {
+                        Label("Send Feedback", systemImage: "message")
+                    }
+                    .disabled(accountBusy)
+
+                    if !auth.isDemoMode {
+                        Button {
+                            showingAppleLink = true
+                        } label: {
+                            Label("Link Apple ID", systemImage: "apple.logo")
+                        }
+                        .disabled(accountBusy)
+                    }
+
+                    Button(role: .destructive) {
+                        confirmingDelete = true
+                    } label: {
+                        Label("Delete Account", systemImage: "exclamationmark.triangle")
+                    }
+                    .disabled(accountBusy)
+                }
+
+                Section("App") {
+                    LabeledContent("Build", value: AppConfiguration.buildLabel)
+                }
+
+                Section {
+                    Button(role: .destructive, action: onSignOut) {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.large)
+        }
         .sheet(isPresented: $showingFeedback) {
             FeedbackSheet(isSending: $accountBusy) { message in
                 try await store.submitFeedback(message)
@@ -338,7 +373,9 @@ private struct AppleLinkSheet: View {
 
 private struct ToolbarIconButton: View {
     let systemName: String
+    let accessibilityLabel: String
     var tint: Color = Theme.text
+    var isSelected = false
     let action: () -> Void
 
     var body: some View {
@@ -347,10 +384,18 @@ private struct ToolbarIconButton: View {
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(tint)
                 .frame(width: 44, height: 44)
+                .background {
+                    if isSelected {
+                        Circle()
+                            .fill(Theme.accent.opacity(0.13))
+                    }
+                }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .toolbarGlass(in: Circle())
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -384,27 +429,5 @@ private struct ToolbarPageButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(item.label)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct AvatarView: View {
-    let urlString: String?
-
-    var body: some View {
-        Group {
-            if let urlString, let url = URL(string: urlString) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Theme.surface2
-                }
-            } else {
-                Theme.surface2
-                    .overlay(Image(systemName: "person.fill").foregroundStyle(Theme.muted))
-            }
-        }
-        .frame(width: 28, height: 28)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Theme.border, lineWidth: 1))
     }
 }

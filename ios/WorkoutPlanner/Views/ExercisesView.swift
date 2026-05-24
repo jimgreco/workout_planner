@@ -18,42 +18,40 @@ struct ExercisesView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack {
-                    Text("Exercises")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Theme.text)
-                    Spacer()
-                    Button {
-                        sheet = .form(Exercise(name: "", muscleGroup: "Other", notes: nil))
-                    } label: {
-                        Label("Add Exercise", systemImage: "plus")
-                    }
-                    .buttonStyle(PrimaryButtonStyle(compact: true))
-                }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    ExerciseSearchBar(text: $search)
 
-                ExerciseSearchBar(text: $search)
-
-                if filtered.isEmpty {
-                    EmptyState(
-                        icon: "dumbbell",
-                        text: search.isEmpty ? "No exercises yet. Add one to get started!" : "No exercises match your search."
-                    )
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(filtered) { exercise in
-                            ExerciseRow(
-                                exercise: exercise,
-                                onPB: { sheet = .personalBest(exercise) },
-                                onEdit: { sheet = .form(exercise) },
-                                onDelete: { deleteTarget = exercise }
-                            )
+                    if filtered.isEmpty {
+                        EmptyState(
+                            icon: "dumbbell",
+                            text: search.isEmpty ? "No exercises yet. Tap + to get started." : "No exercises match your search."
+                        )
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(filtered) { exercise in
+                                ExerciseRow(
+                                    exercise: exercise,
+                                    onPB: { sheet = .personalBest(exercise) },
+                                    onEdit: { sheet = .form(exercise) },
+                                    onDelete: { deleteTarget = exercise }
+                                )
+                            }
                         }
                     }
                 }
+                .padding(16)
             }
-            .padding(16)
+            .navigationTitle("Exercises")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "Add Exercise") {
+                        sheet = .form(Exercise(name: "", muscleGroup: "Other", notes: nil))
+                    }
+                }
+            }
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {

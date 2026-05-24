@@ -8,51 +8,48 @@ struct TemplatesView: View {
     @State private var isSaving = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .center) {
-                    Text("Workout Templates")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-
-                    Spacer()
-
-                    HStack(spacing: 8) {
-                        IconCircleButton(systemName: "gearshape") {
-                            sheet = .settings
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if store.templates.isEmpty {
+                        EmptyState(icon: "square.grid.2x2", text: "No templates yet. Tap + to save your favorite workouts.")
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(store.templates) { template in
+                                TemplateCard(
+                                    template: template,
+                                    exercises: store.exercises,
+                                    onView: { sheet = .view(template) },
+                                    onStart: {
+                                        store.setStartTemplate(template)
+                                        selectedPage = .log
+                                    },
+                                    onEdit: { sheet = .form(template) },
+                                    onDelete: { deleteTarget = template }
+                                )
+                            }
                         }
-                        Button {
-                            sheet = .form(WorkoutTemplate(name: ""))
-                        } label: {
-                            Label("New", systemImage: "plus")
-                        }
-                        .buttonStyle(PrimaryButtonStyle(compact: true))
                     }
                 }
+                .padding(16)
+            }
+            .navigationTitle("Workouts")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    ToolbarCircleActionButton(
+                        systemName: "gearshape",
+                        accessibilityLabel: "Workout Defaults",
+                        tint: Theme.text
+                    ) {
+                        sheet = .settings
+                    }
 
-                if store.templates.isEmpty {
-                    EmptyState(icon: "square.grid.2x2", text: "No templates yet. Create one to save your favorite workouts!")
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(store.templates) { template in
-                            TemplateCard(
-                                template: template,
-                                exercises: store.exercises,
-                                onView: { sheet = .view(template) },
-                                onStart: {
-                                    store.setStartTemplate(template)
-                                    selectedPage = .log
-                                },
-                                onEdit: { sheet = .form(template) },
-                                onDelete: { deleteTarget = template }
-                            )
-                        }
+                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "New Workout") {
+                        sheet = .form(WorkoutTemplate(name: ""))
                     }
                 }
             }
-            .padding(16)
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {

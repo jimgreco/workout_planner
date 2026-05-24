@@ -19,28 +19,25 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack {
-                    Text("History")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Theme.text)
-                    Spacer()
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
                     Picker("", selection: $viewMode) {
                         Label("List", systemImage: "list.bullet").tag(HistoryMode.list)
                         Label("Calendar", systemImage: "calendar").tag(HistoryMode.calendar)
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 190)
-                }
 
-                if viewMode == .list {
-                    listView
-                } else {
-                    calendarView
+                    if viewMode == .list {
+                        listView
+                    } else {
+                        calendarView
+                    }
                 }
+                .padding(16)
             }
-            .padding(16)
+            .navigationTitle("History")
+            .navigationBarTitleDisplayMode(.large)
         }
         .alert("Delete Workout", isPresented: Binding(
             get: { deleteTarget != nil },

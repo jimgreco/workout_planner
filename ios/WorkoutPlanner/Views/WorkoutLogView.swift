@@ -18,43 +18,53 @@ struct WorkoutLogView: View {
 
     private var isActive: Bool { workoutId != nil }
     private var isPlanningMode: Bool { workoutId != nil && startTime == nil && !isEditing }
+    private var pageTitle: String {
+        isEditing ? "Edit Workout" : isPlanningMode ? "Plan Workout" : "Log Workout"
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                workoutFields
-                templateMenu
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if isActive {
+                        activeHeader
+                    }
 
-                Divider().opacity(0.3)
+                    workoutFields
+                    templateMenu
 
-                Text("Exercises")
-                    .font(.system(size: 18, weight: .heavy))
-                    .foregroundStyle(Theme.text)
+                    Divider().opacity(0.3)
 
-                WorkoutBuilderView(
-                    exercises: store.exercises,
-                    items: $items,
-                    defaultSets: store.settings.defaultSets,
-                    defaultReps: store.settings.defaultReps,
-                    activeExerciseIndex: activeExerciseIndex,
-                    activeSetIndex: activeSetIndex,
-                    planningMode: isPlanningMode,
-                    onSetCompleted: markSetCompleted,
-                    onChanged: builderChanged
-                )
+                    Text("Exercises")
+                        .font(.system(size: 18, weight: .heavy))
+                        .foregroundStyle(Theme.text)
 
-                Divider().opacity(0.3)
+                    WorkoutBuilderView(
+                        exercises: store.exercises,
+                        items: $items,
+                        defaultSets: store.settings.defaultSets,
+                        defaultReps: store.settings.defaultReps,
+                        activeExerciseIndex: activeExerciseIndex,
+                        activeSetIndex: activeSetIndex,
+                        planningMode: isPlanningMode,
+                        onSetCompleted: markSetCompleted,
+                        onChanged: builderChanged
+                    )
 
-                VStack(alignment: .leading, spacing: 6) {
-                    FormLabel(text: "Session Notes")
-                    TextField("How did it go? Any PRs, fatigue notes...", text: $notes, axis: .vertical)
-                        .lineLimit(2...5)
-                        .fieldStyle()
-                        .onChange(of: notes) { _, _ in scheduleSave() }
+                    Divider().opacity(0.3)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        FormLabel(text: "Session Notes")
+                        TextField("How did it go? Any PRs, fatigue notes...", text: $notes, axis: .vertical)
+                            .lineLimit(2...5)
+                            .fieldStyle()
+                            .onChange(of: notes) { _, _ in scheduleSave() }
+                    }
                 }
+                .padding(16)
             }
-            .padding(16)
+            .navigationTitle(pageTitle)
+            .navigationBarTitleDisplayMode(.large)
         }
         .onAppear(perform: loadInitialState)
         .onChange(of: store.pendingTemplate) { _, template in
@@ -83,19 +93,19 @@ struct WorkoutLogView: View {
         }
     }
 
-    private var header: some View {
+    private var activeHeader: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(isEditing ? "Edit Workout" : isPlanningMode ? "Plan Workout" : "Log Workout")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Theme.text)
-
                 if isActive, let startTime, !isEditing {
                     TimelineView(.periodic(from: Date(), by: 30)) { _ in
                         Label("In progress · \(formatDuration(startTime: startTime))", systemImage: "clock")
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.muted)
                     }
+                } else {
+                    Label(isEditing ? "Editing saved workout" : "Planning workout", systemImage: isEditing ? "pencil" : "list.clipboard")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
                 }
             }
 

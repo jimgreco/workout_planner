@@ -117,6 +117,28 @@ struct IconCircleButton: View {
     }
 }
 
+struct ToolbarCircleActionButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    var tint: Color = Theme.accent
+    var disabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(disabled ? Theme.muted.opacity(0.4) : tint)
+                .frame(width: 42, height: 42)
+                .contentShape(Circle())
+                .toolbarGlass(in: Circle(), tint: disabled ? nil : tint.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
 
