@@ -104,7 +104,7 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
 }
 
 struct ProgramScheduleItem: Codable, Identifiable, Equatable {
-    var id: Int { weekday }
+    var id: String { "\(weekday)-\(templateId)" }
     var weekday: Int
     var templateId: String
     var notes: String?

@@ -225,12 +225,13 @@ function programScheduleItem(value, index) {
 
 function programSchedule(value) {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 7) fail('schedule must contain at most 7 items');
+  if (!Array.isArray(value) || value.length > 70) fail('schedule must contain at most 70 items');
   const seen = new Set();
   return value.map((item, index) => {
     const scheduleItem = programScheduleItem(item, index);
-    if (seen.has(scheduleItem.weekday)) fail('schedule can contain each weekday only once');
-    seen.add(scheduleItem.weekday);
+    const key = `${scheduleItem.weekday}:${scheduleItem.templateId}`;
+    if (seen.has(key)) fail('schedule can contain each routine once per weekday');
+    seen.add(key);
     return scheduleItem;
   }).sort((a, b) => a.weekday - b.weekday);
 }

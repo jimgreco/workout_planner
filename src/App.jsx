@@ -49,7 +49,7 @@ const PAGES = [
   { id: 'log',       label: 'Workout',          icon: Dumbbell },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
-  { id: 'templates', label: 'Routines',         icon: ClipboardList },
+  { id: 'templates', label: 'Program',          icon: ClipboardList },
   { id: 'exercises', label: 'Exercise Library', icon: BicepsFlexed },
 ];
 const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';

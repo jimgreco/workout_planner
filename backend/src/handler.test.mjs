@@ -282,6 +282,7 @@ test('optional expectedRevision protects against stale overwrites', async () => 
 test('program routes persist weekly routine schedules', async () => {
   const db = fakeDb([
     { PK: 'USER#dev-user-local', SK: 'TEMPLATE#push', id: 'push', name: 'Push', exerciseItems: [] },
+    { PK: 'USER#dev-user-local', SK: 'TEMPLATE#pull', id: 'pull', name: 'Pull', exerciseItems: [] },
   ]);
   __setTestDb(db);
   const headers = { Authorization: 'Bearer dev-bypass-token' };
@@ -294,6 +295,7 @@ test('program routes persist weekly routine schedules', async () => {
     progressionRule: 'Add weight when all sets hit the target.',
     schedule: [
       { weekday: 1, templateId: 'push', notes: 'Heavy' },
+      { weekday: 1, templateId: 'pull' },
       { weekday: 3, templateId: 'push' },
     ],
   }, headers));
@@ -302,7 +304,7 @@ test('program routes persist weekly routine schedules', async () => {
   assert.equal(saved.statusCode, 200);
   assert.equal(savedBody.id, 'strength');
   assert.equal(savedBody.revision, 1);
-  assert.deepEqual(savedBody.schedule.map((item) => item.weekday), [1, 3]);
+  assert.deepEqual(savedBody.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '1:pull', '3:push']);
 
   const listed = await handler(event('GET', '/programs', undefined, headers));
   const listBody = JSON.parse(listed.body);

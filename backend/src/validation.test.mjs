@@ -70,13 +70,14 @@ test('validates program weekly schedules', () => {
     schedule: [
       { weekday: 5, templateId: 'legs' },
       { weekday: 1, templateId: 'push', notes: 'Heavy' },
+      { weekday: 1, templateId: 'pull' },
     ],
   }, 'program-1');
 
-  assert.deepEqual(program.schedule.map((item) => item.weekday), [1, 5]);
+  assert.deepEqual(program.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '1:pull', '5:legs']);
   assert.equal(program.active, true);
   assert.throws(
-    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'pull' }] }, 'program-1'),
+    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'push' }] }, 'program-1'),
     ValidationError,
   );
 });

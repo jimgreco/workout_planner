@@ -8,57 +8,79 @@ struct TemplatesView: View {
     @State private var deleteProgramTarget: TrainingProgram?
     @State private var isSaving = false
 
+    private var programCountLabel: String {
+        store.programs.count == 1 ? "1 program" : "\(store.programs.count) programs"
+    }
+
+    private var routineCountLabel: String {
+        store.templates.count == 1 ? "1 routine" : "\(store.templates.count) routines"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    ProgramSummaryCard(
-                        program: ProgramPlanner.activeProgram(from: store.programs),
-                        templates: store.templates,
-                        logs: store.logs,
-                        onNew: { sheet = .program(TrainingProgram(name: "")) },
-                        onEdit: { program in sheet = .program(program) },
-                        onDelete: { program in deleteProgramTarget = program },
-                        onStart: { template in
-                            store.setStartTemplate(template)
-                            selectedPage = .log
-                        }
-                    )
-
-                    if store.templates.isEmpty {
-                        VStack(spacing: 12) {
-                            EmptyState(icon: "square.grid.2x2", text: "No routines yet. Tap + to save your favorite workouts.")
-
-                            Button {
-                                Task { await createStarterTemplates() }
-                            } label: {
-                                Label("Add Starter Routines", systemImage: "plus")
-                                    .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 10) {
+                        ProgramSectionHeader(
+                            title: "Programs",
+                            subtitle: programCountLabel
+                        )
+                        ProgramSummaryCard(
+                            program: ProgramPlanner.activeProgram(from: store.programs),
+                            templates: store.templates,
+                            logs: store.logs,
+                            onEdit: { program in sheet = .program(program) },
+                            onDelete: { program in deleteProgramTarget = program },
+                            onStart: { template in
+                                store.setStartTemplate(template)
+                                selectedPage = .log
                             }
-                            .buttonStyle(PrimaryButtonStyle())
-                            .disabled(isSaving || store.exercises.isEmpty)
-                        }
-                    } else {
-                        VStack(spacing: 12) {
-                            ForEach(store.templates) { template in
-                                TemplateCard(
-                                    template: template,
-                                    exercises: store.exercises,
-                                    onView: { sheet = .view(template) },
-                                    onStart: {
-                                        store.setStartTemplate(template)
-                                        selectedPage = .log
-                                    },
-                                    onEdit: { sheet = .form(template) },
-                                    onDelete: { deleteTarget = template }
-                                )
+                        )
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        ProgramSectionHeader(
+                            title: "Routines",
+                            subtitle: routineCountLabel
+                        )
+
+                        if store.templates.isEmpty {
+                            VStack(spacing: 12) {
+                                EmptyState(icon: "square.grid.2x2", text: "No routines yet. Tap + to save your favorite workouts.")
+
+                                Button {
+                                    Task { await createStarterTemplates() }
+                                } label: {
+                                    Label("Add Starter Routines", systemImage: "plus")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(PrimaryButtonStyle())
+                                .disabled(isSaving || store.exercises.isEmpty)
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                ForEach(store.templates) { template in
+                                    TemplateCard(
+                                        template: template,
+                                        exercises: store.exercises,
+                                        onView: { sheet = .view(template) },
+                                        onStart: {
+                                            store.setStartTemplate(template)
+                                            selectedPage = .log
+                                        },
+                                        onEdit: { sheet = .form(template) },
+                                        onDelete: { deleteTarget = template }
+                                    )
+                                }
                             }
                         }
                     }
                 }
                 .padding(16)
             }
-            .navigationTitle("Routines")
+            .navigationTitle("Program")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -70,9 +92,27 @@ struct TemplatesView: View {
                         sheet = .settings
                     }
 
-                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "New Routine") {
-                        sheet = .form(WorkoutTemplate(name: ""))
+                    Menu {
+                        Button {
+                            sheet = .program(TrainingProgram(name: ""))
+                        } label: {
+                            Label("New Program", systemImage: "calendar.badge.plus")
+                        }
+
+                        Button {
+                            sheet = .form(WorkoutTemplate(name: ""))
+                        } label: {
+                            Label("New Routine", systemImage: "square.grid.2x2")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 42, height: 42)
+                            .contentShape(Circle())
+                            .toolbarGlass(in: Circle(), tint: Theme.accent.opacity(0.08))
                     }
+                    .accessibilityLabel("Add")
                 }
             }
         }
@@ -211,7 +251,8 @@ private enum ProgramDayStatus {
 private struct PlannedProgramDay: Identifiable {
     let weekday: ProgramWeekday
     let date: Date
-    let template: WorkoutTemplate?
+    let templates: [WorkoutTemplate]
+    let completedCount: Int
     let status: ProgramDayStatus
 
     var id: Int { weekday.value }
@@ -220,6 +261,8 @@ private struct PlannedProgramDay: Identifiable {
 private struct NextProgramWorkout {
     let date: Date
     let template: WorkoutTemplate
+    let position: Int
+    let total: Int
 }
 
 private enum ProgramPlanner {
@@ -245,12 +288,10 @@ private enum ProgramPlanner {
         for offset in 0..<14 {
             guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { continue }
             let weekday = Calendar.current.component(.weekday, from: date) - 1
-            guard
-                let entry = program.schedule.first(where: { $0.weekday == weekday }),
-                let template = templatesById[entry.templateId],
-                !completedOn(logs: logs, template: template, date: date)
-            else { continue }
-            return NextProgramWorkout(date: date, template: template)
+            let scheduled = scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
+            for (index, template) in scheduled.enumerated() where !completedOn(logs: logs, template: template, date: date) {
+                return NextProgramWorkout(date: date, template: template, position: index + 1, total: scheduled.count)
+            }
         }
         return nil
     }
@@ -263,21 +304,21 @@ private enum ProgramPlanner {
 
         return weekdays.compactMap { weekday in
             guard let date = Calendar.current.date(byAdding: .day, value: weekday.value, to: weekStart) else { return nil }
-            let entry = program?.schedule.first { $0.weekday == weekday.value }
-            let template = entry.flatMap { templatesById[$0.templateId] }
-            let isDone = template.map { completedOn(logs: logs, template: $0, date: date) } ?? false
+            let scheduled = program.map { scheduledTemplates(for: weekday.value, program: $0, templatesById: templatesById) } ?? []
+            let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
+            let isDone = !scheduled.isEmpty && completedCount == scheduled.count
             let isPast = date < today
             let status: ProgramDayStatus
-            if isDone {
-                status = .done
-            } else if template == nil {
+            if scheduled.isEmpty {
                 status = .rest
+            } else if isDone {
+                status = .done
             } else if isPast {
                 status = .missed
             } else {
                 status = .planned
             }
-            return PlannedProgramDay(weekday: weekday, date: date, template: template, status: status)
+            return PlannedProgramDay(weekday: weekday, date: date, templates: scheduled, completedCount: completedCount, status: status)
         }
     }
 
@@ -300,13 +341,36 @@ private enum ProgramPlanner {
                     .caseInsensitiveCompare(template.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
         }
     }
+
+    private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
+        program.schedule
+            .filter { $0.weekday == weekday }
+            .compactMap { templatesById[$0.templateId] }
+    }
+}
+
+private struct ProgramSectionHeader: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+            Text(subtitle)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }
 
 private struct ProgramSummaryCard: View {
     let program: TrainingProgram?
     let templates: [WorkoutTemplate]
     let logs: [WorkoutLog]
-    let onNew: () -> Void
     let onEdit: (TrainingProgram) -> Void
     let onDelete: (TrainingProgram) -> Void
     let onStart: (WorkoutTemplate) -> Void
@@ -345,7 +409,6 @@ private struct ProgramSummaryCard: View {
                             IconCircleButton(systemName: "pencil") { onEdit(program) }
                             IconCircleButton(systemName: "trash", tint: Theme.danger) { onDelete(program) }
                         }
-                        IconCircleButton(systemName: "plus", action: onNew)
                     }
                 }
 
@@ -358,7 +421,10 @@ private struct ProgramSummaryCard: View {
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(Theme.muted)
                                 .textCase(.uppercase)
-                            Text(nextWorkout.map { "\(ProgramPlanner.displayDate($0.date)) - \($0.template.name)" } ?? "No scheduled workout")
+                            Text(nextWorkout.map { workout in
+                                let progress = workout.total > 1 ? " (\(workout.position) of \(workout.total))" : ""
+                                return "\(ProgramPlanner.displayDate(workout.date)) - \(workout.template.name)\(progress)"
+                            } ?? "No scheduled workout")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Theme.text)
                                 .lineLimit(1)
@@ -435,12 +501,29 @@ private struct ProgramDayChip: View {
                         .foregroundStyle(Theme.success)
                 }
             }
-            Text(day.template?.name ?? "Rest")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(day.template == nil ? Theme.muted : Theme.text)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                if day.templates.isEmpty {
+                    Text("Rest")
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    Text(day.templates[0].name)
+                        .foregroundStyle(Theme.text)
+                    if day.templates.count > 1 {
+                        Text("+\(day.templates.count - 1) more")
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .lineLimit(1)
+
+            if day.templates.count > 1 {
+                Text("\(day.completedCount)/\(day.templates.count)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+            }
         }
-        .frame(width: 82, height: 62, alignment: .topLeading)
+        .frame(width: 96, height: 74, alignment: .topLeading)
         .padding(8)
         .background(backgroundColor)
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(borderColor, lineWidth: 1))
@@ -656,13 +739,28 @@ private struct ProgramFormSheet: View {
 
                 Section {
                     ForEach(ProgramPlanner.weekdays) { weekday in
-                        Picker(weekday.long, selection: scheduleBinding(for: weekday.value)) {
-                            Text("Rest day").tag("")
-                            ForEach(templates) { template in
-                                Text(template.name).tag(template.id)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(weekday.long)
+                                    .font(.system(size: 15, weight: .semibold))
+                                Spacer()
+                                Text(scheduleSummary(for: weekday.value))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.muted)
+                            }
+
+                            if templates.isEmpty {
+                                Text("Create a routine first.")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.muted)
+                            } else {
+                                ForEach(templates) { template in
+                                    Toggle(template.name, isOn: scheduleToggleBinding(for: weekday.value, templateId: template.id))
+                                        .font(.system(size: 14))
+                                }
                             }
                         }
-                        .disabled(templates.isEmpty)
+                        .padding(.vertical, 4)
                     }
                 } header: {
                     Text("Weekly Schedule")
@@ -701,19 +799,42 @@ private struct ProgramFormSheet: View {
         }
     }
 
-    private func scheduleBinding(for weekday: Int) -> Binding<String> {
+    private func scheduleToggleBinding(for weekday: Int, templateId: String) -> Binding<Bool> {
         Binding(
             get: {
-                form.schedule.first(where: { $0.weekday == weekday })?.templateId ?? ""
+                form.schedule.contains { $0.weekday == weekday && $0.templateId == templateId }
             },
-            set: { templateId in
-                form.schedule.removeAll { $0.weekday == weekday }
-                if !templateId.isEmpty {
+            set: { isScheduled in
+                form.schedule.removeAll { $0.weekday == weekday && $0.templateId == templateId }
+                if isScheduled {
                     form.schedule.append(ProgramScheduleItem(weekday: weekday, templateId: templateId))
-                    form.schedule.sort { $0.weekday < $1.weekday }
                 }
+                form.schedule = cleanedSchedule(form.schedule)
             }
         )
+    }
+
+    private func scheduleSummary(for weekday: Int) -> String {
+        let count = form.schedule.filter { $0.weekday == weekday && !$0.templateId.isEmpty }.count
+        if count == 0 { return "Rest" }
+        return count == 1 ? "1 routine" : "\(count) routines"
+    }
+
+    private func cleanedSchedule(_ schedule: [ProgramScheduleItem]) -> [ProgramScheduleItem] {
+        var seen = Set<String>()
+        return schedule.enumerated().compactMap { index, item -> (Int, ProgramScheduleItem)? in
+            guard !item.templateId.isEmpty else { return nil }
+            let key = "\(item.weekday):\(item.templateId)"
+            guard seen.insert(key).inserted else { return nil }
+            return (index, item)
+        }
+        .sorted { left, right in
+            if left.1.weekday == right.1.weekday {
+                return left.0 < right.0
+            }
+            return left.1.weekday < right.1.weekday
+        }
+        .map { $0.1 }
     }
 
     private func save() async {
@@ -724,9 +845,7 @@ private struct ProgramFormSheet: View {
             cleaned.name = cleaned.name.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.description = cleaned.description?.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.progressionRule = cleaned.progressionRule?.trimmingCharacters(in: .whitespacesAndNewlines)
-            cleaned.schedule = cleaned.schedule
-                .filter { !$0.templateId.isEmpty }
-                .sorted { $0.weekday < $1.weekday }
+            cleaned.schedule = cleanedSchedule(cleaned.schedule)
             try await store.saveProgram(cleaned)
             dismiss()
         } catch {

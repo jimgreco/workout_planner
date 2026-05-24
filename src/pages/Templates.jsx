@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -93,6 +93,13 @@ function isCompletedOn(logs, template, dayKey) {
   ));
 }
 
+function scheduledTemplatesForWeekday(program, weekday, byId) {
+  return (program?.schedule ?? [])
+    .filter((item) => item.weekday === weekday)
+    .map((entry) => ({ entry, template: byId.get(entry.templateId) }))
+    .filter((item) => item.template);
+}
+
 function nextProgramWorkout(program, templates, logs) {
   if (!program?.schedule?.length) return null;
   const byId = templateById(templates);
@@ -100,10 +107,13 @@ function nextProgramWorkout(program, templates, logs) {
   for (let offset = 0; offset < 14; offset += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() + offset);
-    const entry = program.schedule.find((item) => item.weekday === date.getDay());
-    const template = entry ? byId.get(entry.templateId) : null;
-    if (template && !isCompletedOn(logs, template, localDateKey(date))) {
-      return { date, dayKey: localDateKey(date), entry, template };
+    const dayKey = localDateKey(date);
+    const scheduled = scheduledTemplatesForWeekday(program, date.getDay(), byId);
+    for (let index = 0; index < scheduled.length; index += 1) {
+      const { entry, template } = scheduled[index];
+      if (!isCompletedOn(logs, template, dayKey)) {
+        return { date, dayKey, entry, template, position: index + 1, total: scheduled.length };
+      }
     }
   }
   return null;
@@ -117,23 +127,34 @@ function weekPlan(program, templates, logs) {
   return WEEKDAYS.map((weekday, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
-    const entry = program?.schedule?.find((item) => item.weekday === weekday.value);
-    const template = entry ? byId.get(entry.templateId) : null;
+    const scheduled = scheduledTemplatesForWeekday(program, weekday.value, byId);
+    const templatesForDay = scheduled.map((item) => item.template);
     const dayKey = localDateKey(date);
-    const done = template ? isCompletedOn(logs, template, dayKey) : false;
+    const completedCount = templatesForDay.filter((template) => isCompletedOn(logs, template, dayKey)).length;
+    const done = templatesForDay.length > 0 && completedCount === templatesForDay.length;
     const isPast = date < today;
+    let status = 'rest';
+    if (done) {
+      status = 'done';
+    } else if (templatesForDay.length > 0 && isPast) {
+      status = 'missed';
+    } else if (templatesForDay.length > 0) {
+      status = 'planned';
+    }
     return {
       ...weekday,
       date,
       dayKey,
-      entry,
-      template,
-      status: done ? 'done' : template && isPast ? 'missed' : template ? 'planned' : 'rest',
+      entries: scheduled.map((item) => item.entry),
+      templates: templatesForDay,
+      completedCount,
+      status,
     };
   });
 }
 
 function cleanProgram(program) {
+  const seen = new Set();
   return {
     ...program,
     name: program.name.trim(),
@@ -142,6 +163,12 @@ function cleanProgram(program) {
     schedule: (program.schedule ?? [])
       .filter((item) => item.templateId)
       .map((item) => ({ weekday: Number(item.weekday), templateId: item.templateId, ...(item.notes ? { notes: item.notes } : {}) }))
+      .filter((item) => {
+        const key = `${item.weekday}:${item.templateId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .sort((a, b) => a.weekday - b.weekday),
   };
 }
@@ -165,6 +192,8 @@ export default function Templates({
   const [confirmProgramDelete, setConfirmProgramDelete] = useState(null);
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
+  const [showAddMenu, setShowAddMenu]   = useState(false);
+  const addMenuRef = useRef(null);
 
   const activeProgram = useMemo(
     () => programs.find((program) => program.active) ?? programs[0] ?? null,
@@ -179,14 +208,24 @@ export default function Templates({
     [activeProgram, templates, logs],
   );
 
-  function openAdd()      { setForm(emptyTemplate()); setModal('add'); }
+  function openAdd()      { setShowAddMenu(false); setForm(emptyTemplate()); setModal('add'); }
   function openEdit(t)    { setForm({ ...t }); setModal('edit'); }
   function openView(t)    { setForm({ ...t }); setModal('view'); }
   function openSettings() { setSettingsForm({ ...settings }); setModal('settings'); setSaved(false); }
   function openProgram(program = emptyProgram()) {
+    setShowAddMenu(false);
     setProgramForm({ ...emptyProgram(), ...program, schedule: [...(program.schedule ?? [])] });
     setModal('program');
   }
+
+  useEffect(() => {
+    if (!showAddMenu) return undefined;
+    const close = (event) => {
+      if (!addMenuRef.current?.contains(event.target)) setShowAddMenu(false);
+    };
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [showAddMenu]);
 
   async function handleSave() {
     if (!form.name.trim() || saving) return;
@@ -262,12 +301,16 @@ export default function Templates({
     }
   }
 
-  function setScheduledTemplate(weekday, templateId) {
+  function toggleScheduledTemplate(weekday, templateId, checked) {
     setProgramForm((draft) => {
-      const schedule = (draft.schedule ?? []).filter((item) => item.weekday !== weekday);
-      if (templateId) schedule.push({ weekday, templateId });
+      const schedule = (draft.schedule ?? []).filter((item) => !(item.weekday === weekday && item.templateId === templateId));
+      if (checked) schedule.push({ weekday, templateId });
       return { ...draft, schedule: schedule.sort((a, b) => a.weekday - b.weekday) };
     });
+  }
+
+  function scheduledTemplateIdsFor(weekday) {
+    return new Set((programForm.schedule ?? []).filter((item) => item.weekday === weekday).map((item) => item.templateId));
   }
 
   const settingsDirty = settingsForm.defaultSets !== settings.defaultSets || settingsForm.defaultReps !== settings.defaultReps;
@@ -275,18 +318,44 @@ export default function Templates({
   return (
     <div className="page">
       <div className="action-row">
-        <h1 style={{ marginBottom: 0 }}>Routines</h1>
+        <h1 style={{ marginBottom: 0 }}>Program</h1>
         <div className="flex gap-8">
           <button className="btn btn-secondary" onClick={openSettings}>
             <Settings size={18} /> Settings
           </button>
-          <button className="btn btn-primary" onClick={openAdd}>
-            <Plus size={18} /> New Routine
-          </button>
+          <div className="add-menu-wrap" ref={addMenuRef} onClick={(event) => event.stopPropagation()}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowAddMenu((value) => !value)}
+              aria-haspopup="menu"
+              aria-expanded={showAddMenu}
+            >
+              <Plus size={18} /> Add
+            </button>
+            {showAddMenu && (
+              <div className="add-menu" role="menu">
+                <button className="dropdown-item" role="menuitem" onClick={() => openProgram()}>
+                  <CalendarDays size={16} /> New Program
+                </button>
+                <button className="dropdown-item" role="menuitem" onClick={openAdd}>
+                  <LayoutGrid size={16} /> New Routine
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <section className="program-panel card">
+      <section className="program-section">
+        <div className="program-section-heading">
+          <div>
+            <span className="section-kicker">Programs</span>
+            <h2>Training Plan</h2>
+          </div>
+          <p>{programs.length === 1 ? '1 program' : `${programs.length} programs`}</p>
+        </div>
+
+      <div className="program-panel card">
         <div className="program-header">
           <div>
             <span className="section-kicker">Program</span>
@@ -304,9 +373,6 @@ export default function Templates({
                 <Trash2 size={16} color="var(--danger)" />
               </button>
             )}
-            <button className="btn btn-secondary btn-sm" onClick={() => openProgram()}>
-              <Plus size={14} /> Program
-            </button>
           </div>
         </div>
 
@@ -317,7 +383,11 @@ export default function Templates({
                 <Target size={18} />
                 <div>
                   <span>Next</span>
-                  <strong>{nextWorkout ? `${dateLabel(nextWorkout.date)} - ${nextWorkout.template.name}` : 'No scheduled workout'}</strong>
+                  <strong>
+                    {nextWorkout
+                      ? `${dateLabel(nextWorkout.date)} - ${nextWorkout.template.name}${nextWorkout.total > 1 ? ` (${nextWorkout.position} of ${nextWorkout.total})` : ''}`
+                      : 'No scheduled workout'}
+                  </strong>
                 </div>
               </div>
               <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(nextWorkout.template)} disabled={!nextWorkout}>
@@ -329,7 +399,21 @@ export default function Templates({
               {currentWeek.map((day) => (
                 <div key={day.value} className={`program-day ${day.status}`}>
                   <span>{day.label}</span>
-                  <strong>{day.template?.name || 'Rest'}</strong>
+                  <div className="program-day-routines">
+                    {day.templates.length > 0 ? (
+                      <>
+                        {day.templates.slice(0, 2).map((template) => (
+                          <strong key={template.id}>{template.name}</strong>
+                        ))}
+                        {day.templates.length > 2 && <em>+{day.templates.length - 2} more</em>}
+                      </>
+                    ) : (
+                      <strong>Rest</strong>
+                    )}
+                  </div>
+                  {day.templates.length > 1 && (
+                    <small className="program-day-count">{day.completedCount}/{day.templates.length}</small>
+                  )}
                   {day.status === 'done' && <CheckCircle2 size={14} aria-label="Done" />}
                 </div>
               ))}
@@ -348,9 +432,19 @@ export default function Templates({
             <span>Schedule routines by weekday, then start the next planned workout from here.</span>
           </div>
         )}
+      </div>
       </section>
 
-      <div style={{ marginTop: 24 }}>
+      <section className="routine-library-section">
+        <div className="program-section-heading">
+          <div>
+            <span className="section-kicker">Routines</span>
+            <h2>Routine Library</h2>
+          </div>
+          <p>{templates.length === 1 ? '1 routine' : `${templates.length} routines`}</p>
+        </div>
+
+        <div className="routine-list">
         {templates.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon"><LayoutGrid size={48} /></div>
@@ -401,7 +495,8 @@ export default function Templates({
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      </section>
 
       {(modal === 'add' || modal === 'edit') && (
         <Modal
@@ -517,21 +612,27 @@ export default function Templates({
           <h3>Weekly Schedule</h3>
           <div className="program-schedule-editor">
             {WEEKDAYS.map((weekday) => {
-              const selected = programForm.schedule?.find((item) => item.weekday === weekday.value)?.templateId ?? '';
+              const selectedTemplateIds = scheduledTemplateIdsFor(weekday.value);
               return (
-                <label key={weekday.value} className="program-schedule-row">
-                  <span>{weekday.long}</span>
-                  <select
-                    value={selected}
-                    onChange={(event) => setScheduledTemplate(weekday.value, event.target.value)}
-                    disabled={templates.length === 0}
-                  >
-                    <option value="">Rest day</option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                </label>
+                <div key={weekday.value} className="program-schedule-row">
+                  <span className="program-schedule-day">{weekday.long}</span>
+                  {templates.length === 0 ? (
+                    <span className="program-schedule-empty">Create a routine first</span>
+                  ) : (
+                    <div className="program-schedule-options">
+                      {templates.map((template) => (
+                        <label key={template.id} className="program-schedule-option">
+                          <input
+                            type="checkbox"
+                            checked={selectedTemplateIds.has(template.id)}
+                            onChange={(event) => toggleScheduledTemplate(weekday.value, template.id, event.target.checked)}
+                          />
+                          <span>{template.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
