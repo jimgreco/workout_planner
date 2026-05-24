@@ -274,7 +274,7 @@ export default function WorkoutBuilder({
 
       {exercises.length === 0 && !readOnly && (
         <p className="text-muted" style={{ marginTop: 8 }}>
-          No exercises configured yet. Go to Exercises to add some first.
+          No exercises configured yet. Go to Exercise Library to add some first.
         </p>
       )}
     </div>

@@ -39,11 +39,11 @@ import Logo from './components/Logo.jsx';
 import Modal from './components/Modal.jsx';
 
 const PAGES = [
-  { id: 'log',       label: 'Burn!',    icon: Dumbbell },
-  { id: 'progress',  label: 'Progress', icon: TrendingUp },
-  { id: 'history',   label: 'History',   icon: CalendarIcon },
-  { id: 'templates', label: 'Workouts',  icon: ClipboardList },
-  { id: 'exercises', label: 'Exercises', icon: BicepsFlexed },
+  { id: 'log',       label: 'Workout',          icon: Dumbbell },
+  { id: 'progress',  label: 'Progress',         icon: TrendingUp },
+  { id: 'history',   label: 'History',          icon: CalendarIcon },
+  { id: 'templates', label: 'Plan',             icon: ClipboardList },
+  { id: 'exercises', label: 'Exercise Library', icon: BicepsFlexed },
 ];
 
 export default function App() {

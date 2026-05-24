@@ -44,7 +44,7 @@ struct ExercisesView: View {
                 }
                 .padding(16)
             }
-            .navigationTitle("Exercises")
+            .navigationTitle("Exercise Library")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

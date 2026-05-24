@@ -44,7 +44,7 @@ struct TemplatesView: View {
                 }
                 .padding(16)
             }
-            .navigationTitle("Workouts")
+            .navigationTitle("Plan")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {

@@ -13,11 +13,11 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
 
     var label: String {
         switch self {
-        case .log: return "Burn!"
+        case .log: return "Workout"
         case .progress: return "Progress"
         case .history: return "History"
-        case .templates: return "Workouts"
-        case .exercises: return "Exercises"
+        case .templates: return "Plan"
+        case .exercises: return "Exercise Library"
         case .settings: return "Settings"
         }
     }
