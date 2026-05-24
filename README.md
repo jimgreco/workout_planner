@@ -47,7 +47,7 @@ src/
   api.js                web API client and in-memory cache
   auth.js               web session storage and Google token exchange
   App.jsx               auth gate, nav, account actions, page routing
-  pages/                Exercise Library, Plan, Workout, History
+  pages/                Exercise Library, Routines, Workout, History
 ios/
   WorkoutPlanner/       native SwiftUI app
 .github/workflows/

@@ -61,6 +61,7 @@ struct ProgressDashboardView: View {
 }
 
 private enum ProgressRange: String, CaseIterable, Identifiable {
+    case sevenDays
     case thirtyDays
     case ninetyDays
     case all
@@ -69,6 +70,7 @@ private enum ProgressRange: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .sevenDays: return "7D"
         case .thirtyDays: return "30D"
         case .ninetyDays: return "90D"
         case .all: return "All"
@@ -77,6 +79,7 @@ private enum ProgressRange: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
+        case .sevenDays: return "last 7 days"
         case .thirtyDays: return "last 30 days"
         case .ninetyDays: return "last 90 days"
         case .all: return "all time"
@@ -85,6 +88,7 @@ private enum ProgressRange: String, CaseIterable, Identifiable {
 
     var days: Int? {
         switch self {
+        case .sevenDays: return 7
         case .thirtyDays: return 30
         case .ninetyDays: return 90
         case .all: return nil

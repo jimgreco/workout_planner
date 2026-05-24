@@ -3,6 +3,7 @@ import { BarChart3, CalendarDays, Dumbbell, Flame, Star, Trophy, TrendingUp } fr
 import { buildProgress, formatVolume, setLabel } from '../progress.js';
 
 const RANGE_OPTIONS = [
+  { id: '7', label: '7D' },
   { id: '30', label: '30D' },
   { id: '90', label: '90D' },
   { id: 'all', label: 'All' },

@@ -16,7 +16,7 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
         case .log: return "Workout"
         case .progress: return "Progress"
         case .history: return "History"
-        case .templates: return "Plan"
+        case .templates: return "Routines"
         case .exercises: return "Exercise Library"
         case .settings: return "Settings"
         }

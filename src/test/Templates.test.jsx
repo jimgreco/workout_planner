@@ -21,12 +21,12 @@ const exercises = [
   { id: 'calf', name: 'Standing Calf Raise', muscleGroup: 'Calves' },
 ];
 
-describe('Templates page', () => {
+describe('Routines page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('creates starter workouts from the exercise library', async () => {
+  it('creates starter routines from the exercise library', async () => {
     const onUpdate = vi.fn();
     render(
       <Templates
@@ -39,7 +39,7 @@ describe('Templates page', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /add starter workouts/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add starter routines/i }));
 
     await waitFor(() => expect(saveTemplate).toHaveBeenCalledTimes(3));
     expect(saveTemplate.mock.calls[0][0]).toMatchObject({

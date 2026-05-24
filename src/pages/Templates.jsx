@@ -107,7 +107,7 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
   return (
     <div className="page">
       <div className="action-row">
-        <h1 style={{ marginBottom: 0 }}>Workout Templates</h1>
+        <h1 style={{ marginBottom: 0 }}>Routines</h1>
         <div className="flex gap-8">
           <button className="btn btn-secondary" onClick={openSettings}>
             <Settings size={18} /> Settings
@@ -125,7 +125,7 @@ export default function Templates({ templates, exercises, settings, onUpdate, on
             <p>No templates yet. Create one to save your favorite workouts!</p>
             <div className="empty-actions">
               <button className="btn btn-primary" onClick={handleCreateStarters} disabled={saving || exercises.length === 0}>
-                <Plus size={16} /> Add Starter Workouts
+                <Plus size={16} /> Add Starter Routines
               </button>
             </div>
           </div>

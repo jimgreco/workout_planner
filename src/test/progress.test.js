@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildProgress, summarizeExercise } from '../progress.js';
 
 const exercises = [
@@ -69,5 +69,25 @@ describe('progress calculations', () => {
     expect(bench.sessions).toBe(1);
     expect(bench.totalVolume).toBe(1520);
     expect(bench.best.set.weight).toBe('120');
+  });
+
+  it('filters the 7-day range inclusively', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-24T12:00:00'));
+
+    try {
+      const rangeLogs = [
+        { ...logs[0], id: 'boundary', date: '2026-05-18' },
+        { ...logs[1], id: 'older', date: '2026-05-17' },
+        { ...logs[1], id: 'today', date: '2026-05-24' },
+      ];
+
+      const progress = buildProgress(rangeLogs, exercises, '7');
+
+      expect(progress.logs.map((log) => log.id)).toEqual(['today', 'boundary']);
+      expect(progress.totalWorkouts).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -42,7 +42,7 @@ const PAGES = [
   { id: 'log',       label: 'Workout',          icon: Dumbbell },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
-  { id: 'templates', label: 'Plan',             icon: ClipboardList },
+  { id: 'templates', label: 'Routines',         icon: ClipboardList },
   { id: 'exercises', label: 'Exercise Library', icon: BicepsFlexed },
 ];
 

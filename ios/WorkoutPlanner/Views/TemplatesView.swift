@@ -18,7 +18,7 @@ struct TemplatesView: View {
                             Button {
                                 Task { await createStarterTemplates() }
                             } label: {
-                                Label("Add Starter Workouts", systemImage: "plus")
+                                Label("Add Starter Routines", systemImage: "plus")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(PrimaryButtonStyle())
@@ -44,7 +44,7 @@ struct TemplatesView: View {
                 }
                 .padding(16)
             }
-            .navigationTitle("Plan")
+            .navigationTitle("Routines")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -56,7 +56,7 @@ struct TemplatesView: View {
                         sheet = .settings
                     }
 
-                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "New Workout") {
+                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "New Routine") {
                         sheet = .form(WorkoutTemplate(name: ""))
                     }
                 }
