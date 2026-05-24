@@ -205,6 +205,15 @@ private struct SettingsPage: View {
                     }
 
                     LabeledContent("Sync", value: store.syncStatusText)
+
+                    if store.pendingSyncCount > 0 {
+                        Button {
+                            Task { await store.syncPendingChanges() }
+                        } label: {
+                            Label("Sync Pending Changes", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(accountBusy)
+                    }
                 }
 
                 Section("App") {

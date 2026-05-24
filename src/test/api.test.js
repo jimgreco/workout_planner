@@ -12,7 +12,7 @@ import {
   initData, resetData,
   getExercises, saveExercise, deleteExercise,
   getTemplates, saveTemplate, deleteTemplate,
-  getLogs, saveLog, deleteLog, getLogsByDate,
+  getLogs, saveLog, deleteLog, getLogsByDate, flushPendingLogSaves, pendingLogSaveCount,
   getSettings,
   exportData, submitFeedback, deleteAccount,
 } from '../api.js';
@@ -176,6 +176,25 @@ describe('logs', () => {
     const list = await saveLog({ name: 'Session', date: '2026-01-01', notes: '', exerciseItems: [] });
     expect(list).toHaveLength(1);
     expect(list[0].date).toBe('2026-01-01');
+  });
+
+  it('queues log saves when the network is unavailable and flushes them later', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    const queued = await saveLog(LOG);
+    expect(queued[0]).toMatchObject({ id: 'log-1', pendingSync: true });
+    expect(pendingLogSaveCount()).toBe(1);
+
+    mockFetch({
+      'PUT /logs/log-1': () => ({ body: { ...LOG, revision: 1, updatedAt: '2026-01-02T00:00:00.000Z' } }),
+    });
+
+    const flushed = await flushPendingLogSaves();
+    expect(flushed[0]).toMatchObject({ id: 'log-1', revision: 1 });
+    expect(flushed[0].pendingSync).toBeUndefined();
+    expect(pendingLogSaveCount()).toBe(0);
   });
 
   it('deleteLog removes from cache', async () => {

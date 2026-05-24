@@ -25,6 +25,8 @@ import {
   exportData,
   submitFeedback,
   deleteAccount as deleteAccountData,
+  flushPendingLogSaves,
+  pendingLogSaveCount,
 } from './api.js';
 import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
@@ -65,6 +67,8 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(() => (
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   ));
+  const [pendingSyncCount, setPendingSyncCount] = useState(() => pendingLogSaveCount());
+  const [syncingPending, setSyncingPending] = useState(false);
 
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -133,14 +137,36 @@ export default function App() {
       setNotice({
         type: 'error',
         message: event.detail?.message || 'Something went wrong',
+        conflict: Boolean(event.detail?.conflict),
       });
     };
     window.addEventListener('wp:api-error', onApiError);
     return () => window.removeEventListener('wp:api-error', onApiError);
   }, []);
 
+  async function handleFlushPendingLogs() {
+    if (syncingPending) return;
+    setSyncingPending(true);
+    try {
+      const updated = await flushPendingLogSaves();
+      setLogs(updated);
+      setPendingSyncCount(pendingLogSaveCount());
+      if (pendingLogSaveCount() === 0) {
+        setNotice({ type: 'success', message: 'Pending workout changes synced.' });
+      }
+    } finally {
+      setSyncingPending(false);
+    }
+  }
+
   useEffect(() => {
-    const updateOnlineStatus = () => setIsOffline(!navigator.onLine);
+    const updateOnlineStatus = () => {
+      const offline = !navigator.onLine;
+      setIsOffline(offline);
+      if (!offline && pendingLogSaveCount() > 0) {
+        handleFlushPendingLogs();
+      }
+    };
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
     updateOnlineStatus();
@@ -148,6 +174,14 @@ export default function App() {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
     };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onSyncStatus = (event) => {
+      setPendingSyncCount(event.detail?.pendingLogSaves ?? pendingLogSaveCount());
+    };
+    window.addEventListener('wp:sync-status', onSyncStatus);
+    return () => window.removeEventListener('wp:sync-status', onSyncStatus);
   }, []);
 
   function handleStartWorkout(template) {
@@ -371,6 +405,14 @@ export default function App() {
         {isOffline && (
           <div className="app-notice warning">
             <span>Offline. Cloud saves are unavailable until your connection returns.</span>
+          </div>
+        )}
+        {pendingSyncCount > 0 && (
+          <div className="app-notice warning">
+            <span>{pendingSyncCount} workout {pendingSyncCount === 1 ? 'change is' : 'changes are'} waiting to sync.</span>
+            <button className="btn btn-secondary btn-sm" onClick={handleFlushPendingLogs} disabled={syncingPending || isOffline}>
+              {syncingPending ? 'Syncing…' : 'Sync now'}
+            </button>
           </div>
         )}
         {page === 'exercises' && (

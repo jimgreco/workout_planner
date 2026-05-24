@@ -29,10 +29,97 @@ const cache = {
 };
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
+const PENDING_LOG_QUEUE_KEY = 'forge.pendingLogSaves.v1';
 
 function withExpectedRevision(item) {
   if (!Number.isInteger(item.revision)) return item;
   return { ...item, expectedRevision: item.revision };
+}
+
+function storage() {
+  return typeof window !== 'undefined' ? window.localStorage : undefined;
+}
+
+function readPendingLogQueue() {
+  try {
+    const raw = storage()?.getItem(PENDING_LOG_QUEUE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingLogQueue(queue) {
+  const next = queue.filter((entry) => entry?.id);
+  if (next.length === 0) {
+    storage()?.removeItem(PENDING_LOG_QUEUE_KEY);
+  } else {
+    storage()?.setItem(PENDING_LOG_QUEUE_KEY, JSON.stringify(next));
+  }
+  dispatchSyncStatus();
+}
+
+function dispatchSyncStatus(extra = {}) {
+  window.dispatchEvent(new CustomEvent('wp:sync-status', {
+    detail: {
+      pendingLogSaves: readPendingLogQueue().length,
+      ...extra,
+    },
+  }));
+}
+
+function stripLocalLogFields(log) {
+  const clean = { ...log };
+  delete clean.pendingSync;
+  delete clean.pendingSyncAt;
+  delete clean.syncError;
+  return clean;
+}
+
+function pendingLogItem(log) {
+  return {
+    ...stripLocalLogFields(log),
+    pendingSync: true,
+    pendingSyncAt: new Date().toISOString(),
+  };
+}
+
+function upsertLogItem(log) {
+  const list = cache.logs ?? [];
+  const idx = list.findIndex((l) => l.id === log.id);
+  cache.logs = idx >= 0
+    ? list.map((l, i) => (i === idx ? log : l))
+    : [...list, log];
+  return cache.logs;
+}
+
+function mergePendingLogs(logs) {
+  const byId = new Map(logs.map((log) => [log.id, log]));
+  for (const pending of readPendingLogQueue()) {
+    byId.set(pending.id, pendingLogItem(pending));
+  }
+  return [...byId.values()];
+}
+
+function queuePendingLogSave(log) {
+  const pending = pendingLogItem(log);
+  const queue = readPendingLogQueue().filter((entry) => entry.id !== pending.id);
+  queue.push(stripLocalLogFields(pending));
+  writePendingLogQueue(queue);
+  return pending;
+}
+
+function removePendingLogSave(id) {
+  writePendingLogQueue(readPendingLogQueue().filter((entry) => entry.id !== id));
+}
+
+function isNetworkError(error) {
+  return error instanceof TypeError || error?.name === 'TypeError' || error?.name === 'NetworkError';
+}
+
+export function pendingLogSaveCount() {
+  return readPendingLogQueue().length;
 }
 
 /** Clear the cache (called on sign-out). */
@@ -41,6 +128,7 @@ export function resetData() {
   cache.templates = null;
   cache.logs      = null;
   cache.settings  = null;
+  writePendingLogQueue([]);
 }
 
 // ── HTTP helper ────────────────────────────────────────────────────────────────
@@ -66,24 +154,29 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
-    const message = await responseErrorMessage(res);
-    window.dispatchEvent(new CustomEvent('wp:api-error', { detail: { message } }));
-    throw new Error(message);
+    const { message, requestId } = await responseError(res);
+    const error = new Error(message);
+    error.status = res.status;
+    error.requestId = requestId;
+    window.dispatchEvent(new CustomEvent('wp:api-error', {
+      detail: { message, status: res.status, requestId, conflict: res.status === 409 },
+    }));
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();
 }
 
-async function responseErrorMessage(res) {
+async function responseError(res) {
   const text = await res.text();
   const requestId = res.headers?.get?.('X-Request-Id') || res.headers?.get?.('x-request-id') || '';
   const withRequestId = (message) => requestId ? `${message} (Request ID: ${requestId})` : message;
-  if (!text) return withRequestId(`API ${res.status}`);
+  if (!text) return { message: withRequestId(`API ${res.status}`), requestId };
   try {
     const payload = JSON.parse(text);
-    return withRequestId(payload?.error || `API ${res.status}: ${text}`);
+    return { message: withRequestId(payload?.error || `API ${res.status}: ${text}`), requestId };
   } catch {
-    return withRequestId(`API ${res.status}: ${text}`);
+    return { message: withRequestId(`API ${res.status}: ${text}`), requestId };
   }
 }
 
@@ -106,8 +199,9 @@ export async function initData() {
   ]);
   cache.exercises = exercises;
   cache.templates = templates;
-  cache.logs      = logs;
+  cache.logs      = mergePendingLogs(logs);
   cache.settings  = settings ?? { ...DEFAULT_SETTINGS };
+  dispatchSyncStatus();
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -169,20 +263,67 @@ export function getLogs() { return cache.logs ?? []; }
 
 export async function saveLog(log) {
   const id = log.id ?? crypto.randomUUID();
-  const item = { ...log, id };
-  const saved = (DEV_BYPASS && !BASE_URL) ? item : await request('PUT', `/logs/${id}`, withExpectedRevision(item));
-  const list = cache.logs ?? [];
-  const idx = list.findIndex((l) => l.id === id);
-  cache.logs = idx >= 0
-    ? list.map((l, i) => (i === idx ? saved : l))
-    : [...list, saved];
+  const item = { ...stripLocalLogFields(log), id };
+  let saved;
+  if (DEV_BYPASS && !BASE_URL) {
+    saved = item;
+  } else {
+    try {
+      saved = await request('PUT', `/logs/${id}`, withExpectedRevision(item));
+      removePendingLogSave(id);
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      saved = queuePendingLogSave(item);
+    }
+  }
+  upsertLogItem(saved);
   return cache.logs;
 }
 
 export async function deleteLog(id) {
   if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/logs/${id}`);
+  removePendingLogSave(id);
   cache.logs = (cache.logs ?? []).filter((l) => l.id !== id);
   return cache.logs;
+}
+
+export async function flushPendingLogSaves() {
+  const queue = readPendingLogQueue();
+  if (queue.length === 0 || (DEV_BYPASS && !BASE_URL)) {
+    dispatchSyncStatus();
+    return getLogs();
+  }
+
+  const remaining = [];
+  for (let index = 0; index < queue.length; index += 1) {
+    const entry = queue[index];
+    try {
+      const saved = await request('PUT', `/logs/${entry.id}`, withExpectedRevision(stripLocalLogFields(entry)));
+      upsertLogItem(saved);
+    } catch (error) {
+      remaining.push(entry);
+      remaining.push(...queue.slice(index + 1));
+      if (error.status === 409) {
+        dispatchSyncStatus({ syncIssue: error.message });
+        window.dispatchEvent(new CustomEvent('wp:api-error', {
+          detail: {
+            message: `A pending workout could not sync because it changed elsewhere. Reload before editing it again. ${error.message}`,
+            status: 409,
+            conflict: true,
+          },
+        }));
+        break;
+      }
+      if (!isNetworkError(error)) {
+        dispatchSyncStatus({ syncIssue: error.message });
+        break;
+      }
+      break;
+    }
+  }
+
+  writePendingLogQueue(remaining);
+  return getLogs();
 }
 
 export function getLogsByDate(dateStr) {

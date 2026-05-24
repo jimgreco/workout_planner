@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Forge Support Admin</title>
+    <link rel="icon" href="/favicon.svg">
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.45;
+        --accent: #ff385c;
+        --border: #dddddd;
+        --surface: #f7f7f7;
+      }
+      body {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 28px 18px 48px;
+      }
+      header, section {
+        margin-bottom: 28px;
+      }
+      h1, h2, h3, p {
+        margin-top: 0;
+      }
+      h1 {
+        font-size: 32px;
+        margin-bottom: 8px;
+      }
+      h2 {
+        font-size: 20px;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      input, button {
+        min-height: 42px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: inherit;
+      }
+      input {
+        width: 100%;
+        padding: 8px 10px;
+      }
+      button {
+        padding: 8px 12px;
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+        cursor: pointer;
+        font-weight: 700;
+      }
+      button.secondary {
+        color: inherit;
+        background: transparent;
+        border-color: var(--border);
+      }
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+      .cols {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+      .row {
+        display: flex;
+        align-items: end;
+        gap: 10px;
+      }
+      .row > div {
+        flex: 1;
+      }
+      .panel, .card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--surface);
+      }
+      .metric {
+        font-size: 28px;
+        font-weight: 800;
+      }
+      .muted, time {
+        color: #717171;
+        font-size: 13px;
+      }
+      .feedback-list {
+        display: grid;
+        gap: 10px;
+      }
+      .card h3 {
+        margin-bottom: 6px;
+        font-size: 16px;
+      }
+      .card p {
+        white-space: pre-wrap;
+      }
+      .pill {
+        display: inline-flex;
+        gap: 4px;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: white;
+        border: 1px solid var(--border);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .error {
+        color: #c13515;
+        font-weight: 700;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --border: #2e2e42;
+          --surface: #1a1a24;
+        }
+        .pill {
+          background: #0f0f13;
+        }
+        .muted, time {
+          color: #9999a6;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Forge Support Admin</h1>
+      <p class="muted">Secret-protected support tools for feedback triage and account lookup.</p>
+    </header>
+
+    <section class="panel">
+      <form id="secret-form" class="row">
+        <div>
+          <label for="secret">Admin support secret</label>
+          <input id="secret" type="password" autocomplete="off">
+        </div>
+        <button id="save-secret">Save</button>
+        <button type="button" class="secondary" id="refresh">Refresh</button>
+      </form>
+      <p id="status" class="muted"></p>
+    </section>
+
+    <section>
+      <h2>Overview</h2>
+      <div id="overview" class="grid cols"></div>
+    </section>
+
+    <section>
+      <h2>Account Lookup</h2>
+      <div class="panel">
+        <div class="row">
+          <div>
+            <label for="email">Verified email</label>
+            <input id="email" type="email" placeholder="tester@example.com">
+          </div>
+          <button id="lookup">Lookup</button>
+        </div>
+        <div id="account-result" class="grid"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Request ID Helper</h2>
+      <div class="panel">
+        <div class="row">
+          <div>
+            <label for="request-id">Request ID</label>
+            <input id="request-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+          </div>
+          <button id="make-query" class="secondary">Build Log Query</button>
+        </div>
+        <pre id="request-query"></pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent Feedback</h2>
+      <div id="feedback" class="feedback-list"></div>
+    </section>
+
+    <script>
+      const API_BASE = location.origin + '/api';
+      const secretInput = document.querySelector('#secret');
+      const statusEl = document.querySelector('#status');
+      const overviewEl = document.querySelector('#overview');
+      const feedbackEl = document.querySelector('#feedback');
+      const accountResultEl = document.querySelector('#account-result');
+
+      secretInput.value = sessionStorage.getItem('forgeAdminSecret') || '';
+
+      function secret() {
+        return secretInput.value.trim();
+      }
+
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.className = isError ? 'error' : 'muted';
+      }
+
+      async function adminFetch(path) {
+        const response = await fetch(API_BASE + path, {
+          headers: { 'X-Admin-Support-Secret': secret() },
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || `API ${response.status}`);
+        }
+        return response.json();
+      }
+
+      function metric(label, value, detail = '') {
+        return `<div class="panel"><div class="metric">${value}</div><div>${label}</div><div class="muted">${detail}</div></div>`;
+      }
+
+      function renderOverview(data) {
+        const builds = data.feedback.builds.map((item) => `${item.build}: ${item.count}`).join(', ') || 'No builds yet';
+        overviewEl.innerHTML = [
+          metric('Feedback scanned', data.feedback.scanned, 'latest sample'),
+          metric('Unique users', data.feedback.uniqueUsers, 'by user hash'),
+          metric('API version', data.service.version, data.service.commit),
+          metric('Feedback by build', data.feedback.builds.length, builds),
+        ].join('');
+      }
+
+      function renderFeedback(items) {
+        feedbackEl.innerHTML = items.map((item) => `
+          <article class="card">
+            <h3>${escapeHtml(item.userHash || 'unknown user')}</h3>
+            <p>${escapeHtml(item.message || '')}</p>
+            <div class="row">
+              <span class="pill">${escapeHtml(item.build || 'unknown build')}</span>
+              <time>${escapeHtml(item.createdAt || '')}</time>
+            </div>
+          </article>
+        `).join('') || '<p class="muted">No feedback found.</p>';
+      }
+
+      function renderAccount(result) {
+        if (!result.found) {
+          accountResultEl.innerHTML = '<p class="muted">No account found for that verified email.</p>';
+          return;
+        }
+        const account = result.account;
+        accountResultEl.innerHTML = `
+          <div class="grid cols" style="margin-top: 14px">
+            ${metric('User hash', escapeHtml(account.userHash), escapeHtml(account.email))}
+            ${metric('Logs', account.counts.logs, `${account.activeWorkoutCount} active/planning`)}
+            ${metric('Exercises', account.counts.exercises, `${account.counts.templates} templates`)}
+            ${metric('Feedback', account.counts.feedback, account.latestFeedbackAt || 'none')}
+          </div>
+          <p class="muted">Last workout date: ${escapeHtml(account.lastWorkoutDate || 'none')}</p>
+        `;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      async function refresh() {
+        if (!secret()) {
+          setStatus('Enter the admin support secret.', true);
+          return;
+        }
+        setStatus('Loading...');
+        try {
+          const [overview, feedback] = await Promise.all([
+            adminFetch('/admin/overview?limit=100'),
+            adminFetch('/admin/feedback?limit=50'),
+          ]);
+          renderOverview(overview);
+          renderFeedback(feedback.items);
+          setStatus('Loaded.');
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      document.querySelector('#secret-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        sessionStorage.setItem('forgeAdminSecret', secret());
+        refresh();
+      });
+
+      document.querySelector('#refresh').addEventListener('click', refresh);
+
+      document.querySelector('#lookup').addEventListener('click', async () => {
+        try {
+          const email = encodeURIComponent(document.querySelector('#email').value.trim());
+          renderAccount(await adminFetch(`/admin/accounts?email=${email}`));
+        } catch (error) {
+          accountResultEl.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
+        }
+      });
+
+      document.querySelector('#make-query').addEventListener('click', () => {
+        const requestId = document.querySelector('#request-id').value.trim();
+        document.querySelector('#request-query').textContent = requestId
+          ? `docker compose logs workout_api | grep "${requestId}"`
+          : '';
+      });
+
+      if (secret()) refresh();
+    </script>
+  </body>
+</html>

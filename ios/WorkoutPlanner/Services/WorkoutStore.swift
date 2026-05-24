@@ -10,6 +10,7 @@ final class WorkoutStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var pendingTemplate: WorkoutTemplate?
     @Published var editingLog: WorkoutLog?
+    @Published var pendingSyncCount = 0
 
     private let auth: AuthManager
     private var api: WorkoutAPI? {
@@ -21,6 +22,7 @@ final class WorkoutStore: ObservableObject {
 
     init(auth: AuthManager) {
         self.auth = auth
+        pendingSyncCount = PendingWorkoutLogQueue.count
     }
 
     var usesLocalData: Bool {
@@ -28,7 +30,11 @@ final class WorkoutStore: ObservableObject {
     }
 
     var syncStatusText: String {
-        usesLocalData ? "Local demo data" : "Cloud sync"
+        if usesLocalData { return "Local demo data" }
+        if pendingSyncCount > 0 {
+            return "\(pendingSyncCount) pending \(pendingSyncCount == 1 ? "change" : "changes")"
+        }
+        return "Cloud sync"
     }
 
     func reset() {
@@ -39,6 +45,8 @@ final class WorkoutStore: ObservableObject {
         pendingTemplate = nil
         editingLog = nil
         errorMessage = nil
+        PendingWorkoutLogQueue.clear()
+        refreshPendingSyncCount()
     }
 
     func loadData() async {
@@ -60,8 +68,10 @@ final class WorkoutStore: ObservableObject {
             let loaded = try await api.initData()
             exercises = loaded.0.sortedByName()
             templates = loaded.1.sortedByName()
-            logs = loaded.2
+            logs = mergePendingLogs(loaded.2)
             settings = loaded.3
+            refreshPendingSyncCount()
+            await flushPendingLogs(using: api)
         } catch WorkoutAPIError.unauthorized {
             auth.signOut()
             errorMessage = WorkoutAPIError.unauthorized.localizedDescription
@@ -126,9 +136,18 @@ final class WorkoutStore: ObservableObject {
             saved = log
         } else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
-            saved = try await api.saveLog(log)
+            do {
+                saved = try await api.saveLog(log)
+                PendingWorkoutLogQueue.remove(log.id)
+            } catch {
+                guard isNetworkAvailabilityError(error) else { throw error }
+                PendingWorkoutLogQueue.upsert(log)
+                refreshPendingSyncCount()
+                saved = log
+            }
         }
         upsert(saved, in: &logs)
+        refreshPendingSyncCount()
         return saved
     }
 
@@ -137,7 +156,18 @@ final class WorkoutStore: ObservableObject {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
             try await api.deleteLog(id)
         }
+        PendingWorkoutLogQueue.remove(id)
+        refreshPendingSyncCount()
         logs.removeAll { $0.id == id }
+    }
+
+    func syncPendingChanges() async {
+        guard !usesLocalData else { return }
+        guard let api else {
+            errorMessage = "API configuration is missing. Install a build configured for Forge production."
+            return
+        }
+        await flushPendingLogs(using: api)
     }
 
     func submitFeedback(_ message: String) async throws {
@@ -218,6 +248,91 @@ final class WorkoutStore: ObservableObject {
         } else {
             list.append(item)
         }
+    }
+
+    private func refreshPendingSyncCount() {
+        pendingSyncCount = PendingWorkoutLogQueue.count
+    }
+
+    private func mergePendingLogs(_ cloudLogs: [WorkoutLog]) -> [WorkoutLog] {
+        var merged = Dictionary(uniqueKeysWithValues: cloudLogs.map { ($0.id, $0) })
+        for pending in PendingWorkoutLogQueue.all {
+            merged[pending.id] = pending
+        }
+        return Array(merged.values)
+    }
+
+    private func flushPendingLogs(using api: WorkoutAPI) async {
+        let pending = PendingWorkoutLogQueue.all
+        guard !pending.isEmpty else {
+            refreshPendingSyncCount()
+            return
+        }
+
+        for log in pending {
+            do {
+                let saved = try await api.saveLog(log)
+                PendingWorkoutLogQueue.remove(log.id)
+                upsert(saved, in: &logs)
+            } catch WorkoutAPIError.unauthorized {
+                auth.signOut()
+                errorMessage = WorkoutAPIError.unauthorized.localizedDescription
+                break
+            } catch {
+                if !isNetworkAvailabilityError(error) {
+                    errorMessage = "A pending workout could not sync: \(error.localizedDescription)"
+                }
+                break
+            }
+        }
+        refreshPendingSyncCount()
+    }
+}
+
+private enum PendingWorkoutLogQueue {
+    private static let key = "forge.pendingWorkoutLogSaves.v1"
+
+    static var all: [WorkoutLog] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([WorkoutLog].self, from: data)) ?? []
+    }
+
+    static var count: Int {
+        all.count
+    }
+
+    static func upsert(_ log: WorkoutLog) {
+        var logs = all.filter { $0.id != log.id }
+        logs.append(log)
+        save(logs)
+    }
+
+    static func remove(_ id: String) {
+        save(all.filter { $0.id != id })
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    private static func save(_ logs: [WorkoutLog]) {
+        guard !logs.isEmpty else {
+            clear()
+            return
+        }
+        if let data = try? JSONEncoder().encode(logs) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
+private func isNetworkAvailabilityError(_ error: Error) -> Bool {
+    guard let urlError = error as? URLError else { return false }
+    switch urlError.code {
+    case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .timedOut:
+        return true
+    default:
+        return false
     }
 }
 

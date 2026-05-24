@@ -142,6 +142,12 @@ curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
   "https://workout-planner.jim-greco.com/api/admin/feedback?limit=25"
 ```
 
+The same support tools are available in the browser at:
+
+```text
+https://workout-planner.jim-greco.com/admin.html
+```
+
 The support response intentionally returns a short `userHash` instead of raw
 provider IDs or email addresses. Use the hash only to group related feedback
 while triaging an issue.

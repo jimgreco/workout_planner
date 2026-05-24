@@ -10,6 +10,8 @@
 - Support operators can read recent feedback through the secret-protected `/admin/feedback` route.
 - Web and iOS link to hosted privacy and support pages.
 - Empty template libraries can create starter Push, Pull, and Legs workouts.
+- Workout log saves can queue locally when the network drops, with pending sync state in web and iOS.
+- Support admins have a static secret-protected viewer for feedback, build overview, request-ID helper commands, and email-based account summaries.
 
 ### Live Workout Execution
 
@@ -39,18 +41,17 @@
 
 ### Offline And Conflict Handling
 
-- Add an offline write queue for iOS workout logging.
-- Show sync status for unsent workout changes.
-- Add richer conflict recovery actions for resources updated on another device.
-- Keep active workouts resilient when gym connectivity drops.
+- Add offline delete/update queues for exercises and templates.
+- Add richer side-by-side conflict recovery for resources updated on another device.
+- Add background retry scheduling and push-visible sync status on iOS.
+- Stress test active workout recovery across app restarts and long offline periods.
 
 ### Support And Admin
 
-- Add a full admin feedback viewer UI.
-- Add request-ID search helpers for support triage.
-- Add account lookup by verified email.
-- Add a read-only user summary for support cases.
-- Add lightweight tester status and build metadata review.
+- Add direct CloudWatch or EC2 log search integration for Request IDs.
+- Add richer tester cohort/status tracking once tester metadata exists.
+- Add pagination and CSV export to the support admin viewer.
+- Add read-only account drilldown for individual exercises, templates, and recent logs.
 
 ### Beta And App Store Polish
 

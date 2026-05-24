@@ -6,7 +6,7 @@
  *   GET    /version
  *   POST   /auth/google
  *   POST   /auth/apple
- *   GET    /admin/feedback (requires X-Admin-Support-Secret)
+ *   GET    /admin/feedback | /admin/overview | /admin/accounts (requires X-Admin-Support-Secret)
  *
  * Authenticated routes require an app session token minted by the auth routes:
  *   GET    /exercises | /templates | /logs | /settings
@@ -30,7 +30,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { OAuth2Client } from 'google-auth-library';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { isVerifiedEmail, resolveAccountUser } from './account-linking.mjs';
+import { emailAliasPk, normalizeEmail, isVerifiedEmail, resolveAccountUser } from './account-linking.mjs';
 import { DEFAULT_EXERCISES } from './default-exercises.mjs';
 import { createAppSession, hashUserId, verifyAppSession } from './session.mjs';
 import {
@@ -504,6 +504,69 @@ function supportFeedbackItem(item) {
   };
 }
 
+function userSummary(accountSub, email, items) {
+  const counts = {
+    exercises: 0,
+    templates: 0,
+    logs: 0,
+    feedback: 0,
+  };
+  const feedbackBuilds = new Map();
+  let lastWorkoutDate;
+  let activeWorkoutCount = 0;
+  let latestFeedbackAt;
+  let deletedAt;
+
+  for (const item of items) {
+    if (item.SK === 'ACCOUNT') deletedAt = item.deletedAt;
+    else if (item.SK.startsWith('EXERCISE#')) counts.exercises += 1;
+    else if (item.SK.startsWith('TEMPLATE#')) counts.templates += 1;
+    else if (item.SK.startsWith('LOG#')) {
+      counts.logs += 1;
+      if (item.status === 'active' || item.status === 'planning') activeWorkoutCount += 1;
+      if (item.date && (!lastWorkoutDate || item.date > lastWorkoutDate)) lastWorkoutDate = item.date;
+    } else if (item.SK.startsWith('FEEDBACK#')) {
+      counts.feedback += 1;
+      if (item.createdAt && (!latestFeedbackAt || item.createdAt > latestFeedbackAt)) latestFeedbackAt = item.createdAt;
+      const build = item.build || 'unknown';
+      feedbackBuilds.set(build, (feedbackBuilds.get(build) ?? 0) + 1);
+    }
+  }
+
+  return {
+    userHash: hashUserId(accountSub),
+    email,
+    counts,
+    activeWorkoutCount,
+    lastWorkoutDate,
+    latestFeedbackAt,
+    deletedAt,
+    feedbackBuilds: [...feedbackBuilds.entries()]
+      .map(([build, count]) => ({ build, count }))
+      .sort((a, b) => b.count - a.count || a.build.localeCompare(b.build)),
+  };
+}
+
+function feedbackOverview(items) {
+  const builds = new Map();
+  const users = new Set();
+  for (const item of items) {
+    builds.set(item.build || 'unknown', (builds.get(item.build || 'unknown') ?? 0) + 1);
+    if (item.userHash) users.add(item.userHash);
+  }
+  return {
+    service: BUILD_INFO,
+    feedback: {
+      scanned: items.length,
+      uniqueUsers: users.size,
+      recent: items.slice(0, 8),
+      builds: [...builds.entries()]
+        .map(([build, count]) => ({ build, count }))
+        .sort((a, b) => b.count - a.count || a.build.localeCompare(b.build)),
+    },
+  };
+}
+
 async function scanFeedback(limit) {
   const items = [];
   let ExclusiveStartKey;
@@ -526,11 +589,34 @@ async function scanFeedback(limit) {
     .slice(0, limit);
 }
 
+async function lookupAccountByEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new ValidationError('email is required');
+  }
+  const alias = await db.send(new GetCommand({
+    TableName: TABLE,
+    Key: { PK: emailAliasPk(normalized), SK: 'ALIAS' },
+  }));
+  const accountSub = alias.Item?.accountSub;
+  if (!accountSub) return { found: false, email: normalized };
+  return {
+    found: true,
+    account: userSummary(accountSub, normalized, await queryAllUserItems(`USER#${accountSub}`)),
+  };
+}
+
 async function handleAdminRoute(method, resource, event, params) {
   if (!hasAdminSupportAccess(event)) return err(401, 'Unauthorized');
   if (resource === 'feedback' && method === 'GET') {
     const limit = parseAdminLimit(params);
     return ok({ items: await scanFeedback(limit) });
+  }
+  if (resource === 'overview' && method === 'GET') {
+    return ok(feedbackOverview(await scanFeedback(parseAdminLimit(params))));
+  }
+  if (resource === 'accounts' && method === 'GET') {
+    return ok(await lookupAccountByEmail(params.get('email')));
   }
   return err(404, 'Not found');
 }

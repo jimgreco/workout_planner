@@ -19,6 +19,7 @@ process.env.GIT_COMMIT = 'abcdef1';
 process.env.BUILD_TIME = '2026-05-22T00:00:00Z';
 
 const { createAppSession, hashUserId } = await import('./session.mjs');
+const { emailAliasPk } = await import('./account-linking.mjs');
 const { __setTestDb, handler } = await import('./handler.mjs');
 
 function event(method, rawPath, body, headers = {}) {
@@ -147,6 +148,63 @@ test('admin feedback route returns sanitized recent feedback', async () => {
       build: '1.1',
       userHash: hashUserId('user-2'),
     });
+  } finally {
+    if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
+    else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
+  }
+});
+
+test('admin overview summarizes feedback builds', async () => {
+  const originalSecret = process.env.ADMIN_SUPPORT_SECRET;
+  process.env.ADMIN_SUPPORT_SECRET = 'test-admin-support-secret';
+  __setTestDb(fakeDb([
+    { PK: 'USER#user-1', SK: 'FEEDBACK#2026-01-01T00:00:00.000Z#a', id: 'a', createdAt: '2026-01-01T00:00:00.000Z', message: 'One', build: '1.0' },
+    { PK: 'USER#user-2', SK: 'FEEDBACK#2026-01-02T00:00:00.000Z#b', id: 'b', createdAt: '2026-01-02T00:00:00.000Z', message: 'Two', build: '1.1' },
+    { PK: 'USER#user-2', SK: 'FEEDBACK#2026-01-03T00:00:00.000Z#c', id: 'c', createdAt: '2026-01-03T00:00:00.000Z', message: 'Three', build: '1.1' },
+  ]));
+
+  try {
+    const result = await handler(event('GET', '/admin/overview', undefined, {
+      'X-Admin-Support-Secret': 'test-admin-support-secret',
+    }));
+    const body = JSON.parse(result.body);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.service.service, 'workout-planner-api');
+    assert.equal(body.feedback.scanned, 3);
+    assert.equal(body.feedback.uniqueUsers, 2);
+    assert.deepEqual(body.feedback.builds[0], { build: '1.1', count: 2 });
+  } finally {
+    if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
+    else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
+  }
+});
+
+test('admin account lookup returns read-only user summary by verified email alias', async () => {
+  const originalSecret = process.env.ADMIN_SUPPORT_SECRET;
+  process.env.ADMIN_SUPPORT_SECRET = 'test-admin-support-secret';
+  __setTestDb(fakeDb([
+    { PK: emailAliasPk('tester@example.com'), SK: 'ALIAS', accountSub: 'user-1', email: 'tester@example.com' },
+    { PK: 'USER#user-1', SK: 'EXERCISE#bench', id: 'bench', name: 'Bench', muscleGroup: 'Chest' },
+    { PK: 'USER#user-1', SK: 'TEMPLATE#push', id: 'push', name: 'Push', exerciseItems: [] },
+    { PK: 'USER#user-1', SK: 'LOG#active', id: 'active', name: 'Active', date: '2026-01-03', exerciseItems: [], status: 'active' },
+    { PK: 'USER#user-1', SK: 'LOG#done', id: 'done', name: 'Done', date: '2026-01-02', exerciseItems: [], status: 'finished' },
+    { PK: 'USER#user-1', SK: 'FEEDBACK#2026-01-04T00:00:00.000Z#a', id: 'fb', createdAt: '2026-01-04T00:00:00.000Z', message: 'Help', build: '1.1' },
+  ]));
+
+  try {
+    const result = await handler(event('GET', '/admin/accounts?email=tester%40example.com', undefined, {
+      'X-Admin-Support-Secret': 'test-admin-support-secret',
+    }));
+    const body = JSON.parse(result.body);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.found, true);
+    assert.equal(body.account.userHash, hashUserId('user-1'));
+    assert.equal(body.account.email, 'tester@example.com');
+    assert.deepEqual(body.account.counts, { exercises: 1, templates: 1, logs: 2, feedback: 1 });
+    assert.equal(body.account.activeWorkoutCount, 1);
+    assert.equal(body.account.lastWorkoutDate, '2026-01-03');
   } finally {
     if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
     else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
