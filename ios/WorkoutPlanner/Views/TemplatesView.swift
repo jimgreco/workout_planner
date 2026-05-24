@@ -233,8 +233,16 @@ private struct TemplateCard: View {
 private struct TemplateFormSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: WorkoutStore
+
+    private enum FocusedTextField: Hashable {
+        case name
+        case description
+    }
+
     @State private var form: WorkoutTemplate
     @Binding var isSaving: Bool
+    @FocusState private var focusedTextField: FocusedTextField?
+    @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
     init(template: WorkoutTemplate, isSaving: Binding<Bool>) {
         _form = State(initialValue: template)
@@ -248,6 +256,7 @@ private struct TemplateFormSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         FormLabel(text: "Template Name *")
                         TextField("e.g. Push Day, Leg Day...", text: $form.name)
+                            .focused($focusedTextField, equals: .name)
                             .fieldStyle()
                     }
 
@@ -257,6 +266,7 @@ private struct TemplateFormSheet: View {
                             get: { form.description ?? "" },
                             set: { form.description = $0 }
                         ))
+                        .focused($focusedTextField, equals: .description)
                         .fieldStyle()
                     }
 
@@ -269,6 +279,7 @@ private struct TemplateFormSheet: View {
                     WorkoutBuilderView(
                         exercises: store.exercises,
                         items: $form.exerciseItems,
+                        focusedField: $focusedBuilderField,
                         showWeight: false,
                         defaultSets: store.settings.defaultSets,
                         defaultReps: store.settings.defaultReps
@@ -287,6 +298,13 @@ private struct TemplateFormSheet: View {
                         Task { await save() }
                     }
                     .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedTextField = nil
+                        focusedBuilderField = nil
+                    }
                 }
             }
         }
@@ -309,6 +327,7 @@ private struct TemplateViewSheet: View {
     @EnvironmentObject private var store: WorkoutStore
     let template: WorkoutTemplate
     let onStart: () -> Void
+    @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
     var body: some View {
         NavigationStack {
@@ -322,6 +341,7 @@ private struct TemplateViewSheet: View {
                     WorkoutBuilderView(
                         exercises: store.exercises,
                         items: .constant(template.exerciseItems),
+                        focusedField: $focusedBuilderField,
                         readOnly: true,
                         showWeight: false
                     )

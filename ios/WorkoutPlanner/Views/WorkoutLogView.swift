@@ -3,6 +3,11 @@ import SwiftUI
 struct WorkoutLogView: View {
     @EnvironmentObject private var store: WorkoutStore
 
+    private enum FocusedTextField: Hashable {
+        case name
+        case notes
+    }
+
     @State private var workoutId: String?
     @State private var name = ""
     @State private var date = Date()
@@ -15,6 +20,8 @@ struct WorkoutLogView: View {
     @State private var isSaving = false
     @State private var showDiscardConfirm = false
     @State private var finishSummary: FinishSummary?
+    @FocusState private var focusedTextField: FocusedTextField?
+    @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
     private var isActive: Bool { workoutId != nil }
     private var isPlanningMode: Bool { workoutId != nil && startTime == nil && !isEditing }
@@ -42,6 +49,7 @@ struct WorkoutLogView: View {
                     WorkoutBuilderView(
                         exercises: store.exercises,
                         items: $items,
+                        focusedField: $focusedBuilderField,
                         defaultSets: store.settings.defaultSets,
                         defaultReps: store.settings.defaultReps,
                         activeExerciseIndex: activeExerciseIndex,
@@ -57,6 +65,7 @@ struct WorkoutLogView: View {
                         FormLabel(text: "Session Notes")
                         TextField("How did it go? Any PRs, fatigue notes...", text: $notes, axis: .vertical)
                             .lineLimit(2...5)
+                            .focused($focusedTextField, equals: .notes)
                             .fieldStyle()
                             .onChange(of: notes) { _, _ in scheduleSave() }
                     }
@@ -65,6 +74,15 @@ struct WorkoutLogView: View {
             }
             .navigationTitle(pageTitle)
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedTextField = nil
+                        focusedBuilderField = nil
+                    }
+                }
+            }
         }
         .onAppear(perform: loadInitialState)
         .onChange(of: store.pendingTemplate) { _, template in
@@ -150,6 +168,7 @@ struct WorkoutLogView: View {
             VStack(alignment: .leading, spacing: 6) {
                 FormLabel(text: "Workout Name")
                 TextField("e.g. Monday Push Day", text: $name)
+                    .focused($focusedTextField, equals: .name)
                     .fieldStyle()
                     .onChange(of: name) { _, _ in scheduleSave() }
             }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-private enum WorkoutBuilderFocusedField: Hashable {
+enum WorkoutBuilderFocusedField: Hashable {
     case reps(itemIndex: Int, setIndex: Int)
     case weight(itemIndex: Int, setIndex: Int)
 }
@@ -8,7 +8,7 @@ private enum WorkoutBuilderFocusedField: Hashable {
 struct WorkoutBuilderView: View {
     let exercises: [Exercise]
     @Binding var items: [ExerciseItem]
-    @FocusState private var focusedField: WorkoutBuilderFocusedField?
+    @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
     var readOnly = false
     var showWeight = true
     var defaultSets = 4
@@ -68,14 +68,6 @@ struct WorkoutBuilderView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    focusedField = nil
-                }
             }
         }
     }
