@@ -1,7 +1,7 @@
 import AuthenticationServices
 import SwiftUI
 
-enum AppPage: String, CaseIterable, Identifiable {
+enum AppPage: String, CaseIterable, Identifiable, Hashable {
     case log
     case history
     case templates
@@ -9,8 +9,6 @@ enum AppPage: String, CaseIterable, Identifiable {
     case settings
 
     var id: String { rawValue }
-
-    static let tabPages: [AppPage] = [.log, .history, .templates, .exercises]
 
     var label: String {
         switch self {
@@ -39,40 +37,88 @@ struct AppShell: View {
     @State private var page: AppPage = .log
 
     var body: some View {
-        Group {
-            switch page {
-            case .log:
-                WorkoutLogView()
-            case .history:
-                HistoryView(selectedPage: $page)
-            case .templates:
-                TemplatesView(selectedPage: $page)
-            case .exercises:
-                ExercisesView()
-            case .settings:
-                SettingsPage {
-                    signOut()
-                }
+        tabShell
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background)
+            .tint(Theme.accent)
+            .onChange(of: store.pendingTemplate) { _, template in
+                if template != nil { page = .log }
+            }
+            .onChange(of: store.editingLog) { _, log in
+                if log != nil { page = .log }
+            }
+            .alert("Something went wrong", isPresented: Binding(
+                get: { store.errorMessage != nil },
+                set: { if !$0 { store.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(store.errorMessage ?? "")
+            }
+    }
+
+    @ViewBuilder
+    private var tabShell: some View {
+        if #available(iOS 18.0, *) {
+            modernTabShell
+        } else {
+            legacyTabShell
+        }
+    }
+
+    @available(iOS 18.0, *)
+    private var modernTabShell: some View {
+        TabView(selection: $page) {
+            Tab(AppPage.log.label, systemImage: AppPage.log.symbol, value: AppPage.log) {
+                tabContent(for: .log)
+            }
+
+            Tab(AppPage.history.label, systemImage: AppPage.history.symbol, value: AppPage.history) {
+                tabContent(for: .history)
+            }
+
+            Tab(AppPage.templates.label, systemImage: AppPage.templates.symbol, value: AppPage.templates) {
+                tabContent(for: .templates)
+            }
+
+            Tab(AppPage.exercises.label, systemImage: AppPage.exercises.symbol, value: AppPage.exercises) {
+                tabContent(for: .exercises)
+            }
+
+            Tab(AppPage.settings.label, systemImage: AppPage.settings.symbol, value: AppPage.settings) {
+                tabContent(for: .settings)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomNav(page: $page)
+        .nativeLiquidGlassTabBar()
+    }
+
+    private var legacyTabShell: some View {
+        TabView(selection: $page) {
+            ForEach(AppPage.allCases) { item in
+                tabContent(for: item)
+                    .tabItem {
+                        Label(item.label, systemImage: item.symbol)
+                    }
+                    .tag(item)
+            }
         }
-        .onChange(of: store.pendingTemplate) { _, template in
-            if template != nil { page = .log }
-        }
-        .onChange(of: store.editingLog) { _, log in
-            if log != nil { page = .log }
-        }
-        .alert("Something went wrong", isPresented: Binding(
-            get: { store.errorMessage != nil },
-            set: { if !$0 { store.errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(store.errorMessage ?? "")
+    }
+
+    @ViewBuilder
+    private func tabContent(for item: AppPage) -> some View {
+        switch item {
+        case .log:
+            WorkoutLogView()
+        case .history:
+            HistoryView(selectedPage: $page)
+        case .templates:
+            TemplatesView(selectedPage: $page)
+        case .exercises:
+            ExercisesView()
+        case .settings:
+            SettingsPage {
+                signOut()
+            }
         }
     }
 
@@ -80,45 +126,6 @@ struct AppShell: View {
         auth.signOut()
         store.reset()
         page = .log
-    }
-}
-
-private struct BottomNav: View {
-    @Binding var page: AppPage
-
-    var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 4) {
-                ForEach(AppPage.tabPages) { item in
-                    ToolbarPageButton(
-                        item: item,
-                        isSelected: page == item,
-                        action: {
-                            page = item
-                        }
-                    )
-                }
-            }
-            .padding(4)
-            .toolbarGlass(in: Capsule())
-            .layoutPriority(1)
-
-            ToolbarIconButton(
-                systemName: "gearshape.fill",
-                accessibilityLabel: "Settings",
-                tint: page == .settings ? Theme.accent : Theme.muted,
-                isSelected: page == .settings
-            ) {
-                page = .settings
-            }
-        }
-        .padding(7)
-        .frame(minHeight: 70)
-        .toolbarGlass(in: Capsule(), tint: Theme.accent.opacity(0.04))
-        .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 12)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
     }
 }
 
@@ -371,63 +378,13 @@ private struct AppleLinkSheet: View {
     }
 }
 
-private struct ToolbarIconButton: View {
-    let systemName: String
-    let accessibilityLabel: String
-    var tint: Color = Theme.text
-    var isSelected = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background {
-                    if isSelected {
-                        Circle()
-                            .fill(Theme.accent.opacity(0.13))
-                    }
-                }
-                .contentShape(Circle())
+private extension View {
+    @ViewBuilder
+    func nativeLiquidGlassTabBar() -> some View {
+        if #available(iOS 26.0, *) {
+            tabBarMinimizeBehavior(.automatic)
+        } else {
+            self
         }
-        .buttonStyle(.plain)
-        .toolbarGlass(in: Circle())
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct ToolbarPageButton: View {
-    let item: AppPage
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: item.symbol)
-                    .font(.system(size: 17, weight: isSelected ? .bold : .semibold))
-                Text(item.label)
-                    .font(.system(size: 10, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-            .foregroundStyle(isSelected ? Theme.accent : Theme.muted)
-            .frame(maxWidth: .infinity)
-            .frame(height: 42)
-            .padding(.horizontal, 2)
-            .background {
-                if isSelected {
-                    Capsule()
-                        .fill(Theme.accent.opacity(0.13))
-                }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(item.label)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
