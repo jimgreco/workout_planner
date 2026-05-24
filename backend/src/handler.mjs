@@ -601,6 +601,12 @@ export const handler = async (event) => {
         return finish(await handleAuth(id, parseJsonBody(event), event));
       } catch (error) {
         if (error instanceof ValidationError) return finish(err(400, error.message));
+        console.warn(JSON.stringify({
+          event: 'auth_invalid_credentials',
+          requestId,
+          provider: id,
+          message: error?.message ?? String(error),
+        }));
         return finish(err(401, 'Invalid credentials'));
       }
     }

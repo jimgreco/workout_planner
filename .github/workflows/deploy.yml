@@ -141,8 +141,31 @@ jobs:
           : "${APP_SESSION_SECRET:?APP_SESSION_SECRET must be set in GitHub Secrets}"
           : "${APPLE_CLIENT_IDS:?APPLE_CLIENT_IDS must be set}"
 
-          WORKOUT_GOOGLE_CLIENT_IDS="${WORKOUT_GOOGLE_CLIENT_IDS:-$WORKOUT_GOOGLE_CLIENT_ID,$GOOGLE_IOS_CLIENT_ID}"
-          WORKOUT_APPLE_CLIENT_IDS="${WORKOUT_APPLE_CLIENT_IDS:-$APPLE_CLIENT_IDS}"
+          normalize_csv() {
+            printf '%s' "${1:-}" | tr -d '[:space:]' | sed 's/^,*//;s/,*$//;s/,,*/,/g'
+          }
+
+          append_csv_unique() {
+            local list
+            local additions
+            local value
+            list="$(normalize_csv "${1:-}")"
+            additions="$(normalize_csv "${2:-}")"
+            IFS=',' read -ra values <<< "$additions"
+            for value in "${values[@]}"; do
+              if [ -z "$value" ]; then
+                continue
+              fi
+              case ",$list," in
+                *",$value,"*) ;;
+                *) list="${list:+$list,}$value" ;;
+              esac
+            done
+            printf '%s' "$list"
+          }
+
+          WORKOUT_GOOGLE_CLIENT_IDS="$(append_csv_unique "$WORKOUT_GOOGLE_CLIENT_IDS" "$WORKOUT_GOOGLE_CLIENT_ID,$GOOGLE_IOS_CLIENT_ID")"
+          WORKOUT_APPLE_CLIENT_IDS="$(append_csv_unique "$WORKOUT_APPLE_CLIENT_IDS" "$APPLE_CLIENT_IDS")"
           LOCAL_AUTH_BYPASS=false
 
           export APP_SESSION_SECRET
