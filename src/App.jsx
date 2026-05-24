@@ -22,6 +22,7 @@ import {
   getExercises,
   getTemplates,
   getLogs,
+  getPrograms,
   getSettings,
   exportData,
   importData,
@@ -89,6 +90,7 @@ export default function App() {
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [logs, setLogs]           = useState([]);
+  const [programs, setPrograms]   = useState([]);
   const [settings, setSettings]   = useState({ defaultSets: 4, defaultReps: 8 });
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [editingLog, setEditingLog] = useState(null);
@@ -103,6 +105,7 @@ export default function App() {
         setExercises(getExercises());
         setTemplates(getTemplates());
         setLogs(getLogs());
+        setPrograms(getPrograms());
         setSettings(getSettings());
       })
       .catch((err) => {
@@ -125,6 +128,7 @@ export default function App() {
     setExercises([]);
     setTemplates([]);
     setLogs([]);
+    setPrograms([]);
     setSettings({ defaultSets: 4, defaultReps: 8 });
     setPendingTemplate(null);
     setEditingLog(null);
@@ -170,6 +174,7 @@ export default function App() {
       setExercises(updated.exercises);
       setTemplates(updated.templates);
       setLogs(updated.logs);
+      setPrograms(updated.programs);
       setPendingSyncCount(pendingChangeCount());
       if (pendingChangeCount() === 0) {
         setNotice({ type: 'success', message: 'Pending changes synced.' });
@@ -274,7 +279,7 @@ export default function App() {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      const preview = previewImportData(data, { exercises, templates, logs });
+      const preview = previewImportData(data, { exercises, templates, logs, programs });
       setImportDraft({
         fileName: file.name,
         data,
@@ -299,6 +304,7 @@ export default function App() {
       setExercises(getExercises());
       setTemplates(getTemplates());
       setLogs(getLogs());
+      setPrograms(getPrograms());
       setSettings(getSettings());
       setAccountModal(null);
       setImportDraft(emptyImportDraft());
@@ -528,8 +534,11 @@ export default function App() {
           <Templates
             templates={templates}
             exercises={exercises}
+            logs={logs}
+            programs={programs}
             settings={settings}
             onUpdate={setTemplates}
+            onProgramsUpdate={setPrograms}
             onSettingsUpdate={setSettings}
             onStartWorkout={handleStartWorkout}
           />
@@ -626,6 +635,10 @@ export default function App() {
                   <div>
                     <span>Workouts</span>
                     <strong>{importDraft.preview.counts.logs}</strong>
+                  </div>
+                  <div>
+                    <span>Programs</span>
+                    <strong>{importDraft.preview.counts.programs}</strong>
                   </div>
                   <div>
                     <span>Settings</span>

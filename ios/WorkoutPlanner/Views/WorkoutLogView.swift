@@ -26,7 +26,7 @@ struct WorkoutLogView: View {
     private var isActive: Bool { workoutId != nil }
     private var isPlanningMode: Bool { workoutId != nil && startTime == nil && !isEditing }
     private var pageTitle: String {
-        isEditing ? "Edit Workout" : isPlanningMode ? "Plan Workout" : "Log Workout"
+        isEditing ? "Edit Workout" : startTime == nil ? "Plan Workout" : "Log Workout"
     }
 
     var body: some View {

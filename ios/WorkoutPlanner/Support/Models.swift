@@ -103,6 +103,44 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
     }
 }
 
+struct ProgramScheduleItem: Codable, Identifiable, Equatable {
+    var id: Int { weekday }
+    var weekday: Int
+    var templateId: String
+    var notes: String?
+}
+
+struct TrainingProgram: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var description: String?
+    var schedule: [ProgramScheduleItem]
+    var active: Bool?
+    var progressionRule: String?
+    var updatedAt: String?
+    var revision: Int?
+
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        description: String? = "",
+        schedule: [ProgramScheduleItem] = [],
+        active: Bool? = true,
+        progressionRule: String? = "",
+        updatedAt: String? = nil,
+        revision: Int? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.schedule = schedule
+        self.active = active
+        self.progressionRule = progressionRule
+        self.updatedAt = updatedAt
+        self.revision = revision
+    }
+}
+
 struct WorkoutLog: Codable, Identifiable, Equatable {
     var id: String
     var name: String
@@ -172,6 +210,7 @@ struct ForgeExportPayload: Codable, Equatable {
     var exercises: [Exercise]?
     var templates: [WorkoutTemplate]?
     var logs: [WorkoutLog]?
+    var programs: [TrainingProgram]?
     var settings: WorkoutSettings?
 }
 
@@ -184,6 +223,7 @@ struct ForgeImportCounts: Codable, Equatable {
     var exercises: Int
     var templates: Int
     var logs: Int
+    var programs: Int
     var settings: Bool?
 }
 
@@ -202,6 +242,7 @@ struct ForgeImportSkipped: Codable, Equatable {
     var exercises: [ForgeSkippedExercise]?
     var templates: [ForgeSkippedExercise]?
     var logs: [ForgeSkippedLog]?
+    var programs: [ForgeSkippedExercise]?
 }
 
 struct ForgeImportRename: Codable, Equatable {
@@ -213,6 +254,7 @@ struct ForgeImportRenamed: Codable, Equatable {
     var exercises: [ForgeImportRename]?
     var templates: [ForgeImportRename]?
     var logs: [ForgeImportRename]?
+    var programs: [ForgeImportRename]?
 }
 
 struct ForgeImportResult: Codable, Equatable {
@@ -226,6 +268,7 @@ struct ForgeImportPreview: Equatable {
         var exercises: Int
         var templates: Int
         var logs: Int
+        var programs: Int
         var settings: Int
     }
 
@@ -233,6 +276,7 @@ struct ForgeImportPreview: Equatable {
         var exercises: Int
         var templates: Int
         var logs: Int
+        var programs: Int
     }
 
     var counts: Counts

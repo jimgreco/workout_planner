@@ -15,6 +15,7 @@
 - Web and iOS can import Forge JSON exports with preview counts, empty-account restore, merge mode, duplicate-name handling, and existing-ID skips.
 - Offline queues now cover exercise/routine updates and deletes, plus workout log deletes, with pending sync counts across web and iOS.
 - Web has a first-run start sheet and throttled client-error feedback reports for beta triage.
+- Web and iOS now have a server-backed program layer with weekday routine scheduling and next-workout starts.
 
 ### Live Workout Execution
 
@@ -27,12 +28,9 @@
 
 ### Programming And Planning
 
-- Add a training program layer above templates.
-- Let users schedule workouts by weekday.
-- Show a "next workout" view based on the active program.
-- Add simple progression rules for weight or reps.
+- Turn freeform progression notes into structured weight/reps rules.
 - Add deload and skipped-workout handling.
-- Show planned versus completed work.
+- Deepen planned-versus-completed reporting beyond the current weekly program view.
 
 ### Import And Restore
 

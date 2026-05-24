@@ -97,6 +97,13 @@ function idArray(value, label) {
   return value.map((item, index) => validateId(item, `${label}[${index}]`));
 }
 
+function weekdayValue(value, label) {
+  if (!Number.isInteger(value) || value < 0 || value > 6) {
+    fail(`${label} must be an integer between 0 and 6`);
+  }
+  return value;
+}
+
 function optionalRevision(value, label) {
   if (value === undefined || value === null) return undefined;
   if (!Number.isInteger(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
@@ -203,6 +210,53 @@ export function validateTemplate(body, pathId) {
   return template;
 }
 
+function programScheduleItem(value, index) {
+  assertObject(value, `schedule[${index}]`);
+  assertAllowedKeys(value, new Set(['weekday', 'templateId', 'notes']), `schedule[${index}]`);
+  const item = {
+    weekday: weekdayValue(value.weekday, `schedule[${index}].weekday`),
+    templateId: validateId(value.templateId, `schedule[${index}].templateId`),
+  };
+  const notes = stringValue(value.notes, `schedule[${index}].notes`, { max: 500 });
+  if (notes !== undefined) item.notes = notes;
+  return item;
+}
+
+function programSchedule(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 7) fail('schedule must contain at most 7 items');
+  const seen = new Set();
+  return value.map((item, index) => {
+    const scheduleItem = programScheduleItem(item, index);
+    if (seen.has(scheduleItem.weekday)) fail('schedule can contain each weekday only once');
+    seen.add(scheduleItem.weekday);
+    return scheduleItem;
+  }).sort((a, b) => a.weekday - b.weekday);
+}
+
+export function validateProgram(body, pathId) {
+  assertObject(body, 'program');
+  assertAllowedKeys(
+    body,
+    new Set(['id', 'name', 'description', 'schedule', 'active', 'progressionRule', 'updatedAt', 'revision', 'expectedRevision']),
+    'program',
+  );
+  requireMatchingId(body, pathId);
+  optionalRevision(body.expectedRevision, 'expectedRevision');
+  const program = {
+    id: pathId,
+    name: stringValue(body.name, 'name', { required: true, max: 120, allowEmpty: false }),
+    schedule: programSchedule(body.schedule),
+  };
+  const description = stringValue(body.description, 'description', { max: 1000 });
+  if (description !== undefined) program.description = description;
+  const active = boolValue(body.active, 'active');
+  if (active !== undefined) program.active = active;
+  const progressionRule = stringValue(body.progressionRule, 'progressionRule', { max: 1000 });
+  if (progressionRule !== undefined) program.progressionRule = progressionRule;
+  return program;
+}
+
 export function validateLog(body, pathId) {
   assertObject(body, 'log');
   assertAllowedKeys(
@@ -259,7 +313,7 @@ export function validateImport(body) {
   assertObject(data, 'data');
   assertAllowedKeys(
     data,
-    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'settings', 'feedback']),
+    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'programs', 'settings', 'feedback']),
     'data',
   );
 
@@ -281,8 +335,13 @@ export function validateImport(body) {
   const settings = data.settings === undefined || data.settings === null
     ? undefined
     : validateSettings(data.settings);
+  const programs = importArray(data.programs, 'programs', 100)
+    .map((program, index) => {
+      assertObject(program, `programs[${index}]`);
+      return validateProgram(program, program.id);
+    });
 
-  return { mode, exercises, templates, logs, settings };
+  return { mode, exercises, templates, logs, programs, settings };
 }
 
 export function validateAuthBody(body, provider) {

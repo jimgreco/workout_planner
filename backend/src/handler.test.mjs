@@ -202,7 +202,7 @@ test('admin account lookup returns read-only user summary by verified email alia
     assert.equal(body.found, true);
     assert.equal(body.account.userHash, hashUserId('user-1'));
     assert.equal(body.account.email, 'tester@example.com');
-    assert.deepEqual(body.account.counts, { exercises: 1, templates: 1, logs: 2, feedback: 1 });
+    assert.deepEqual(body.account.counts, { exercises: 1, templates: 1, logs: 2, programs: 0, feedback: 1 });
     assert.equal(body.account.activeWorkoutCount, 1);
     assert.equal(body.account.lastWorkoutDate, '2026-01-03');
   } finally {
@@ -275,6 +275,42 @@ test('optional expectedRevision protects against stale overwrites', async () => 
   assert.equal(typeof body.updatedAt, 'string');
 });
 
+test('program routes persist weekly routine schedules', async () => {
+  const db = fakeDb([
+    { PK: 'USER#dev-user-local', SK: 'TEMPLATE#push', id: 'push', name: 'Push', exerciseItems: [] },
+  ]);
+  __setTestDb(db);
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+
+  const saved = await handler(event('PUT', '/programs/strength', {
+    id: 'strength',
+    name: 'Strength Block',
+    description: 'Simple weekly plan',
+    active: true,
+    progressionRule: 'Add weight when all sets hit the target.',
+    schedule: [
+      { weekday: 1, templateId: 'push', notes: 'Heavy' },
+      { weekday: 3, templateId: 'push' },
+    ],
+  }, headers));
+  const savedBody = JSON.parse(saved.body);
+
+  assert.equal(saved.statusCode, 200);
+  assert.equal(savedBody.id, 'strength');
+  assert.equal(savedBody.revision, 1);
+  assert.deepEqual(savedBody.schedule.map((item) => item.weekday), [1, 3]);
+
+  const listed = await handler(event('GET', '/programs', undefined, headers));
+  const listBody = JSON.parse(listed.body);
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listBody.length, 1);
+  assert.equal(listBody[0].name, 'Strength Block');
+
+  const deleted = await handler(event('DELETE', '/programs/strength', undefined, headers));
+  assert.equal(deleted.statusCode, 204);
+  assert.equal(db.items.has('USER#dev-user-local|PROGRAM#strength'), false);
+});
+
 test('import restores Forge export data into an empty account', async () => {
   const db = fakeDb();
   __setTestDb(db);
@@ -287,16 +323,18 @@ test('import restores Forge export data into an empty account', async () => {
       exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
       templates: [{ id: 'push', name: 'Push', exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '6', weight: '100' }] }] }],
       logs: [{ id: 'done', name: 'Done', date: '2026-01-02', exerciseItems: [], status: 'finished' }],
+      programs: [{ id: 'program', name: 'Push Plan', active: true, schedule: [{ weekday: 1, templateId: 'push' }] }],
     },
   }, headers));
   const body = JSON.parse(result.body);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, settings: true });
+  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, programs: 1, settings: true });
   assert.equal(db.items.get('USER#dev-user-local|SETTINGS').defaultSets, 5);
   assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').revision, 1);
   assert.equal(db.items.get('USER#dev-user-local|TEMPLATE#push').exerciseItems[0].exerciseId, 'bench');
   assert.equal(db.items.get('USER#dev-user-local|LOG#done').status, 'finished');
+  assert.equal(db.items.get('USER#dev-user-local|PROGRAM#program').schedule[0].templateId, 'push');
 });
 
 test('empty-only import refuses to restore over existing account data', async () => {
@@ -321,6 +359,7 @@ test('merge import renames duplicate exercise and routine names', async () => {
   const db = fakeDb([
     { PK: 'USER#dev-user-local', SK: 'EXERCISE#existing-bench', id: 'existing-bench', name: 'Bench', muscleGroup: 'Chest' },
     { PK: 'USER#dev-user-local', SK: 'TEMPLATE#existing-push', id: 'existing-push', name: 'Push', exerciseItems: [] },
+    { PK: 'USER#dev-user-local', SK: 'PROGRAM#existing-plan', id: 'existing-plan', name: 'Strength Plan', schedule: [] },
   ]);
   __setTestDb(db);
   const headers = { Authorization: 'Bearer dev-bypass-token' };
@@ -331,6 +370,7 @@ test('merge import renames duplicate exercise and routine names', async () => {
       exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
       templates: [{ id: 'push', name: 'Push', exerciseItems: [] }],
       logs: [],
+      programs: [{ id: 'plan', name: 'Strength Plan', schedule: [{ weekday: 1, templateId: 'push' }] }],
     },
   }, headers));
   const body = JSON.parse(result.body);
@@ -338,14 +378,17 @@ test('merge import renames duplicate exercise and routine names', async () => {
   assert.equal(result.statusCode, 200);
   assert.deepEqual(body.renamed.exercises, [{ from: 'Bench', to: 'Bench (imported)' }]);
   assert.deepEqual(body.renamed.templates, [{ from: 'Push', to: 'Push (imported)' }]);
+  assert.deepEqual(body.renamed.programs, [{ from: 'Strength Plan', to: 'Strength Plan (imported)' }]);
   assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').name, 'Bench (imported)');
   assert.equal(db.items.get('USER#dev-user-local|TEMPLATE#push').name, 'Push (imported)');
+  assert.equal(db.items.get('USER#dev-user-local|PROGRAM#plan').name, 'Strength Plan (imported)');
 });
 
 test('merge import skips existing IDs instead of overwriting account data', async () => {
   const db = fakeDb([
     { PK: 'USER#dev-user-local', SK: 'EXERCISE#bench', id: 'bench', name: 'Current Bench', muscleGroup: 'Chest' },
     { PK: 'USER#dev-user-local', SK: 'LOG#done', id: 'done', name: 'Current Log', date: '2026-01-02', exerciseItems: [], status: 'finished' },
+    { PK: 'USER#dev-user-local', SK: 'PROGRAM#program', id: 'program', name: 'Current Plan', schedule: [] },
   ]);
   __setTestDb(db);
   const headers = { Authorization: 'Bearer dev-bypass-token' };
@@ -356,16 +399,19 @@ test('merge import skips existing IDs instead of overwriting account data', asyn
       exercises: [{ id: 'bench', name: 'Imported Bench', muscleGroup: 'Back' }],
       templates: [],
       logs: [{ id: 'done', name: 'Imported Log', date: '2026-01-02', exerciseItems: [], status: 'finished' }],
+      programs: [{ id: 'program', name: 'Imported Plan', schedule: [] }],
     },
   }, headers));
   const body = JSON.parse(result.body);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, settings: false });
+  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, programs: 0, settings: false });
   assert.deepEqual(body.skipped.exercises, [{ id: 'bench', name: 'Imported Bench' }]);
   assert.deepEqual(body.skipped.logs, [{ id: 'done', name: 'Imported Log', date: '2026-01-02' }]);
+  assert.deepEqual(body.skipped.programs, [{ id: 'program', name: 'Imported Plan' }]);
   assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').name, 'Current Bench');
   assert.equal(db.items.get('USER#dev-user-local|LOG#done').name, 'Current Log');
+  assert.equal(db.items.get('USER#dev-user-local|PROGRAM#program').name, 'Current Plan');
 });
 
 test('account deletion revokes already-issued app sessions', async () => {

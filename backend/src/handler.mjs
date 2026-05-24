@@ -9,9 +9,9 @@
  *   GET    /admin/feedback | /admin/overview | /admin/accounts (requires X-Admin-Support-Secret)
  *
  * Authenticated routes require an app session token minted by the auth routes:
- *   GET    /exercises | /templates | /logs | /settings
- *   PUT    /exercises/:id | /templates/:id | /logs/:id | /settings
- *   DELETE /exercises/:id | /templates/:id | /logs/:id
+ *   GET    /exercises | /templates | /logs | /programs | /settings
+ *   PUT    /exercises/:id | /templates/:id | /logs/:id | /programs/:id | /settings
+ *   DELETE /exercises/:id | /templates/:id | /logs/:id | /programs/:id
  *   GET    /export
  *   POST   /import
  *   POST   /feedback
@@ -43,6 +43,7 @@ import {
   validateImport,
   validateId,
   validateLog,
+  validateProgram,
   validateSettings,
   validateTemplate,
 } from './validation.mjs';
@@ -67,6 +68,7 @@ const SK_PREFIX = {
   exercises: 'EXERCISE',
   templates: 'TEMPLATE',
   logs: 'LOG',
+  programs: 'PROGRAM',
 };
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
@@ -382,6 +384,7 @@ function validateResourceBody(resource, body, id) {
   if (resource === 'exercises') return validateExercise(body, id);
   if (resource === 'templates') return validateTemplate(body, id);
   if (resource === 'logs') return validateLog(body, id);
+  if (resource === 'programs') return validateProgram(body, id);
   throw new ValidationError('Unknown resource');
 }
 
@@ -391,6 +394,7 @@ function exportPayload(items) {
     exercises: [],
     templates: [],
     logs: [],
+    programs: [],
     settings: DEFAULT_SETTINGS,
     feedback: [],
   };
@@ -399,6 +403,7 @@ function exportPayload(items) {
     else if (item.SK.startsWith('EXERCISE#')) data.exercises.push(strip(item));
     else if (item.SK.startsWith('TEMPLATE#')) data.templates.push(strip(item));
     else if (item.SK.startsWith('LOG#')) data.logs.push(strip(item));
+    else if (item.SK.startsWith('PROGRAM#')) data.programs.push(strip(item));
     else if (item.SK.startsWith('FEEDBACK#')) data.feedback.push(strip(item));
   }
   return data;
@@ -411,7 +416,8 @@ function collectionItems(items, prefix) {
 function userDataItemCount(items) {
   return collectionItems(items, 'EXERCISE').length
     + collectionItems(items, 'TEMPLATE').length
-    + collectionItems(items, 'LOG').length;
+    + collectionItems(items, 'LOG').length
+    + collectionItems(items, 'PROGRAM').length;
 }
 
 function nameKey(value) {
@@ -436,14 +442,16 @@ function uniqueImportedName(name, existingNames, renamed, suffix = 'imported') {
 }
 
 function duplicateSafeItems(existingItems, imported) {
-  const renamed = { exercises: [], templates: [], logs: [] };
-  const skipped = { exercises: [], templates: [], logs: [] };
+  const renamed = { exercises: [], templates: [], logs: [], programs: [] };
+  const skipped = { exercises: [], templates: [], logs: [], programs: [] };
   const existingExerciseIds = new Set(collectionItems(existingItems, 'EXERCISE').map((item) => item.id));
   const existingTemplateIds = new Set(collectionItems(existingItems, 'TEMPLATE').map((item) => item.id));
   const existingLogIds = new Set(collectionItems(existingItems, 'LOG').map((item) => item.id));
+  const existingProgramIds = new Set(collectionItems(existingItems, 'PROGRAM').map((item) => item.id));
   const exerciseNames = new Set(collectionItems(existingItems, 'EXERCISE').map((item) => nameKey(item.name)));
   const templateNames = new Set(collectionItems(existingItems, 'TEMPLATE').map((item) => nameKey(item.name)));
   const logNamesByDate = new Set(collectionItems(existingItems, 'LOG').map((item) => `${item.date}|${nameKey(item.name)}`));
+  const programNames = new Set(collectionItems(existingItems, 'PROGRAM').map((item) => nameKey(item.name)));
   const exercises = imported.exercises.flatMap((exercise) => {
     if (existingExerciseIds.has(exercise.id)) {
       skipped.exercises.push({ id: exercise.id, name: exercise.name });
@@ -481,7 +489,17 @@ function duplicateSafeItems(existingItems, imported) {
     logNamesByDate.add(`${log.date}|${nameKey(name)}`);
     return [{ ...log, name }];
   });
-  return { exercises, templates, logs, settings: imported.settings, renamed, skipped };
+  const programs = imported.programs.flatMap((program) => {
+    if (existingProgramIds.has(program.id)) {
+      skipped.programs.push({ id: program.id, name: program.name });
+      return [];
+    }
+    return [{
+      ...program,
+      name: uniqueImportedName(program.name, programNames, renamed.programs),
+    }];
+  });
+  return { exercises, templates, logs, programs, settings: imported.settings, renamed, skipped };
 }
 
 async function writeImportedCollection(PK, prefix, items) {
@@ -504,7 +522,11 @@ async function importPayload(PK, body) {
 
   const safe = imported.mode === 'merge'
     ? duplicateSafeItems(existingItems, imported)
-    : { ...imported, renamed: { exercises: [], templates: [], logs: [] }, skipped: { exercises: [], templates: [], logs: [] } };
+    : {
+        ...imported,
+        renamed: { exercises: [], templates: [], logs: [], programs: [] },
+        skipped: { exercises: [], templates: [], logs: [], programs: [] },
+      };
 
   if (safe.settings) {
     await db.send(new PutCommand({
@@ -515,12 +537,14 @@ async function importPayload(PK, body) {
   await writeImportedCollection(PK, 'EXERCISE', safe.exercises);
   await writeImportedCollection(PK, 'TEMPLATE', safe.templates);
   await writeImportedCollection(PK, 'LOG', safe.logs);
+  await writeImportedCollection(PK, 'PROGRAM', safe.programs);
 
   return {
     imported: {
       exercises: safe.exercises.length,
       templates: safe.templates.length,
       logs: safe.logs.length,
+      programs: safe.programs.length,
       settings: Boolean(safe.settings),
     },
     renamed: safe.renamed,
@@ -635,6 +659,7 @@ function userSummary(accountSub, email, items) {
     exercises: 0,
     templates: 0,
     logs: 0,
+    programs: 0,
     feedback: 0,
   };
   const feedbackBuilds = new Map();
@@ -647,6 +672,7 @@ function userSummary(accountSub, email, items) {
     if (item.SK === 'ACCOUNT') deletedAt = item.deletedAt;
     else if (item.SK.startsWith('EXERCISE#')) counts.exercises += 1;
     else if (item.SK.startsWith('TEMPLATE#')) counts.templates += 1;
+    else if (item.SK.startsWith('PROGRAM#')) counts.programs += 1;
     else if (item.SK.startsWith('LOG#')) {
       counts.logs += 1;
       if (item.status === 'active' || item.status === 'planning') activeWorkoutCount += 1;

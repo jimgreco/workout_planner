@@ -4,6 +4,7 @@ import {
   ValidationError,
   validateExercise,
   validateLog,
+  validateProgram,
   validateSettings,
   validateTemplate,
 } from './validation.mjs';
@@ -59,4 +60,23 @@ test('validates template and settings boundaries', () => {
   assert.equal(validateTemplate({ id: 't-1', name: 'Push', exerciseItems: [] }, 't-1').name, 'Push');
   assert.deepEqual(validateSettings({ defaultSets: 4, defaultReps: 8 }), { defaultSets: 4, defaultReps: 8 });
   assert.throws(() => validateSettings({ defaultSets: 0, defaultReps: 8 }), ValidationError);
+});
+
+test('validates program weekly schedules', () => {
+  const program = validateProgram({
+    id: 'program-1',
+    name: 'Strength Plan',
+    active: true,
+    schedule: [
+      { weekday: 5, templateId: 'legs' },
+      { weekday: 1, templateId: 'push', notes: 'Heavy' },
+    ],
+  }, 'program-1');
+
+  assert.deepEqual(program.schedule.map((item) => item.weekday), [1, 5]);
+  assert.equal(program.active, true);
+  assert.throws(
+    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'pull' }] }, 'program-1'),
+    ValidationError,
+  );
 });

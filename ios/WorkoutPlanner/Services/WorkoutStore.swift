@@ -5,6 +5,7 @@ final class WorkoutStore: ObservableObject {
     @Published var exercises: [Exercise] = []
     @Published var templates: [WorkoutTemplate] = []
     @Published var logs: [WorkoutLog] = []
+    @Published var programs: [TrainingProgram] = []
     @Published var settings = WorkoutSettings.defaults
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -41,6 +42,7 @@ final class WorkoutStore: ObservableObject {
         exercises = []
         templates = []
         logs = []
+        programs = []
         settings = .defaults
         pendingTemplate = nil
         editingLog = nil
@@ -70,7 +72,8 @@ final class WorkoutStore: ObservableObject {
             exercises = mergePendingExercises(loaded.0).sortedByName()
             templates = mergePendingTemplates(loaded.1).sortedByName()
             logs = mergePendingLogs(loaded.2)
-            settings = loaded.3
+            programs = mergePendingPrograms(loaded.3).sortedForDisplay()
+            settings = loaded.4
             refreshPendingSyncCount()
             await flushPendingChanges(using: api)
         } catch WorkoutAPIError.unauthorized {
@@ -162,6 +165,42 @@ final class WorkoutStore: ObservableObject {
         refreshPendingSyncCount()
     }
 
+    func saveProgram(_ program: TrainingProgram) async throws {
+        let saved: TrainingProgram
+        if usesLocalData {
+            saved = program
+        } else {
+            guard let api else { throw WorkoutAPIError.missingConfiguration }
+            do {
+                saved = try await api.saveProgram(program)
+                PendingResourceQueue.remove(.programs, id: program.id)
+            } catch {
+                guard isNetworkAvailabilityError(error) else { throw error }
+                PendingResourceQueue.upsertProgram(program)
+                refreshPendingSyncCount()
+                saved = program
+            }
+        }
+        upsert(saved, in: &programs)
+        programs = programs.sortedForDisplay()
+        refreshPendingSyncCount()
+    }
+
+    func deleteProgram(_ id: String) async throws {
+        if !usesLocalData {
+            guard let api else { throw WorkoutAPIError.missingConfiguration }
+            do {
+                try await api.deleteProgram(id)
+                PendingResourceQueue.remove(.programs, id: id)
+            } catch {
+                guard isNetworkAvailabilityError(error) else { throw error }
+                PendingResourceQueue.delete(.programs, id: id)
+            }
+        }
+        programs.removeAll { $0.id == id }
+        refreshPendingSyncCount()
+    }
+
     @discardableResult
     func saveLog(_ log: WorkoutLog) async throws -> WorkoutLog {
         let saved: WorkoutLog
@@ -222,6 +261,7 @@ final class WorkoutStore: ObservableObject {
                 exercises: exercises,
                 templates: templates,
                 logs: logs,
+                programs: programs,
                 settings: settings
             ))
         }
@@ -233,23 +273,27 @@ final class WorkoutStore: ObservableObject {
         let importedExercises = payload.exercises ?? []
         let importedTemplates = payload.templates ?? []
         let importedLogs = payload.logs ?? []
+        let importedPrograms = payload.programs ?? []
         let existingExerciseIds = Set(exercises.map(\.id))
         let existingTemplateIds = Set(templates.map(\.id))
         let existingLogIds = Set(logs.map(\.id))
+        let existingProgramIds = Set(programs.map(\.id))
         return ForgeImportPreview(
             counts: .init(
                 exercises: importedExercises.count,
                 templates: importedTemplates.count,
                 logs: importedLogs.count,
+                programs: importedPrograms.count,
                 settings: payload.settings == nil ? 0 : 1
             ),
             duplicateIds: .init(
                 exercises: importedExercises.filter { existingExerciseIds.contains($0.id) }.count,
                 templates: importedTemplates.filter { existingTemplateIds.contains($0.id) }.count,
-                logs: importedLogs.filter { existingLogIds.contains($0.id) }.count
+                logs: importedLogs.filter { existingLogIds.contains($0.id) }.count,
+                programs: importedPrograms.filter { existingProgramIds.contains($0.id) }.count
             ),
-            isEmpty: importedExercises.isEmpty && importedTemplates.isEmpty && importedLogs.isEmpty,
-            targetIsEmpty: exercises.isEmpty && templates.isEmpty && logs.isEmpty
+            isEmpty: importedExercises.isEmpty && importedTemplates.isEmpty && importedLogs.isEmpty && importedPrograms.isEmpty,
+            targetIsEmpty: exercises.isEmpty && templates.isEmpty && logs.isEmpty && programs.isEmpty
         )
     }
 
@@ -267,7 +311,8 @@ final class WorkoutStore: ObservableObject {
         let incomingExercises = payload.exercises ?? []
         let incomingTemplates = payload.templates ?? []
         let incomingLogs = payload.logs ?? []
-        if mode == .emptyOnly && (!exercises.isEmpty || !templates.isEmpty || !logs.isEmpty) {
+        let incomingPrograms = payload.programs ?? []
+        if mode == .emptyOnly && (!exercises.isEmpty || !templates.isEmpty || !logs.isEmpty || !programs.isEmpty) {
             throw WorkoutAPIError.server(409, "Import can only restore into an empty account.", requestID: nil)
         }
 
@@ -275,31 +320,37 @@ final class WorkoutStore: ObservableObject {
             exercises = incomingExercises.sortedByName()
             templates = incomingTemplates.sortedByName()
             logs = incomingLogs
+            programs = incomingPrograms.sortedForDisplay()
             if let importedSettings = payload.settings { settings = importedSettings }
             return ForgeImportResult(
                 imported: .init(
                     exercises: incomingExercises.count,
                     templates: incomingTemplates.count,
                     logs: incomingLogs.count,
+                    programs: incomingPrograms.count,
                     settings: payload.settings != nil
                 ),
-                renamed: .init(exercises: [], templates: [], logs: []),
-                skipped: .init(exercises: [], templates: [], logs: [])
+                renamed: .init(exercises: [], templates: [], logs: [], programs: []),
+                skipped: .init(exercises: [], templates: [], logs: [], programs: [])
             )
         }
 
         let existingExerciseIds = Set(exercises.map(\.id))
         let existingTemplateIds = Set(templates.map(\.id))
         let existingLogIds = Set(logs.map(\.id))
+        let existingProgramIds = Set(programs.map(\.id))
         var skippedExercises: [ForgeSkippedExercise] = []
         var skippedTemplates: [ForgeSkippedExercise] = []
         var skippedLogs: [ForgeSkippedLog] = []
+        var skippedPrograms: [ForgeSkippedExercise] = []
         var renamedExercises: [ForgeImportRename] = []
         var renamedTemplates: [ForgeImportRename] = []
         var renamedLogs: [ForgeImportRename] = []
+        var renamedPrograms: [ForgeImportRename] = []
         var exerciseNames = Set(exercises.map { nameKey($0.name) })
         var templateNames = Set(templates.map { nameKey($0.name) })
         var logNamesByDate = Set(logs.map { "\($0.date)|\(nameKey($0.name))" })
+        var programNames = Set(programs.map { nameKey($0.name) })
 
         let newExercises: [Exercise] = incomingExercises.compactMap { exercise in
             if existingExerciseIds.contains(exercise.id) {
@@ -340,9 +391,20 @@ final class WorkoutStore: ObservableObject {
             return next
         }
 
+        let newPrograms: [TrainingProgram] = incomingPrograms.compactMap { program in
+            if existingProgramIds.contains(program.id) {
+                skippedPrograms.append(.init(id: program.id, name: program.name))
+                return nil
+            }
+            var next = program
+            next.name = uniqueImportedName(next.name, existingNames: &programNames, renamed: &renamedPrograms)
+            return next
+        }
+
         exercises = (exercises + newExercises).sortedByName()
         templates = (templates + newTemplates).sortedByName()
         logs += newLogs
+        programs = (programs + newPrograms).sortedForDisplay()
         if let importedSettings = payload.settings { settings = importedSettings }
 
         return ForgeImportResult(
@@ -350,10 +412,11 @@ final class WorkoutStore: ObservableObject {
                 exercises: newExercises.count,
                 templates: newTemplates.count,
                 logs: newLogs.count,
+                programs: newPrograms.count,
                 settings: payload.settings != nil
             ),
-            renamed: .init(exercises: renamedExercises, templates: renamedTemplates, logs: renamedLogs),
-            skipped: .init(exercises: skippedExercises, templates: skippedTemplates, logs: skippedLogs)
+            renamed: .init(exercises: renamedExercises, templates: renamedTemplates, logs: renamedLogs, programs: renamedPrograms),
+            skipped: .init(exercises: skippedExercises, templates: skippedTemplates, logs: skippedLogs, programs: skippedPrograms)
         )
     }
 
@@ -382,7 +445,7 @@ final class WorkoutStore: ObservableObject {
     }
 
     private func loadDemoDataIfNeeded() {
-        guard exercises.isEmpty, templates.isEmpty, logs.isEmpty else { return }
+        guard exercises.isEmpty, templates.isEmpty, logs.isEmpty, programs.isEmpty else { return }
         let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", notes: "Pause first rep", personalBest: PersonalBest(weight: "225", date: DateHelpers.todayString()))
         let row = Exercise(name: "Barbell Row", muscleGroup: "Back")
         let press = Exercise(name: "Overhead Press", muscleGroup: "Shoulders")
@@ -405,6 +468,19 @@ final class WorkoutStore: ObservableObject {
                 ]
             ),
         ].sortedByName()
+        programs = [
+            TrainingProgram(
+                name: "Starter Week",
+                description: "Push, legs, and repeatable practice days",
+                schedule: [
+                    ProgramScheduleItem(weekday: 1, templateId: templates[0].id),
+                    ProgramScheduleItem(weekday: 3, templateId: templates[1].id),
+                    ProgramScheduleItem(weekday: 5, templateId: templates[0].id),
+                ],
+                active: true,
+                progressionRule: "Add reps or weight when every set hits the target."
+            )
+        ]
     }
 
     private func defaultSets(reps: String? = nil) -> [WorkoutSet] {
@@ -442,6 +518,18 @@ final class WorkoutStore: ObservableObject {
                 merged.removeValue(forKey: pending.id)
             } else if let template = pending.template {
                 merged[pending.id] = template
+            }
+        }
+        return Array(merged.values)
+    }
+
+    private func mergePendingPrograms(_ cloudPrograms: [TrainingProgram]) -> [TrainingProgram] {
+        var merged = Dictionary(uniqueKeysWithValues: cloudPrograms.map { ($0.id, $0) })
+        for pending in PendingResourceQueue.all where pending.resource == .programs {
+            if pending.operation == .delete {
+                merged.removeValue(forKey: pending.id)
+            } else if let program = pending.program {
+                merged[pending.id] = program
             }
         }
         return Array(merged.values)
@@ -488,6 +576,13 @@ final class WorkoutStore: ObservableObject {
                     guard let template = change.template else { break }
                     let saved = try await api.saveTemplate(template)
                     upsert(saved, in: &templates)
+                case (.programs, .delete):
+                    try await api.deleteProgram(change.id)
+                    programs.removeAll { $0.id == change.id }
+                case (.programs, .put):
+                    guard let program = change.program else { break }
+                    let saved = try await api.saveProgram(program)
+                    upsert(saved, in: &programs)
                 }
                 PendingResourceQueue.remove(change.resource, id: change.id)
             } catch WorkoutAPIError.unauthorized {
@@ -503,6 +598,7 @@ final class WorkoutStore: ObservableObject {
         }
         exercises = exercises.sortedByName()
         templates = templates.sortedByName()
+        programs = programs.sortedForDisplay()
         refreshPendingSyncCount()
     }
 
@@ -541,6 +637,7 @@ final class WorkoutStore: ObservableObject {
 private enum PendingResourceKind: String, Codable {
     case exercises
     case templates
+    case programs
 }
 
 private enum PendingResourceOperation: String, Codable {
@@ -554,6 +651,7 @@ private struct PendingResourceChange: Codable, Identifiable {
     var id: String
     var exercise: Exercise?
     var template: WorkoutTemplate?
+    var program: TrainingProgram?
 }
 
 private struct PendingWorkoutLogChange: Codable, Identifiable {
@@ -575,15 +673,19 @@ private enum PendingResourceQueue {
     }
 
     static func upsertExercise(_ exercise: Exercise) {
-        upsert(.init(resource: .exercises, operation: .put, id: exercise.id, exercise: exercise, template: nil))
+        upsert(.init(resource: .exercises, operation: .put, id: exercise.id, exercise: exercise, template: nil, program: nil))
     }
 
     static func upsertTemplate(_ template: WorkoutTemplate) {
-        upsert(.init(resource: .templates, operation: .put, id: template.id, exercise: nil, template: template))
+        upsert(.init(resource: .templates, operation: .put, id: template.id, exercise: nil, template: template, program: nil))
+    }
+
+    static func upsertProgram(_ program: TrainingProgram) {
+        upsert(.init(resource: .programs, operation: .put, id: program.id, exercise: nil, template: nil, program: program))
     }
 
     static func delete(_ resource: PendingResourceKind, id: String) {
-        upsert(.init(resource: resource, operation: .delete, id: id, exercise: nil, template: nil))
+        upsert(.init(resource: resource, operation: .delete, id: id, exercise: nil, template: nil, program: nil))
     }
 
     static func remove(_ resource: PendingResourceKind, id: String) {
@@ -705,5 +807,16 @@ private extension Array where Element == Exercise {
 private extension Array where Element == WorkoutTemplate {
     func sortedByName() -> [WorkoutTemplate] {
         sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+}
+
+private extension Array where Element == TrainingProgram {
+    func sortedForDisplay() -> [TrainingProgram] {
+        sorted {
+            let leftActive = $0.active == true
+            let rightActive = $1.active == true
+            if leftActive != rightActive { return leftActive && !rightActive }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
     }
 }

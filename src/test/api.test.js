@@ -12,6 +12,7 @@ import {
   initData, resetData,
   getExercises, saveExercise, deleteExercise,
   getTemplates, saveTemplate, deleteTemplate,
+  getPrograms, saveProgram, deleteProgram,
   getLogs, saveLog, deleteLog, getLogsByDate, flushPendingLogSaves, flushPendingResourceChanges, pendingLogSaveCount, pendingChangeCount,
   getSettings,
   exportData, previewImportData, importData, submitFeedback, deleteAccount,
@@ -55,6 +56,7 @@ function mockFetch(responseMap) {
 const EX   = { id: 'ex-1', name: 'Bench Press', muscleGroup: 'Chest', notes: '' };
 const TMPL = { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] };
 const LOG  = { id: 'log-1', name: 'Session', date: '2026-01-01', notes: '', exerciseItems: [] };
+const PROGRAM = { id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: 1, templateId: 'tmpl-1' }] };
 
 beforeEach(() => {
   resetData();
@@ -63,11 +65,12 @@ beforeEach(() => {
 
 // ── initData ──────────────────────────────────────────────────────────────────
 describe('initData', () => {
-  it('fetches all three collections and populates the cache', async () => {
+  it('fetches all collections and populates the cache', async () => {
     mockFetch({
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [TMPL] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /programs':  () => ({ body: [PROGRAM] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
     });
 
@@ -76,8 +79,9 @@ describe('initData', () => {
     expect(getExercises()).toEqual([EX]);
     expect(getTemplates()).toEqual([TMPL]);
     expect(getLogs()).toEqual([LOG]);
+    expect(getPrograms()).toEqual([PROGRAM]);
     expect(getSettings()).toEqual({ defaultSets: 4, defaultReps: 8 });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(5);
   });
 });
 
@@ -100,6 +104,7 @@ describe('exercises', () => {
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [] }),
+      'GET /programs':  () => ({ body: [] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'PUT *': () => ({ body: { ...EX, name: 'Incline Press' } }),
     });
@@ -115,6 +120,7 @@ describe('exercises', () => {
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [] }),
+      'GET /programs':  () => ({ body: [] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE *': () => ({ status: 204, body: null }),
     });
@@ -139,9 +145,10 @@ describe('exercises', () => {
 
     await saveExercise({ ...EX, revision: 2 });
     await saveTemplate({ ...TMPL, revision: 5 });
+    await saveProgram({ ...PROGRAM, revision: 3 });
     await saveLog({ ...LOG, revision: 7 });
 
-    expect(bodies.map((body) => body.expectedRevision)).toEqual([2, 5, 7]);
+    expect(bodies.map((body) => body.expectedRevision)).toEqual([2, 5, 3, 7]);
   });
 
   it('queues exercise saves when the network is unavailable and flushes them later', async () => {
@@ -178,6 +185,7 @@ describe('templates', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [TMPL] }),
       'GET /logs':      () => ({ body: [] }),
+      'GET /programs':  () => ({ body: [] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE *': () => ({ status: 204, body: null }),
     });
@@ -185,6 +193,50 @@ describe('templates', () => {
 
     const list = await deleteTemplate(TMPL.id);
     expect(list).toHaveLength(0);
+  });
+});
+
+// ── Programs ────────────────────────────────────────────────────────────────────
+describe('programs', () => {
+  it('saveProgram creates and returns active-first list', async () => {
+    mockFetch({ 'PUT *': () => ({ body: PROGRAM }) });
+    const list = await saveProgram({ name: 'Strength Plan', active: true, schedule: [{ weekday: 1, templateId: 'tmpl-1' }] });
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Strength Plan');
+  });
+
+  it('deleteProgram removes from cache', async () => {
+    mockFetch({
+      'GET /exercises': () => ({ body: [] }),
+      'GET /templates': () => ({ body: [] }),
+      'GET /logs':      () => ({ body: [] }),
+      'GET /programs':  () => ({ body: [PROGRAM] }),
+      'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+      'DELETE *': () => ({ status: 204, body: null }),
+    });
+    await initData();
+
+    const list = await deleteProgram(PROGRAM.id);
+    expect(list).toHaveLength(0);
+  });
+
+  it('queues program saves when the network is unavailable and flushes them later', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    const queued = await saveProgram(PROGRAM);
+    expect(queued[0]).toMatchObject({ id: 'program-1', pendingSync: true });
+    expect(pendingChangeCount()).toBe(1);
+
+    mockFetch({
+      'PUT /programs/program-1': () => ({ body: { ...PROGRAM, revision: 1, updatedAt: '2026-01-02T00:00:00.000Z' } }),
+    });
+
+    const flushed = await flushPendingResourceChanges();
+    expect(flushed.programs[0]).toMatchObject({ id: 'program-1', revision: 1 });
+    expect(flushed.programs[0].pendingSync).toBeUndefined();
+    expect(pendingChangeCount()).toBe(0);
   });
 });
 
@@ -221,6 +273,7 @@ describe('logs', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /programs':  () => ({ body: [] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
     });
     await initData();
@@ -247,6 +300,7 @@ describe('logs', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /programs':  () => ({ body: [] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE *': () => ({ status: 204, body: null }),
     });
@@ -262,6 +316,7 @@ describe('logs', () => {
       'GET /exercises': () => ({ body: [] }),
       'GET /templates': () => ({ body: [] }),
       'GET /logs':      () => ({ body: [LOG, log2] }),
+      'GET /programs':  () => ({ body: [] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
     });
     await initData();
@@ -311,38 +366,42 @@ describe('account and support', () => {
       exercises: [EX],
       templates: [TMPL],
       logs: [LOG],
+      programs: [PROGRAM],
       settings: { defaultSets: 4, defaultReps: 8 },
     }, {
       exercises: [EX],
       templates: [],
       logs: [LOG],
+      programs: [],
     });
 
-    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, settings: 1 });
-    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1 });
+    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, programs: 1, settings: 1 });
+    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1, programs: 0 });
     expect(preview.targetIsEmpty).toBe(false);
   });
 
   it('importData posts the import envelope and refreshes the cache', async () => {
-    const imported = { exercises: [EX], templates: [TMPL], logs: [LOG] };
+    const imported = { exercises: [EX], templates: [TMPL], logs: [LOG], programs: [PROGRAM] };
     mockFetch({
       'POST /import': () => {
         const [, opts] = globalThis.fetch.mock.calls.at(-1);
         expect(JSON.parse(opts.body)).toEqual({ mode: 'merge', data: imported });
-        return { body: { imported: { exercises: 1, templates: 1, logs: 1, settings: false }, renamed: {}, skipped: {} } };
+        return { body: { imported: { exercises: 1, templates: 1, logs: 1, programs: 1, settings: false }, renamed: {}, skipped: {} } };
       },
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [TMPL] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /programs':  () => ({ body: [PROGRAM] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
     });
 
     await expect(importData(imported, 'merge')).resolves.toMatchObject({
-      imported: { exercises: 1, templates: 1, logs: 1, settings: false },
+      imported: { exercises: 1, templates: 1, logs: 1, programs: 1, settings: false },
     });
     expect(getExercises()).toEqual([EX]);
     expect(getTemplates()).toEqual([TMPL]);
     expect(getLogs()).toEqual([LOG]);
+    expect(getPrograms()).toEqual([PROGRAM]);
   });
 
   it('submitFeedback posts message and build metadata', async () => {
@@ -361,6 +420,7 @@ describe('account and support', () => {
       'GET /exercises': () => ({ body: [EX] }),
       'GET /templates': () => ({ body: [TMPL] }),
       'GET /logs':      () => ({ body: [LOG] }),
+      'GET /programs':  () => ({ body: [PROGRAM] }),
       'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
       'DELETE /account': () => ({ body: { deleted: 4 } }),
     });
@@ -369,5 +429,6 @@ describe('account and support', () => {
     expect(getExercises()).toEqual([]);
     expect(getTemplates()).toEqual([]);
     expect(getLogs()).toEqual([]);
+    expect(getPrograms()).toEqual([]);
   });
 });

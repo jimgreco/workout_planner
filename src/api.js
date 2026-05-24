@@ -25,6 +25,7 @@ const cache = {
   exercises: /** @type {any[]|null} */ (null),
   templates: /** @type {any[]|null} */ (null),
   logs:      /** @type {any[]|null} */ (null),
+  programs:  /** @type {any[]|null} */ (null),
   settings:  /** @type {any|null} */ (null),
 };
 
@@ -146,6 +147,12 @@ function upsertCached(resource, item) {
   if (resource === 'templates') {
     cache.templates = cache.templates.sort((a, b) => a.name.localeCompare(b.name));
   }
+  if (resource === 'programs') {
+    cache.programs = cache.programs.sort((a, b) => (
+      Number(Boolean(b.active)) - Number(Boolean(a.active))
+      || a.name.localeCompare(b.name)
+    ));
+  }
   return cache[resource];
 }
 
@@ -230,6 +237,7 @@ export function resetData() {
   cache.exercises = null;
   cache.templates = null;
   cache.logs      = null;
+  cache.programs  = null;
   cache.settings  = null;
   writePendingLogQueue([]);
   writePendingResourceQueue([]);
@@ -292,18 +300,24 @@ export async function initData() {
     cache.exercises = [];
     cache.templates = [];
     cache.logs      = [];
+    cache.programs  = [];
     cache.settings  = { ...DEFAULT_SETTINGS };
     return;
   }
-  const [exercises, templates, logs, settings] = await Promise.all([
+  const [exercises, templates, logs, programs, settings] = await Promise.all([
     request('GET', '/exercises'),
     request('GET', '/templates'),
     request('GET', '/logs'),
+    request('GET', '/programs'),
     request('GET', '/settings'),
   ]);
   cache.exercises = mergePendingCollection('exercises', exercises);
   cache.templates = mergePendingCollection('templates', templates);
   cache.logs      = mergePendingLogs(logs);
+  cache.programs  = mergePendingCollection('programs', programs).sort((a, b) => (
+    Number(Boolean(b.active)) - Number(Boolean(a.active))
+    || a.name.localeCompare(b.name)
+  ));
   cache.settings  = settings ?? { ...DEFAULT_SETTINGS };
   dispatchSyncStatus();
 }
@@ -393,6 +407,48 @@ export async function deleteTemplate(id) {
   return cache.templates;
 }
 
+// ── Programs ────────────────────────────────────────────────────────────────────
+export function getPrograms() {
+  return (cache.programs ?? []).sort((a, b) => (
+    Number(Boolean(b.active)) - Number(Boolean(a.active))
+    || a.name.localeCompare(b.name)
+  ));
+}
+
+export async function saveProgram(program) {
+  const id = program.id ?? crypto.randomUUID();
+  const item = { ...program, id };
+  let saved;
+  if (DEV_BYPASS && !BASE_URL) {
+    saved = item;
+  } else {
+    try {
+      saved = await request('PUT', `/programs/${id}`, withExpectedRevision(item));
+      removePendingResourceChange('programs', id);
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      saved = pendingResourceItem(item);
+      queuePendingResourceChange('programs', 'put', item);
+    }
+  }
+  upsertCached('programs', saved);
+  return getPrograms();
+}
+
+export async function deleteProgram(id) {
+  if (!(DEV_BYPASS && !BASE_URL)) {
+    try {
+      await request('DELETE', `/programs/${id}`);
+      removePendingResourceChange('programs', id);
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      queuePendingResourceChange('programs', 'delete', id);
+    }
+  }
+  cache.programs = (cache.programs ?? []).filter((program) => program.id !== id);
+  return getPrograms();
+}
+
 // ── Workout Logs ───────────────────────────────────────────────────────────────
 export function getLogs() { return cache.logs ?? []; }
 
@@ -480,6 +536,7 @@ export async function flushPendingResourceChanges() {
     return {
       exercises: getExercises(),
       templates: getTemplates(),
+      programs: getPrograms(),
     };
   }
 
@@ -520,6 +577,7 @@ export async function flushPendingResourceChanges() {
   return {
     exercises: getExercises(),
     templates: getTemplates(),
+    programs: getPrograms(),
   };
 }
 
@@ -545,6 +603,7 @@ export function previewImportData(data, current = {
   exercises: getExercises(),
   templates: getTemplates(),
   logs: getLogs(),
+  programs: getPrograms(),
 }) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Import file must be a Forge JSON export.');
@@ -552,27 +611,34 @@ export function previewImportData(data, current = {
   const exercises = Array.isArray(data.exercises) ? data.exercises : [];
   const templates = Array.isArray(data.templates) ? data.templates : [];
   const logs = Array.isArray(data.logs) ? data.logs : [];
+  const programs = Array.isArray(data.programs) ? data.programs : [];
   const settings = data.settings && typeof data.settings === 'object';
   const existingIds = {
     exercises: new Set((current.exercises ?? []).map((item) => item.id)),
     templates: new Set((current.templates ?? []).map((item) => item.id)),
     logs: new Set((current.logs ?? []).map((item) => item.id)),
+    programs: new Set((current.programs ?? []).map((item) => item.id)),
   };
   const duplicateIds = {
     exercises: exercises.filter((item) => existingIds.exercises.has(item.id)).length,
     templates: templates.filter((item) => existingIds.templates.has(item.id)).length,
     logs: logs.filter((item) => existingIds.logs.has(item.id)).length,
+    programs: programs.filter((item) => existingIds.programs.has(item.id)).length,
   };
   return {
     counts: {
       exercises: exercises.length,
       templates: templates.length,
       logs: logs.length,
+      programs: programs.length,
       settings: settings ? 1 : 0,
     },
     duplicateIds,
-    isEmpty: exercises.length + templates.length + logs.length === 0,
-    targetIsEmpty: (current.exercises?.length ?? 0) + (current.templates?.length ?? 0) + (current.logs?.length ?? 0) === 0,
+    isEmpty: exercises.length + templates.length + logs.length + programs.length === 0,
+    targetIsEmpty: (current.exercises?.length ?? 0)
+      + (current.templates?.length ?? 0)
+      + (current.logs?.length ?? 0)
+      + (current.programs?.length ?? 0) === 0,
   };
 }
 
@@ -602,8 +668,9 @@ function importDataLocally(data, mode) {
   const exercises = Array.isArray(data.exercises) ? data.exercises : [];
   const templates = Array.isArray(data.templates) ? data.templates : [];
   const logs = Array.isArray(data.logs) ? data.logs : [];
+  const programs = Array.isArray(data.programs) ? data.programs : [];
   const settings = data.settings && typeof data.settings === 'object' ? data.settings : undefined;
-  const targetIsEmpty = getExercises().length + getTemplates().length + getLogs().length === 0;
+  const targetIsEmpty = getExercises().length + getTemplates().length + getLogs().length + getPrograms().length === 0;
   if (mode === 'emptyOnly' && !targetIsEmpty) {
     const error = new Error('Import can only restore into an empty account.');
     error.status = 409;
@@ -614,22 +681,25 @@ function importDataLocally(data, mode) {
     cache.exercises = exercises;
     cache.templates = templates;
     cache.logs = logs;
+    cache.programs = programs;
     if (settings) cache.settings = settings;
     return {
-      imported: { exercises: exercises.length, templates: templates.length, logs: logs.length, settings: Boolean(settings) },
-      renamed: { exercises: [], templates: [], logs: [] },
-      skipped: { exercises: [], templates: [], logs: [] },
+      imported: { exercises: exercises.length, templates: templates.length, logs: logs.length, programs: programs.length, settings: Boolean(settings) },
+      renamed: { exercises: [], templates: [], logs: [], programs: [] },
+      skipped: { exercises: [], templates: [], logs: [], programs: [] },
     };
   }
 
-  const renamed = { exercises: [], templates: [], logs: [] };
-  const skipped = { exercises: [], templates: [], logs: [] };
+  const renamed = { exercises: [], templates: [], logs: [], programs: [] };
+  const skipped = { exercises: [], templates: [], logs: [], programs: [] };
   const existingExerciseIds = new Set(getExercises().map((item) => item.id));
   const existingTemplateIds = new Set(getTemplates().map((item) => item.id));
   const existingLogIds = new Set(getLogs().map((item) => item.id));
+  const existingProgramIds = new Set(getPrograms().map((item) => item.id));
   const exerciseNames = new Set(getExercises().map((item) => normalizedName(item.name)));
   const templateNames = new Set(getTemplates().map((item) => normalizedName(item.name)));
   const logNamesByDate = new Set(getLogs().map((item) => `${item.date}|${normalizedName(item.name)}`));
+  const programNames = new Set(getPrograms().map((item) => normalizedName(item.name)));
 
   const newExercises = exercises.flatMap((exercise) => {
     if (existingExerciseIds.has(exercise.id)) {
@@ -662,14 +732,25 @@ function importDataLocally(data, mode) {
     logNamesByDate.add(`${log.date}|${normalizedName(name)}`);
     return [{ ...log, name }];
   });
+  const newPrograms = programs.flatMap((program) => {
+    if (existingProgramIds.has(program.id)) {
+      skipped.programs.push({ id: program.id, name: program.name });
+      return [];
+    }
+    return [{ ...program, name: uniqueImportedName(program.name, programNames, renamed.programs) }];
+  });
 
   cache.exercises = [...getExercises(), ...newExercises];
   cache.templates = [...getTemplates(), ...newTemplates];
   cache.logs = [...getLogs(), ...newLogs];
+  cache.programs = [...getPrograms(), ...newPrograms].sort((a, b) => (
+    Number(Boolean(b.active)) - Number(Boolean(a.active))
+    || a.name.localeCompare(b.name)
+  ));
   if (settings) cache.settings = settings;
 
   return {
-    imported: { exercises: newExercises.length, templates: newTemplates.length, logs: newLogs.length, settings: Boolean(settings) },
+    imported: { exercises: newExercises.length, templates: newTemplates.length, logs: newLogs.length, programs: newPrograms.length, settings: Boolean(settings) },
     renamed,
     skipped,
   };

@@ -352,6 +352,161 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .card { padding: 16px; }
 }
 
+/* ── Program Planner ───────────────────────────────────────── */
+.section-kicker {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.program-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+}
+.program-header,
+.program-next {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.program-header h2 {
+  margin-bottom: 4px;
+}
+.program-next {
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.program-next-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.program-next-copy svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.program-next-copy span,
+.program-day span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.program-next-copy strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-week-grid {
+  display: grid;
+  grid-auto-columns: minmax(76px, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.program-day {
+  min-height: 64px;
+  min-width: 76px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.program-day strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-day.done {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+  background: color-mix(in srgb, var(--success) 9%, var(--bg));
+}
+.program-day.done svg {
+  color: var(--success);
+}
+.program-day.missed {
+  border-color: color-mix(in srgb, var(--warn) 50%, var(--border));
+}
+.program-day.rest strong {
+  color: var(--text-muted);
+}
+.program-rule,
+.program-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.program-rule svg,
+.program-empty svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.program-schedule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+.program-schedule-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+}
+.program-schedule-row span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 14px;
+  margin: 2px 0 4px;
+}
+.checkbox-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+@media (min-width: 768px) {
+  .program-week-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-columns: initial;
+    grid-auto-flow: initial;
+    overflow-x: visible;
+  }
+}
+
 /* ── Buttons ────────────────────────────────────────────── */
 .btn {
   display: inline-flex;

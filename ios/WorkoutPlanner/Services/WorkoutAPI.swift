@@ -35,12 +35,13 @@ struct WorkoutAPI {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    func initData() async throws -> ([Exercise], [WorkoutTemplate], [WorkoutLog], WorkoutSettings) {
+    func initData() async throws -> ([Exercise], [WorkoutTemplate], [WorkoutLog], [TrainingProgram], WorkoutSettings) {
         async let exercises: [Exercise] = request("GET", path: "/exercises")
         async let templates: [WorkoutTemplate] = request("GET", path: "/templates")
         async let logs: [WorkoutLog] = request("GET", path: "/logs")
+        async let programs: [TrainingProgram] = request("GET", path: "/programs")
         async let settings: WorkoutSettings = request("GET", path: "/settings")
-        return try await (exercises, templates.sortedByName(), logs, settings)
+        return try await (exercises, templates.sortedByName(), logs, programs.sortedForDisplay(), settings)
     }
 
     func saveSettings(_ settings: WorkoutSettings) async throws -> WorkoutSettings {
@@ -61,6 +62,14 @@ struct WorkoutAPI {
 
     func deleteTemplate(_ id: String) async throws {
         try await requestNoBody("DELETE", path: "/templates/\(id)")
+    }
+
+    func saveProgram(_ program: TrainingProgram) async throws -> TrainingProgram {
+        try await requestVersioned("PUT", path: "/programs/\(program.id)", body: program)
+    }
+
+    func deleteProgram(_ id: String) async throws {
+        try await requestNoBody("DELETE", path: "/programs/\(id)")
     }
 
     func saveLog(_ log: WorkoutLog) async throws -> WorkoutLog {
@@ -147,6 +156,7 @@ private protocol VersionedRequestBody: Encodable {
 
 extension Exercise: VersionedRequestBody {}
 extension WorkoutTemplate: VersionedRequestBody {}
+extension TrainingProgram: VersionedRequestBody {}
 extension WorkoutLog: VersionedRequestBody {}
 
 private struct FeedbackRequest: Encodable {
@@ -161,5 +171,16 @@ private struct FeedbackResponse: Decodable {
 private extension Array where Element == WorkoutTemplate {
     func sortedByName() -> [WorkoutTemplate] {
         sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+}
+
+private extension Array where Element == TrainingProgram {
+    func sortedForDisplay() -> [TrainingProgram] {
+        sorted {
+            let leftActive = $0.active == true
+            let rightActive = $1.active == true
+            if leftActive != rightActive { return leftActive && !rightActive }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
     }
 }

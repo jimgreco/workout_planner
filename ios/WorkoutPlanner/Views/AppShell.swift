@@ -308,7 +308,7 @@ private struct SettingsPage: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently deletes your exercises, workouts, templates, settings, and feedback from the backend.")
+            Text("This permanently deletes your exercises, workouts, routines, programs, settings, and feedback from the backend.")
         }
     }
 
@@ -390,6 +390,7 @@ private struct ImportPreviewSheet: View {
                     LabeledContent("Exercises", value: "\(draft.preview.counts.exercises)")
                     LabeledContent("Routines", value: "\(draft.preview.counts.templates)")
                     LabeledContent("Workouts", value: "\(draft.preview.counts.logs)")
+                    LabeledContent("Programs", value: "\(draft.preview.counts.programs)")
                     LabeledContent("Settings", value: "\(draft.preview.counts.settings)")
                 } header: {
                     Text("Preview")
@@ -406,7 +407,7 @@ private struct ImportPreviewSheet: View {
                     } footer: {
                         Text(mode == .merge
                             ? "Existing IDs stay untouched; duplicate names are renamed."
-                            : "Restore only succeeds when this account has no exercises, routines, or workouts.")
+                            : "Restore only succeeds when this account has no exercises, routines, workouts, or programs.")
                     }
                 }
 
@@ -419,7 +420,7 @@ private struct ImportPreviewSheet: View {
 
                 if draft.preview.isEmpty {
                     Section {
-                        Text("This file does not contain exercises, routines, or workouts.")
+                        Text("This file does not contain exercises, routines, workouts, or programs.")
                             .foregroundStyle(Theme.muted)
                     }
                 }
@@ -460,6 +461,7 @@ private struct ImportPreviewSheet: View {
         draft.preview.duplicateIds.exercises
             + draft.preview.duplicateIds.templates
             + draft.preview.duplicateIds.logs
+            + draft.preview.duplicateIds.programs
     }
 }
 
