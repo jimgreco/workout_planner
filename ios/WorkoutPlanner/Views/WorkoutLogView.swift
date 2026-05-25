@@ -354,7 +354,12 @@ struct WorkoutLogView: View {
                 let plannedReps = (items[itemIndex].sets[setIndex].reps ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !plannedReps.isEmpty else { continue }
-                items[itemIndex].sets[setIndex].placeholderReps = plannedReps
+                if let repsContext = RepsFieldPlaceholder(rawValue: items[itemIndex].sets[setIndex].placeholderReps ?? ""),
+                   let mergedPlaceholder = repsContext.rawValue(usingGoal: plannedReps) {
+                    items[itemIndex].sets[setIndex].placeholderReps = mergedPlaceholder
+                } else {
+                    items[itemIndex].sets[setIndex].placeholderReps = plannedReps
+                }
                 items[itemIndex].sets[setIndex].reps = ""
             }
         }

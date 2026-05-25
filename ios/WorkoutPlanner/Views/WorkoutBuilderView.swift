@@ -315,7 +315,7 @@ private struct ExerciseSetsCard: View {
                     .frame(width: setColumnWidth)
 
                 SetNumericField(
-                    placeholder: planningMode && focusedField == .reps(itemIndex: itemIndex, setIndex: setIndex) ? "" : repsPlaceholder(for: setIndex),
+                    placeholder: repsPlaceholderForField(setIndex),
                     text: Binding(
                         get: { item.sets[setIndex].reps ?? "" },
                         set: { value in
@@ -328,7 +328,8 @@ private struct ExerciseSetsCard: View {
                     focusedField: $focusedField,
                     isActive: active,
                     isDisabled: readOnly,
-                    placeholderRole: .reps
+                    placeholderRole: .reps,
+                    preservesRepsContext: planningMode
                 )
 
                 if showsWeightColumn {
@@ -492,6 +493,17 @@ private struct ExerciseSetsCard: View {
         return planningMode ? "Target" : "-"
     }
 
+    private func repsPlaceholderForField(_ setIndex: Int) -> String {
+        let placeholder = repsPlaceholder(for: setIndex)
+        let isFocused = focusedField == .reps(itemIndex: itemIndex, setIndex: setIndex)
+        guard planningMode, isFocused else { return placeholder }
+
+        if RepsFieldPlaceholder(rawValue: placeholder)?.last != nil {
+            return placeholder
+        }
+        return ""
+    }
+
     private func setCanComplete(_ setIndex: Int) -> Bool {
         guard item.sets.indices.contains(setIndex),
               item.sets[setIndex].restStartTime == nil,
@@ -529,26 +541,25 @@ private struct SetNumericField: View {
     let isActive: Bool
     let isDisabled: Bool
     var placeholderRole: SetNumericFieldPlaceholderRole = .plain
+    var preservesRepsContext = false
 
     var body: some View {
         ZStack {
-            if text.wrappedValue.isEmpty, !placeholder.isEmpty {
-                if placeholderRole == .reps, let repsPlaceholder = RepsFieldPlaceholder(rawValue: placeholder) {
-                    RepsFieldPlaceholderView(value: repsPlaceholder)
-                        .padding(.horizontal, 4)
-                        .frame(maxWidth: .infinity)
-                        .allowsHitTesting(false)
-                } else {
-                    Text(placeholder)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.muted.opacity(0.58))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.68)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 4)
-                        .frame(maxWidth: .infinity)
-                        .allowsHitTesting(false)
-                }
+            if let repsContext {
+                RepsFieldPlaceholderView(value: repsContext)
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(false)
+            } else if text.wrappedValue.isEmpty, !placeholder.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.muted.opacity(0.58))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(false)
             }
 
             TextField("", text: text)
@@ -556,7 +567,7 @@ private struct SetNumericField: View {
                 .multilineTextAlignment(.center)
                 .focused($focusedField, equals: focus)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isDisabled ? Theme.muted : Theme.text)
+                .foregroundStyle(repsContext == nil ? (isDisabled ? Theme.muted : Theme.text) : .clear)
                 .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(isDisabled)
@@ -569,11 +580,33 @@ private struct SetNumericField: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
+
+    private var repsContext: RepsFieldPlaceholder? {
+        guard placeholderRole == .reps,
+              let placeholderValue = RepsFieldPlaceholder(rawValue: placeholder)
+        else { return nil }
+
+        let enteredGoal = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !enteredGoal.isEmpty else {
+            if preservesRepsContext, placeholderValue.last != nil, focusedField == focus {
+                return RepsFieldPlaceholder(last: placeholderValue.last, goal: nil)
+            }
+            return placeholderValue
+        }
+
+        guard preservesRepsContext, placeholderValue.last != nil else { return nil }
+        return RepsFieldPlaceholder(last: placeholderValue.last, goal: enteredGoal)
+    }
 }
 
-private struct RepsFieldPlaceholder {
+struct RepsFieldPlaceholder {
     let last: String?
     let goal: String?
+
+    init(last: String?, goal: String?) {
+        self.last = Self.cleaned(last)
+        self.goal = Self.cleaned(goal)
+    }
 
     init?(rawValue: String) {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -594,6 +627,21 @@ private struct RepsFieldPlaceholder {
         }
 
         guard last != nil || goal != nil else { return nil }
+    }
+
+    func rawValue(usingGoal goalOverride: String? = nil) -> String? {
+        let resolvedGoal = Self.cleaned(goalOverride) ?? goal
+        guard last != nil || resolvedGoal != nil else { return nil }
+        if let last {
+            guard let resolvedGoal else { return last }
+            return "\(last) (\(resolvedGoal))"
+        }
+        return resolvedGoal
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
