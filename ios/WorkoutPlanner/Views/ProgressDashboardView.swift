@@ -1,6 +1,11 @@
 import Foundation
 import SwiftUI
 
+private let progressMetricColumns = [
+    GridItem(.flexible(), spacing: 10, alignment: .top),
+    GridItem(.flexible(), spacing: 10, alignment: .top),
+]
+
 struct ProgressDashboardView: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var selectedRange: ProgressRange = .ninetyDays
@@ -23,7 +28,7 @@ struct ProgressDashboardView: View {
                     if stats.totalWorkouts == 0 {
                         EmptyState(icon: "chart.bar", text: "Finish a workout to see progress here.")
                     } else {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        LazyVGrid(columns: progressMetricColumns, alignment: .leading, spacing: 10) {
                             ProgressMetricCard(title: "Workouts", value: "\(stats.totalWorkouts)", subtitle: selectedRange.detail, icon: "dumbbell.fill")
                             ProgressMetricCard(title: "Volume", value: formatVolume(stats.totalVolume), subtitle: nil, icon: "chart.line.uptrend.xyaxis")
                             ProgressMetricCard(title: "Avg Sets", value: oneDecimal(stats.averageSets), subtitle: "per workout", icon: "calendar")
@@ -266,6 +271,7 @@ private struct ProgressMetricCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
         }
     }
 }
