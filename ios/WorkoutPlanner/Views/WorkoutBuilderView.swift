@@ -151,6 +151,12 @@ private struct ExerciseSetsCard: View {
     let onSetCompleted: ((Int, Int) -> Void)?
     let onChanged: (() -> Void)?
 
+    private let setColumnWidth: CGFloat = 28
+    private let restColumnWidth: CGFloat = 54
+    private let doneColumnWidth: CGFloat = 34
+    private let removeColumnWidth: CGFloat = 32
+    private let rowSpacing: CGFloat = 6
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -265,9 +271,9 @@ private struct ExerciseSetsCard: View {
     }
 
     private var setHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: rowSpacing) {
             Text("Set")
-                .frame(width: 36)
+                .frame(width: setColumnWidth)
             Text("Reps")
                 .frame(maxWidth: .infinity)
             if showWeight && (!readOnly || item.weightType != "none") {
@@ -275,12 +281,12 @@ private struct ExerciseSetsCard: View {
                     .frame(maxWidth: .infinity)
             }
             Text("Rest")
-                .frame(width: 58, alignment: .trailing)
+                .frame(width: restColumnWidth, alignment: .trailing)
             if !readOnly && !planningMode {
                 Text("Done")
-                    .frame(width: 38)
+                    .frame(width: doneColumnWidth)
             }
-            if !readOnly { Color.clear.frame(width: 32) }
+            if !readOnly { Color.clear.frame(width: removeColumnWidth) }
         }
         .font(.system(size: 10, weight: .heavy))
         .foregroundStyle(Theme.muted)
@@ -291,48 +297,46 @@ private struct ExerciseSetsCard: View {
     private func setRow(_ setIndex: Int) -> some View {
         let active = isActiveExercise && activeSetIndex == setIndex
         VStack(spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: rowSpacing) {
                 Text("\(setIndex + 1)")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.muted)
-                    .frame(width: 36)
+                    .frame(width: setColumnWidth)
 
-                TextField(
-                    planningMode && focusedField == .reps(itemIndex: itemIndex, setIndex: setIndex) ? "" : repsPlaceholder(for: setIndex),
+                SetNumericField(
+                    placeholder: planningMode && focusedField == .reps(itemIndex: itemIndex, setIndex: setIndex) ? "" : repsPlaceholder(for: setIndex),
                     text: Binding(
                         get: { item.sets[setIndex].reps ?? "" },
                         set: { value in
                             item.sets[setIndex].reps = value
                             onChanged?()
                         }
-                    )
+                    ),
+                    keyboard: .numberPad,
+                    focus: .reps(itemIndex: itemIndex, setIndex: setIndex),
+                    focusedField: $focusedField,
+                    isActive: active,
+                    isDisabled: readOnly
                 )
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.center)
-                .disabled(readOnly)
-                .focused($focusedField, equals: .reps(itemIndex: itemIndex, setIndex: setIndex))
-                .fieldStyle()
-                .background(active ? Theme.accent.opacity(0.08) : Color.clear)
 
                 if showWeight && (!readOnly || item.weightType != "none") {
                     if item.weightType != "none", !planningMode {
                         VStack(spacing: 3) {
-                            TextField(
-                                item.sets[setIndex].placeholderWeight ?? "-",
+                            SetNumericField(
+                                placeholder: item.sets[setIndex].placeholderWeight ?? "-",
                                 text: Binding(
                                     get: { item.sets[setIndex].weight ?? "" },
                                     set: { value in
                                         item.sets[setIndex].weight = value
                                         onChanged?()
                                     }
-                                )
+                                ),
+                                keyboard: .decimalPad,
+                                focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
+                                focusedField: $focusedField,
+                                isActive: active,
+                                isDisabled: readOnly
                             )
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.center)
-                            .disabled(readOnly)
-                            .focused($focusedField, equals: .weight(itemIndex: itemIndex, setIndex: setIndex))
-                            .fieldStyle()
-                            .background(active ? Theme.accent.opacity(0.08) : Color.clear)
 
                             if let plates = plateBreakdownLabel(weight: item.sets[setIndex].weight, weightType: item.weightType) {
                                 Text(plates)
@@ -350,7 +354,7 @@ private struct ExerciseSetsCard: View {
                 }
 
                 RestTimerText(set: item.sets[setIndex], targetSeconds: item.restTargetSeconds)
-                    .frame(width: 58, alignment: .trailing)
+                    .frame(width: restColumnWidth, alignment: .trailing)
 
                 if !readOnly && !planningMode {
                     SetCompleteButton(
@@ -359,7 +363,7 @@ private struct ExerciseSetsCard: View {
                     ) {
                         onSetCompleted?(itemIndex, setIndex)
                     }
-                    .frame(width: 38)
+                    .frame(width: doneColumnWidth)
                 }
 
                 if !readOnly {
@@ -370,12 +374,13 @@ private struct ExerciseSetsCard: View {
                     ) {
                         removeSet(setIndex)
                     }
+                    .frame(width: removeColumnWidth)
                 }
             }
 
             if !readOnly && !planningMode {
-                HStack(spacing: 8) {
-                    Color.clear.frame(width: 36)
+                HStack(spacing: rowSpacing) {
+                    Color.clear.frame(width: setColumnWidth)
                     Menu {
                         ForEach(setTypeOptions, id: \.value) { option in
                             Button(option.label) {
@@ -499,6 +504,49 @@ private struct ExerciseSetsCard: View {
         guard item.sets.count > 1 else { return }
         item.sets.remove(at: index)
         onChanged?()
+    }
+}
+
+private struct SetNumericField: View {
+    let placeholder: String
+    let text: Binding<String>
+    let keyboard: UIKeyboardType
+    let focus: WorkoutBuilderFocusedField
+    @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
+    let isActive: Bool
+    let isDisabled: Bool
+
+    var body: some View {
+        ZStack {
+            if text.wrappedValue.isEmpty, !placeholder.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.muted.opacity(0.58))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(false)
+            }
+
+            TextField("", text: text)
+                .keyboardType(keyboard)
+                .multilineTextAlignment(.center)
+                .focused($focusedField, equals: focus)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isDisabled ? Theme.muted : Theme.text)
+                .padding(.horizontal, 6)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(isDisabled)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(isActive ? Theme.accent.opacity(0.08) : Theme.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 }
 
