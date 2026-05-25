@@ -514,47 +514,44 @@ private struct AccountProfileCard: View {
     }
 
     var body: some View {
-        AccountSettingsCard {
-            HStack(spacing: 16) {
-                AccountAvatar(user: user)
+        HStack(spacing: 18) {
+            AccountAvatar(user: user)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(displayName)
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundStyle(Theme.text)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(displayName)
+                    .font(.system(size: 21, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
-                        if isDemoMode {
-                            Text("Demo")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Theme.muted)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Theme.surface2)
-                                .clipShape(Capsule())
-                        }
-                    }
+                HStack(spacing: 8) {
+                    Text(email.isEmpty ? "Signed in" : email)
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
 
-                    if email.isEmpty {
-                        Text("Signed in")
-                            .font(.system(size: 17, weight: .regular))
+                    if isDemoMode {
+                        Text("Demo")
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Theme.muted)
-                            .lineLimit(1)
-                    } else {
-                        Text(email)
-                            .font(.system(size: 17, weight: .regular))
-                            .foregroundStyle(Theme.muted)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Theme.surface2)
+                            .clipShape(Capsule())
                     }
                 }
-
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
+        .background(AccountSettingsStyle.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AccountSettingsStyle.cardRadius, style: .continuous))
+        .shadow(color: .black.opacity(0.025), radius: 18, x: 0, y: 8)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -599,19 +596,28 @@ private struct AccountAvatar: View {
                 fallback
             }
         }
-        .frame(width: 64, height: 64)
-        .background(Theme.surface2)
+        .frame(width: 62, height: 62)
+        .background(avatarBackground)
         .clipShape(Circle())
-        .overlay(Circle().stroke(Theme.border.opacity(0.5), lineWidth: 1))
+        .overlay(Circle().stroke(.white.opacity(0.65), lineWidth: 2))
+        .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 4)
     }
 
     private var fallback: some View {
         ZStack {
-            Theme.surface2
+            avatarBackground
             Text(initials)
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Theme.text)
+                .font(.system(size: 21, weight: .bold))
+                .foregroundStyle(.white)
         }
+    }
+
+    private var avatarBackground: LinearGradient {
+        LinearGradient(
+            colors: [Theme.accent.opacity(0.9), Theme.accentDark.opacity(0.88)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 }
 
