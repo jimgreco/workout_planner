@@ -422,6 +422,7 @@ private struct SettingsPage: View {
         if store.syncIssueMessage != nil { return "Issue" }
         if store.pendingConflictCount > 0 { return "Conflict" }
         if store.usesLocalData { return "Local" }
+        if store.isUsingOfflineSnapshot { return "Offline" }
         if store.isSyncingPending { return "Syncing" }
         if store.pendingSyncCount > 0 { return "Pending" }
         return "Connected"
@@ -431,6 +432,7 @@ private struct SettingsPage: View {
         if store.syncIssueMessage != nil { return "exclamationmark.circle.fill" }
         if store.pendingConflictCount > 0 { return "exclamationmark.triangle.fill" }
         if store.usesLocalData { return "internaldrive.fill" }
+        if store.isUsingOfflineSnapshot { return "wifi.slash" }
         if store.isSyncingPending { return "arrow.triangle.2.circlepath.circle.fill" }
         if store.pendingSyncCount > 0 { return "clock.fill" }
         return "checkmark.circle.fill"
@@ -440,6 +442,7 @@ private struct SettingsPage: View {
         if store.syncIssueMessage != nil { return Theme.danger }
         if store.pendingConflictCount > 0 { return Theme.warning }
         if store.usesLocalData { return Theme.muted }
+        if store.isUsingOfflineSnapshot { return Theme.warning }
         if store.pendingSyncCount > 0 || store.isSyncingPending { return Theme.warning }
         return Color(red: 0.2, green: 0.78, blue: 0.35)
     }

@@ -17,6 +17,7 @@ final class WorkoutStore: ObservableObject {
     @Published var isSyncingPending = false
     @Published var syncIssueMessage: String?
     @Published var lastSyncAttemptAt: Date?
+    @Published var isUsingOfflineSnapshot = false
 
     private let auth: AuthManager
     private var pendingRetryTask: Task<Void, Never>?
@@ -40,6 +41,7 @@ final class WorkoutStore: ObservableObject {
 
     var syncStatusText: String {
         if usesLocalData { return "Local demo data" }
+        if isUsingOfflineSnapshot { return "Offline data" }
         if pendingConflictCount > 0 {
             return "\(pendingConflictCount) sync \(pendingConflictCount == 1 ? "conflict" : "conflicts")"
         }
@@ -61,6 +63,9 @@ final class WorkoutStore: ObservableObject {
             let retryText = lastSyncAttemptAt.map { "Last retry \(Self.syncAttemptFormatter.string(from: $0))" } ?? "Will retry automatically"
             return "\(retryText) while Forge is open."
         }
+        if isUsingOfflineSnapshot {
+            return "Showing saved data. Changes will sync when Forge reconnects."
+        }
         return nil
     }
 
@@ -73,9 +78,11 @@ final class WorkoutStore: ObservableObject {
         pendingTemplate = nil
         editingLog = nil
         errorMessage = nil
+        isUsingOfflineSnapshot = false
         PendingWorkoutLogQueue.clear()
         PendingResourceQueue.clear()
         PendingSyncConflictQueue.clear()
+        OfflineDataSnapshotStore.clear()
         refreshPendingSyncCount()
         stopPendingSyncRetryLoop()
     }
@@ -98,12 +105,20 @@ final class WorkoutStore: ObservableObject {
             return
         }
 
+        let hadOfflineSnapshot = loadOfflineSnapshot(markOffline: false)
         do {
             try await loadCloudData(using: api)
         } catch WorkoutAPIError.unauthorized {
             auth.signOut()
             errorMessage = WorkoutAPIError.unauthorized.localizedDescription
         } catch {
+            if isNetworkAvailabilityError(error),
+               (hadOfflineSnapshot || loadOfflineSnapshot(markOffline: true)) {
+                isUsingOfflineSnapshot = true
+                syncIssueMessage = nil
+                errorMessage = nil
+                return
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -115,6 +130,8 @@ final class WorkoutStore: ObservableObject {
         }
         guard let api else { throw WorkoutAPIError.missingConfiguration }
         settings = try await api.saveSettings(value)
+        isUsingOfflineSnapshot = false
+        persistOfflineSnapshot()
     }
 
     func saveExercise(_ exercise: Exercise) async throws {
@@ -141,6 +158,7 @@ final class WorkoutStore: ObservableObject {
         }
         upsert(saved, in: &exercises)
         exercises = exercises.sortedByName()
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -156,6 +174,7 @@ final class WorkoutStore: ObservableObject {
             }
         }
         exercises.removeAll { $0.id == id }
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -183,6 +202,7 @@ final class WorkoutStore: ObservableObject {
         }
         upsert(saved, in: &templates)
         templates = templates.sortedByName()
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -198,6 +218,7 @@ final class WorkoutStore: ObservableObject {
             }
         }
         templates.removeAll { $0.id == id }
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -225,6 +246,7 @@ final class WorkoutStore: ObservableObject {
         }
         upsert(saved, in: &programs)
         programs = programs.sortedForDisplay()
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -240,6 +262,7 @@ final class WorkoutStore: ObservableObject {
             }
         }
         programs.removeAll { $0.id == id }
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -267,6 +290,7 @@ final class WorkoutStore: ObservableObject {
             }
         }
         upsert(saved, in: &logs)
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
         return saved
     }
@@ -284,6 +308,7 @@ final class WorkoutStore: ObservableObject {
         }
         refreshPendingSyncCount()
         logs.removeAll { $0.id == id }
+        persistOfflineSnapshot()
     }
 
     func syncPendingChanges() async {
@@ -319,6 +344,7 @@ final class WorkoutStore: ObservableObject {
             }
             removePendingChange(for: conflict)
             PendingSyncConflictQueue.remove(conflict.resource, id: conflict.itemId)
+            persistOfflineSnapshot()
             refreshPendingSyncCount()
         } catch WorkoutAPIError.unauthorized {
             auth.signOut()
@@ -643,6 +669,7 @@ final class WorkoutStore: ObservableObject {
         var loadedSections = 0
         var failures: [String] = []
         var firstError: Error?
+        isUsingOfflineSnapshot = false
 
         do {
             exercises = mergePendingExercises(try await api.fetchExercises()).sortedByName()
@@ -689,7 +716,35 @@ final class WorkoutStore: ObservableObject {
             errorMessage = "Some data could not load: \(failures.joined(separator: ", ")). Pull to retry."
         }
         refreshPendingSyncCount()
+        persistOfflineSnapshot()
         await flushPendingChanges(using: api)
+        persistOfflineSnapshot()
+    }
+
+    @discardableResult
+    private func loadOfflineSnapshot(markOffline: Bool) -> Bool {
+        guard let snapshot = OfflineDataSnapshotStore.load(for: auth.user?.sub) else { return false }
+        exercises = mergePendingExercises(snapshot.exercises).sortedByName()
+        templates = mergePendingTemplates(snapshot.templates).sortedByName()
+        logs = mergePendingLogs(snapshot.logs)
+        programs = mergePendingPrograms(snapshot.programs).sortedForDisplay()
+        settings = snapshot.settings
+        isUsingOfflineSnapshot = markOffline
+        refreshPendingSyncCount()
+        return true
+    }
+
+    private func persistOfflineSnapshot() {
+        guard !usesLocalData, let userID = auth.user?.sub else { return }
+        OfflineDataSnapshotStore.save(.init(
+            userID: userID,
+            capturedAt: ISO8601DateFormatter().string(from: Date()),
+            exercises: exercises,
+            templates: templates,
+            logs: logs,
+            programs: programs,
+            settings: settings
+        ))
     }
 
     private func recordLoadFailure(
@@ -950,6 +1005,7 @@ final class WorkoutStore: ObservableObject {
         exercises = exercises.sortedByName()
         templates = templates.sortedByName()
         programs = programs.sortedForDisplay()
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 
@@ -985,6 +1041,7 @@ final class WorkoutStore: ObservableObject {
                 break
             }
         }
+        persistOfflineSnapshot()
         refreshPendingSyncCount()
     }
 }
@@ -996,6 +1053,56 @@ private extension WorkoutStore {
         formatter.dateStyle = .none
         return formatter
     }()
+}
+
+private struct OfflineDataSnapshot: Codable {
+    var userID: String
+    var capturedAt: String
+    var exercises: [Exercise]
+    var templates: [WorkoutTemplate]
+    var logs: [WorkoutLog]
+    var programs: [TrainingProgram]
+    var settings: WorkoutSettings
+}
+
+private enum OfflineDataSnapshotStore {
+    private static let folderName = "Forge"
+    private static let fileName = "offline-data-snapshot.json"
+
+    static func load(for userID: String?) -> OfflineDataSnapshot? {
+        guard let userID,
+              let data = try? Data(contentsOf: fileURL),
+              let snapshot = try? JSONDecoder().decode(OfflineDataSnapshot.self, from: data),
+              snapshot.userID == userID
+        else { return nil }
+        return snapshot
+    }
+
+    static func save(_ snapshot: OfflineDataSnapshot) {
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(snapshot)
+            try data.write(to: fileURL, options: [.atomic])
+        } catch {
+            #if DEBUG
+            print("Could not save offline data snapshot: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    private static var folderURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent(folderName, isDirectory: true)
+    }
+
+    private static var fileURL: URL {
+        folderURL.appendingPathComponent(fileName)
+    }
 }
 
 private enum PendingResourceKind: String, Codable {

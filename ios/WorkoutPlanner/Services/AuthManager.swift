@@ -67,13 +67,24 @@ final class AuthManager: ObservableObject {
             do {
                 let gidUser = try await restorePreviousSignIn()
                 let sessionProfile = try await ensureGoogleSession(for: gidUser)
-                user = sessionProfile ?? profile(from: gidUser)
+                let restoredProfile = sessionProfile ?? profile(from: gidUser)
+                user = restoredProfile
                 currentProvider = .google
                 isDemoMode = false
                 AppleSessionStore.storeProvider(.google)
+                CachedUserProfileStore.save(restoredProfile)
             } catch {
-                user = nil
-                AppSessionStore.clear()
+                if storedProvider == .google,
+                   AppSessionStore.validToken() != nil,
+                   let cachedUser = CachedUserProfileStore.load() {
+                    user = cachedUser
+                    currentProvider = .google
+                    isDemoMode = false
+                } else {
+                    user = nil
+                    AppSessionStore.clear()
+                    CachedUserProfileStore.clear()
+                }
             }
         }
         isRestoring = false
@@ -102,11 +113,13 @@ final class AuthManager: ObservableObject {
                     }
                 }
             }
-            user = try await ensureGoogleSession(for: result.user) ?? profile(from: result.user)
+            let signedInProfile = try await ensureGoogleSession(for: result.user) ?? profile(from: result.user)
+            user = signedInProfile
             currentProvider = .google
             isDemoMode = false
             AppleSessionStore.clearApple()
             AppleSessionStore.storeProvider(.google)
+            CachedUserProfileStore.save(signedInProfile)
         } catch {
             authError = error.localizedDescription
         }
@@ -142,6 +155,7 @@ final class AuthManager: ObservableObject {
                 user = sessionProfile
                 currentProvider = .apple
                 isDemoMode = false
+                CachedUserProfileStore.save(sessionProfile)
             } catch {
                 authError = error.localizedDescription
             }
@@ -181,6 +195,9 @@ final class AuthManager: ObservableObject {
             do {
                 let response = try await exchangeAppleSession(identityToken: token, profile: profile, linkToCurrentAccount: true)
                 user = response.user ?? user
+                if let user {
+                    CachedUserProfileStore.save(user)
+                }
                 isDemoMode = false
                 return true
             } catch {
@@ -212,6 +229,7 @@ final class AuthManager: ObservableObject {
         GIDSignIn.sharedInstance.signOut()
         AppleSessionStore.clearAll()
         AppSessionStore.clear()
+        CachedUserProfileStore.clear()
         user = nil
         currentProvider = nil
         isDemoMode = false
@@ -353,24 +371,27 @@ final class AuthManager: ObservableObject {
         guard let session = AppleSessionStore.loadApple(), AppSessionStore.validToken() != nil else {
             AppleSessionStore.clearAll()
             AppSessionStore.clear()
+            CachedUserProfileStore.clear()
             return false
         }
-        let state = await appleCredentialState(for: session.userID)
-        guard state == .authorized else {
+        let credential = await appleCredentialState(for: session.userID)
+        guard credential.state == .authorized || credential.error != nil else {
             AppleSessionStore.clearAll()
             AppSessionStore.clear()
+            CachedUserProfileStore.clear()
             return false
         }
         user = session.profile
         currentProvider = .apple
         isDemoMode = false
+        CachedUserProfileStore.save(session.profile)
         return true
     }
 
-    private func appleCredentialState(for userID: String) async -> ASAuthorizationAppleIDProvider.CredentialState {
+    private func appleCredentialState(for userID: String) async -> (state: ASAuthorizationAppleIDProvider.CredentialState, error: Error?) {
         await withCheckedContinuation { continuation in
-            ASAuthorizationAppleIDProvider().getCredentialState(forUserID: userID) { state, _ in
-                continuation.resume(returning: state)
+            ASAuthorizationAppleIDProvider().getCredentialState(forUserID: userID) { state, error in
+                continuation.resume(returning: (state, error))
             }
         }
     }
@@ -453,6 +474,25 @@ private enum AppSessionStore {
             kSecAttrAccount: account,
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+private enum CachedUserProfileStore {
+    private static let key = "wp.auth.cachedUserProfile"
+
+    static func save(_ profile: UserProfile) {
+        if let data = try? JSONEncoder().encode(profile) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    static func load() -> UserProfile? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(UserProfile.self, from: data)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
     }
 }
 
