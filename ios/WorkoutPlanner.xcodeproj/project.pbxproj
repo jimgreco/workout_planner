@@ -11,6 +11,7 @@
 		10E743FD0086F7851DDFCB11 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B44FF900173E65DE904D15 /* AppConfiguration.swift */; };
 		215161C2D9263BED21BD18A0 /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12690F5DD8E5A6B297F818D6 /* AppShell.swift */; };
 		265DF46D3AC5DF335F648830 /* ProgressDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FABA1A63EC4F5BB3B738CF39 /* ProgressDashboardView.swift */; };
+		2DC49F5C3EE96800C15382F0 /* WorkoutLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EE931B678D464B2B063ECE /* WorkoutLiveActivityAttributes.swift */; };
 		3E79CE606D0BC85DE03C59EB /* ExercisesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F54A167D8F8581486896918 /* ExercisesView.swift */; };
 		3F9BE2534DFD4FFB9E89DCBE /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9090D7530C1B80562460CA21 /* HistoryView.swift */; };
 		401014297E2EC1474CD3D39D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F13786080129C6FFDB10193 /* Models.swift */; };
@@ -18,20 +19,52 @@
 		51ACD6C797DDB5856CF9A6F1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1341172DB60F64CACFF1541B /* Theme.swift */; };
 		7DB646D11BE39432E3B397AB /* WorkoutBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73DAB42644CF286C828DBBED /* WorkoutBuilderView.swift */; };
 		8091CB96AA6549F3F1685618 /* WorkoutAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41E53431E39ABB263340DC9F /* WorkoutAPI.swift */; };
+		94A575AEF7352DA8F38CCA52 /* WorkoutPlannerLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B9814F28C8FB8DF7E7D930FC /* WorkoutPlannerLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B59BD03FCCCD86BB227CAFB5 /* WorkoutLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102BF7B6B07BF0E681541F1F /* WorkoutLogView.swift */; };
 		C5FAACF8FEE6078F033BDCAE /* WorkoutPlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F519A2A4AE6C7599F7903F81 /* WorkoutPlannerApp.swift */; };
+		C6584BC50C460F9E0CD9C315 /* WorkoutLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EE931B678D464B2B063ECE /* WorkoutLiveActivityAttributes.swift */; };
+		C919D3102443FEC1BFFBA7C9 /* WorkoutPlannerLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92B458657610CAF8D525D778 /* WorkoutPlannerLiveActivity.swift */; };
 		D497EAF303962422D0D5EF00 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8049C0DB886AB1D317CFBEF5 /* GoogleSignIn */; };
+		D5F3CC67DCABA25E869F01A8 /* WorkoutLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30863C4AB0F8A8A81007186D /* WorkoutLiveActivityController.swift */; };
 		DCC9CBB9F041995F89436E0D /* WorkoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B857653A9AE72757672627E2 /* WorkoutStore.swift */; };
+		DE60D499118D072C7BF91075 /* WorkoutPlannerLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 267526923439B106FAECFCE4 /* WorkoutPlannerLiveActivityBundle.swift */; };
 		E1FA00B8488DF8645595E943 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A44983BBF723130727FCD8 /* LoginView.swift */; };
 		EB9ACB6EBB6C971302BC8EF2 /* TemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389D15400DA2BBF487EFB590 /* TemplatesView.swift */; };
 		F6C5506F9219FDA833670678 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD079724F83D7D12FE56695 /* AuthManager.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		95E090A8C5A8CA72E19CCE73 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B46D8293A39ACE69FAA654AE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0C6FE818C948FE1AD6255507;
+			remoteInfo = WorkoutPlannerLiveActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5876A8AC8E4E1F60ABC74F4F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				94A575AEF7352DA8F38CCA52 /* WorkoutPlannerLiveActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		102BF7B6B07BF0E681541F1F /* WorkoutLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLogView.swift; sourceTree = "<group>"; };
 		12690F5DD8E5A6B297F818D6 /* AppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShell.swift; sourceTree = "<group>"; };
 		1341172DB60F64CACFF1541B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		267526923439B106FAECFCE4 /* WorkoutPlannerLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlannerLiveActivityBundle.swift; sourceTree = "<group>"; };
 		26B44FF900173E65DE904D15 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
+		30863C4AB0F8A8A81007186D /* WorkoutLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityController.swift; sourceTree = "<group>"; };
+		36EE931B678D464B2B063ECE /* WorkoutLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		389D15400DA2BBF487EFB590 /* TemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesView.swift; sourceTree = "<group>"; };
 		3F54A167D8F8581486896918 /* ExercisesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisesView.swift; sourceTree = "<group>"; };
 		41E53431E39ABB263340DC9F /* WorkoutAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAPI.swift; sourceTree = "<group>"; };
@@ -41,10 +74,13 @@
 		73DAB42644CF286C828DBBED /* WorkoutBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutBuilderView.swift; sourceTree = "<group>"; };
 		9090D7530C1B80562460CA21 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		911A106284273F5CD5715364 /* WorkoutPlanner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WorkoutPlanner.entitlements; sourceTree = "<group>"; };
+		92B458657610CAF8D525D778 /* WorkoutPlannerLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlannerLiveActivity.swift; sourceTree = "<group>"; };
 		B857653A9AE72757672627E2 /* WorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutStore.swift; sourceTree = "<group>"; };
+		B9814F28C8FB8DF7E7D930FC /* WorkoutPlannerLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WorkoutPlannerLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBD079724F83D7D12FE56695 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		D0A44983BBF723130727FCD8 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		DFF0E9338D749A93899EA724 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		E452E2F2F9CD88BFAAFF3D22 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		EA2799E7E3AAE7DF75BA12E4 /* WorkoutPlanner.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WorkoutPlanner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F519A2A4AE6C7599F7903F81 /* WorkoutPlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlannerApp.swift; sourceTree = "<group>"; };
 		FABA1A63EC4F5BB3B738CF39 /* ProgressDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressDashboardView.swift; sourceTree = "<group>"; };
@@ -66,6 +102,7 @@
 			isa = PBXGroup;
 			children = (
 				EA2799E7E3AAE7DF75BA12E4 /* WorkoutPlanner.app */,
+				B9814F28C8FB8DF7E7D930FC /* WorkoutPlannerLiveActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,6 +114,7 @@
 				BBD079724F83D7D12FE56695 /* AuthManager.swift */,
 				63D5F0DAF22CA0626781191C /* BackgroundSyncScheduler.swift */,
 				41E53431E39ABB263340DC9F /* WorkoutAPI.swift */,
+				30863C4AB0F8A8A81007186D /* WorkoutLiveActivityController.swift */,
 				B857653A9AE72757672627E2 /* WorkoutStore.swift */,
 			);
 			path = Services;
@@ -85,9 +123,19 @@
 		225F9B2F456211F47F0D8F1F = {
 			isa = PBXGroup;
 			children = (
+				7E60CD0E9B473C1D1DF300A4 /* Shared */,
 				B093F34B8EE2E7BFC7B150C7 /* WorkoutPlanner */,
+				C044EA2D9BB74F8CF6C39C97 /* WorkoutPlannerLiveActivity */,
 				0FCC13F507D7B33BD635E7A1 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		7E60CD0E9B473C1D1DF300A4 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				36EE931B678D464B2B063ECE /* WorkoutLiveActivityAttributes.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		B093F34B8EE2E7BFC7B150C7 /* WorkoutPlanner */ = {
@@ -102,6 +150,16 @@
 				EC486971901EB3B272326B38 /* Views */,
 			);
 			path = WorkoutPlanner;
+			sourceTree = "<group>";
+		};
+		C044EA2D9BB74F8CF6C39C97 /* WorkoutPlannerLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				E452E2F2F9CD88BFAAFF3D22 /* Info.plist */,
+				92B458657610CAF8D525D778 /* WorkoutPlannerLiveActivity.swift */,
+				267526923439B106FAECFCE4 /* WorkoutPlannerLiveActivityBundle.swift */,
+			);
+			path = WorkoutPlannerLiveActivity;
 			sourceTree = "<group>";
 		};
 		CF37FE77522010158ABE7346 /* Support */ = {
@@ -131,6 +189,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0C6FE818C948FE1AD6255507 /* WorkoutPlannerLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 17814FA10F30935EB473E943 /* Build configuration list for PBXNativeTarget "WorkoutPlannerLiveActivity" */;
+			buildPhases = (
+				E8D9C9ABF8567A104F01E074 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WorkoutPlannerLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = WorkoutPlannerLiveActivity;
+			productReference = B9814F28C8FB8DF7E7D930FC /* WorkoutPlannerLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B43BD266FB440D89BFD42AF7 /* WorkoutPlanner */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B9F01174AC3F2A0337096221 /* Build configuration list for PBXNativeTarget "WorkoutPlanner" */;
@@ -138,10 +213,12 @@
 				E3ADB610FECFF262D9CAEB5A /* Sources */,
 				579237B81526E0022D9BAC31 /* Resources */,
 				5D80822B3A873AAA7DAAF5AD /* Frameworks */,
+				5876A8AC8E4E1F60ABC74F4F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				DA45333635ECF2EFBD474995 /* PBXTargetDependency */,
 			);
 			name = WorkoutPlanner;
 			packageProductDependencies = (
@@ -180,6 +257,7 @@
 			projectRoot = "";
 			targets = (
 				B43BD266FB440D89BFD42AF7 /* WorkoutPlanner */,
+				0C6FE818C948FE1AD6255507 /* WorkoutPlannerLiveActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -213,13 +291,33 @@
 				51ACD6C797DDB5856CF9A6F1 /* Theme.swift in Sources */,
 				8091CB96AA6549F3F1685618 /* WorkoutAPI.swift in Sources */,
 				7DB646D11BE39432E3B397AB /* WorkoutBuilderView.swift in Sources */,
+				C6584BC50C460F9E0CD9C315 /* WorkoutLiveActivityAttributes.swift in Sources */,
+				D5F3CC67DCABA25E869F01A8 /* WorkoutLiveActivityController.swift in Sources */,
 				B59BD03FCCCD86BB227CAFB5 /* WorkoutLogView.swift in Sources */,
 				C5FAACF8FEE6078F033BDCAE /* WorkoutPlannerApp.swift in Sources */,
 				DCC9CBB9F041995F89436E0D /* WorkoutStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E8D9C9ABF8567A104F01E074 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2DC49F5C3EE96800C15382F0 /* WorkoutLiveActivityAttributes.swift in Sources */,
+				C919D3102443FEC1BFFBA7C9 /* WorkoutPlannerLiveActivity.swift in Sources */,
+				DE60D499118D072C7BF91075 /* WorkoutPlannerLiveActivityBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		DA45333635ECF2EFBD474995 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0C6FE818C948FE1AD6255507 /* WorkoutPlannerLiveActivity */;
+			targetProxy = 95E090A8C5A8CA72E19CCE73 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		090B559658496737609E51A5 /* Debug */ = {
@@ -308,6 +406,26 @@
 			};
 			name = Debug;
 		};
+		879F4E253AE51D4DDA04DF76 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				INFOPLIST_FILE = WorkoutPlannerLiveActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios.LiveActivity;
+				PRODUCT_NAME = ForgeLiveActivity;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		AB52855FC291CF6AE4CF0054 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -327,6 +445,29 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios;
 				PRODUCT_NAME = Forge;
 				PROVISIONING_PROFILE_SPECIFIER = "$(IOS_PROFILE_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D97737692D7E6F25044ED870 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				INFOPLIST_FILE = WorkoutPlannerLiveActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios.LiveActivity;
+				PRODUCT_NAME = ForgeLiveActivity;
+				PROVISIONING_PROFILE_SPECIFIER = "$(IOS_LIVE_ACTIVITY_PROFILE_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -392,6 +533,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		17814FA10F30935EB473E943 /* Build configuration list for PBXNativeTarget "WorkoutPlannerLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				879F4E253AE51D4DDA04DF76 /* Debug */,
+				D97737692D7E6F25044ED870 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		9AD11FA3F947560F40FD8340 /* Build configuration list for PBXProject "WorkoutPlanner" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

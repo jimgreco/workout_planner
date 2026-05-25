@@ -4,6 +4,10 @@
 <dict>
 	<key>API_BASE_URL</key>
 	<string>https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.workoutplanner.ios.pending-sync</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -33,14 +37,12 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>GOOGLE_IOS_CLIENT_ID</key>
-	<string>YOUR_IOS_CLIENT_ID.apps.googleusercontent.com</string>
 	<key>GIT_COMMIT_HASH</key>
 	<string>local</string>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.workoutplanner.ios.pending-sync</string>
-	</array>
+	<key>GOOGLE_IOS_CLIENT_ID</key>
+	<string>YOUR_IOS_CLIENT_ID.apps.googleusercontent.com</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

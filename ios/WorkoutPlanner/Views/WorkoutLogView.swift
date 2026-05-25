@@ -109,7 +109,15 @@ struct WorkoutLogView: View {
         }
         .onDisappear {
             restAlertTask?.cancel()
+            updateExternalLiveActivity()
         }
+        .onChange(of: workoutId) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: name) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: items) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: startTime) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: activeExerciseIndex) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: activeSetIndex) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: store.exercises) { _, _ in updateExternalLiveActivity() }
         .alert(isEditing ? "Cancel Editing?" : "Discard Workout?", isPresented: $showDiscardConfirm) {
             Button(isEditing ? "Keep Editing" : "Keep Going", role: .cancel) {}
             Button(isEditing ? "Cancel Edit" : "Discard Workout", role: .destructive) {
@@ -180,11 +188,15 @@ struct WorkoutLogView: View {
 
     private var liveActivityCard: some View {
         WorkoutLiveActivityCard(
-            items: items,
+            items: $items,
             exercises: store.exercises,
             startTime: startTime,
-            activeExerciseIndex: activeExerciseIndex,
-            activeSetIndex: activeSetIndex
+            activeExerciseIndex: $activeExerciseIndex,
+            activeSetIndex: $activeSetIndex,
+            focusedField: $focusedBuilderField,
+            onSetCompleted: markSetCompleted,
+            onEndRest: endRest,
+            onChanged: scheduleSave
         )
     }
 
@@ -276,6 +288,7 @@ struct WorkoutLogView: View {
         guard workoutId != nil else { return }
         promotePlanningRepsToPlaceholders()
         startTime = ISO8601DateFormatter().string(from: Date())
+        updateExternalLiveActivity()
         Task { await persist(status: "active") }
     }
 
@@ -328,6 +341,10 @@ struct WorkoutLogView: View {
                 pbExerciseIds: pbExerciseIds
             )
             try await store.saveLog(log)
+            WorkoutLiveActivityController.shared.end(
+                workoutID: workoutId,
+                finalState: liveActivityState(isCompleteOverride: true)
+            )
 
             if isEditing {
                 resetWorkout()
@@ -351,6 +368,7 @@ struct WorkoutLogView: View {
 
         do {
             if !isEditing {
+                WorkoutLiveActivityController.shared.end(workoutID: id)
                 try await store.deleteLog(id)
             }
             resetWorkout()
@@ -491,6 +509,140 @@ struct WorkoutLogView: View {
         scheduleSave()
     }
 
+    private func endRest(exerciseIndex: Int, setIndex: Int) {
+        guard items.indices.contains(exerciseIndex),
+              items[exerciseIndex].sets.indices.contains(setIndex),
+              let start = items[exerciseIndex].sets[setIndex].restStartTime,
+              items[exerciseIndex].sets[setIndex].restDuration == nil
+        else { return }
+
+        let now = Date().timeIntervalSince1970 * 1000
+        items[exerciseIndex].sets[setIndex].restDuration = max(0, Int((now - start) / 1000))
+        items[exerciseIndex].sets[setIndex].restStartTime = nil
+        restAlertTask?.cancel()
+        restAlert = nil
+        scheduleSave()
+    }
+
+    private func updateExternalLiveActivity() {
+        guard shouldShowLiveActivityCard else {
+            WorkoutLiveActivityController.shared.end(workoutID: workoutId)
+            return
+        }
+        WorkoutLiveActivityController.shared.update(workoutID: workoutId, state: liveActivityState())
+    }
+
+    private func liveActivityState(isCompleteOverride: Bool = false) -> WorkoutLiveActivityAttributes.ContentState? {
+        guard let context = liveContext,
+              let workoutId,
+              !workoutId.isEmpty
+        else { return nil }
+        let resting = liveRestingContext
+        let total = liveTotalSets
+        let completed = liveCompletedSets
+        let startedAt = startTime.flatMap { ISO8601DateFormatter().date(from: $0) }
+        let restStartedAt = resting?.set.restStartTime.map { Date(timeIntervalSince1970: $0 / 1000) }
+        let restTargetEnd = restStartedAt.flatMap { start in
+            resting?.item.restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
+        }
+
+        return WorkoutLiveActivityAttributes.ContentState(
+            workoutName: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Workout" : name,
+            exerciseName: context.exercise.name,
+            muscleGroup: context.exercise.muscleGroup,
+            setLabel: "\(context.setIndex + 1)/\(context.item.sets.count)",
+            reps: liveRepsLabel(for: context.set) ?? "-",
+            weight: liveWeightLabel(for: context) ?? "",
+            setType: setTypeLabel(context.set.setType),
+            personalBest: personalBestLabel(context.exercise.personalBest),
+            completedSets: completed,
+            totalSets: total,
+            exerciseCount: items.count,
+            startedAt: startedAt,
+            restStartedAt: restStartedAt,
+            restTargetEnd: restTargetEnd,
+            restTargetSeconds: resting?.item.restTargetSeconds,
+            restExerciseName: resting?.exercise.name,
+            isComplete: isCompleteOverride || (total > 0 && completed >= total)
+        )
+    }
+
+    private var liveTotalSets: Int {
+        items.reduce(0) { $0 + $1.sets.count }
+    }
+
+    private var liveCompletedSets: Int {
+        items.reduce(0) { count, item in
+            count + item.sets.filter { $0.restStartTime != nil || $0.restDuration != nil }.count
+        }
+    }
+
+    private var liveContext: WorkoutLiveSetContext? {
+        if let explicit = liveContext(exerciseIndex: activeExerciseIndex, setIndex: activeSetIndex) {
+            return explicit
+        }
+
+        for itemIndex in items.indices {
+            for setIndex in items[itemIndex].sets.indices {
+                if let context = liveContext(exerciseIndex: itemIndex, setIndex: setIndex),
+                   context.set.restStartTime == nil,
+                   context.set.restDuration == nil {
+                    return context
+                }
+            }
+        }
+        return liveContext(exerciseIndex: 0, setIndex: 0)
+    }
+
+    private var liveRestingContext: WorkoutLiveSetContext? {
+        for itemIndex in items.indices {
+            for setIndex in items[itemIndex].sets.indices {
+                guard let context = liveContext(exerciseIndex: itemIndex, setIndex: setIndex),
+                      context.set.restStartTime != nil,
+                      context.set.restDuration == nil
+                else { continue }
+                return context
+            }
+        }
+        return nil
+    }
+
+    private func liveContext(exerciseIndex: Int, setIndex: Int) -> WorkoutLiveSetContext? {
+        guard items.indices.contains(exerciseIndex),
+              items[exerciseIndex].sets.indices.contains(setIndex),
+              let exercise = store.exercise(id: items[exerciseIndex].exerciseId)
+        else { return nil }
+
+        return WorkoutLiveSetContext(
+            exercise: exercise,
+            item: items[exerciseIndex],
+            set: items[exerciseIndex].sets[setIndex],
+            exerciseIndex: exerciseIndex,
+            setIndex: setIndex
+        )
+    }
+
+    private func liveWeightLabel(for context: WorkoutLiveSetContext) -> String? {
+        guard context.item.weightType != "none" else { return nil }
+        let weight = (context.set.weight?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? (context.set.placeholderWeight?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        guard let weight else { return nil }
+        if context.item.weightType == "bar_double" { return "\(weight) + bar" }
+        return context.item.weightType == "double" ? "\(weight) each" : "\(weight) lb"
+    }
+
+    private func liveRepsLabel(for set: WorkoutSet) -> String? {
+        let reps = set.reps?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let reps, !reps.isEmpty { return reps }
+        let placeholder = set.placeholderReps?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let placeholder, !placeholder.isEmpty else { return nil }
+        if let context = RepsFieldPlaceholder(rawValue: placeholder) {
+            if let goal = context.goal { return goal }
+            return context.last
+        }
+        return placeholder
+    }
+
     private func scheduleRestAlert(exerciseIndex: Int, setIndex: Int, startTime: Double) {
         restAlertTask?.cancel()
         guard items.indices.contains(exerciseIndex),
@@ -527,6 +679,7 @@ struct WorkoutLogView: View {
     private func resetWorkout() {
         restAlertTask?.cancel()
         restAlert = nil
+        WorkoutLiveActivityController.shared.end(workoutID: workoutId)
         workoutId = nil
         name = ""
         date = Date()
@@ -583,12 +736,23 @@ private struct RestTargetBanner: View {
     }
 }
 
+private let liveSetTypeOptions: [(label: String, value: String)] = [
+    ("Working", "working"),
+    ("Warmup", "warmup"),
+    ("Drop", "drop"),
+    ("Failure", "failure"),
+]
+
 private struct WorkoutLiveActivityCard: View {
-    let items: [ExerciseItem]
+    @Binding var items: [ExerciseItem]
     let exercises: [Exercise]
     let startTime: String?
-    let activeExerciseIndex: Int
-    let activeSetIndex: Int
+    @Binding var activeExerciseIndex: Int
+    @Binding var activeSetIndex: Int
+    @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
+    let onSetCompleted: (Int, Int) -> Void
+    let onEndRest: (Int, Int) -> Void
+    let onChanged: () -> Void
 
     private var totalSets: Int {
         items.reduce(0) { $0 + $1.sets.count }
@@ -605,8 +769,7 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private var currentContext: WorkoutLiveSetContext? {
-        if let explicit = context(exerciseIndex: activeExerciseIndex, setIndex: activeSetIndex),
-           !isCompleted(explicit.set) {
+        if let explicit = context(exerciseIndex: activeExerciseIndex, setIndex: activeSetIndex) {
             return explicit
         }
 
@@ -619,6 +782,24 @@ private struct WorkoutLiveActivityCard: View {
             }
         }
         return nil
+    }
+
+    private var canMoveToPreviousSet: Bool {
+        flatSetPositions.firstIndex(where: { $0.exerciseIndex == activeExerciseIndex && $0.setIndex == activeSetIndex })
+            .map { $0 > 0 } ?? false
+    }
+
+    private var canMoveToNextSet: Bool {
+        flatSetPositions.firstIndex(where: { $0.exerciseIndex == activeExerciseIndex && $0.setIndex == activeSetIndex })
+            .map { $0 < flatSetPositions.count - 1 } ?? false
+    }
+
+    private var flatSetPositions: [(exerciseIndex: Int, setIndex: Int)] {
+        items.indices.flatMap { exerciseIndex in
+            items[exerciseIndex].sets.indices.map { setIndex in
+                (exerciseIndex: exerciseIndex, setIndex: setIndex)
+            }
+        }
     }
 
     private var restingContext: WorkoutLiveSetContext? {
@@ -660,10 +841,16 @@ private struct WorkoutLiveActivityCard: View {
                     Divider().opacity(0.25)
                 }
 
-                if isWorkoutComplete {
+                if isWorkoutComplete, restingContext == nil {
                     completionSection
-                } else if let currentContext {
-                    currentSetSection(currentContext, isUpNext: restingContext != nil)
+                } else if let currentContext,
+                          items.indices.contains(currentContext.exerciseIndex),
+                          items[currentContext.exerciseIndex].sets.indices.contains(currentContext.setIndex) {
+                    currentSetSection(
+                        currentContext,
+                        set: $items[currentContext.exerciseIndex].sets[currentContext.setIndex],
+                        isUpNext: restingContext != nil
+                    )
                 }
 
                 ProgressView(value: Double(completedSets), total: Double(max(totalSets, 1)))
@@ -734,6 +921,18 @@ private struct WorkoutLiveActivityCard: View {
                     .background(Theme.background.opacity(0.72))
                     .clipShape(Capsule())
             }
+
+            Button {
+                onEndRest(context.exerciseIndex, context.setIndex)
+            } label: {
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 13, weight: .heavy))
+                    .frame(width: 34, height: 34)
+                    .background(Theme.background.opacity(0.78))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("End rest")
         }
     }
 
@@ -755,10 +954,10 @@ private struct WorkoutLiveActivityCard: View {
         }
     }
 
-    private func currentSetSection(_ context: WorkoutLiveSetContext, isUpNext: Bool) -> some View {
+    private func currentSetSection(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, isUpNext: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(isUpNext ? "Up next" : "Current set")
+                Text(isCompleted(context.set) ? "Selected set" : isUpNext ? "Up next" : "Current set")
                     .font(.system(size: 12, weight: .heavy))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
@@ -774,18 +973,43 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
                 WorkoutLiveMetric(title: "Set", value: "\(context.setIndex + 1) / \(context.item.sets.count)")
-                if let reps = repsLabel(for: context.set) {
-                    WorkoutLiveMetric(title: "Reps", value: reps)
+                WorkoutLiveInput(
+                    title: "Reps",
+                    text: stringBinding(set, \.reps),
+                    placeholder: repsLabel(for: context.set) ?? "0",
+                    keyboard: .numberPad
+                )
+                .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+
+                if context.item.weightType != "none" {
+                    WorkoutLiveInput(
+                        title: "Weight",
+                        text: stringBinding(set, \.weight),
+                        placeholder: weightPlaceholder(for: context) ?? "0",
+                        keyboard: .decimalPad
+                    )
+                    .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
                 }
-                if let weight = weightLabel(for: context) {
-                    WorkoutLiveMetric(title: "Weight", value: weight)
-                }
-                WorkoutLiveMetric(title: "Type", value: setTypeLabel(context.set.setType))
-                if let effort = effortLabel(for: context.set) {
-                    WorkoutLiveMetric(title: "Effort", value: effort)
-                }
+
+                setTypeMenu(set: set)
+
+                WorkoutLiveInput(
+                    title: "RPE",
+                    text: stringBinding(set, \.rpe),
+                    placeholder: "-",
+                    keyboard: .decimalPad
+                )
+                .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+
+                WorkoutLiveInput(
+                    title: "RIR",
+                    text: stringBinding(set, \.rir),
+                    placeholder: "-",
+                    keyboard: .decimalPad
+                )
+                .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
             }
 
             if let personalBest = personalBestLabel(context.exercise.personalBest) {
@@ -795,7 +1019,65 @@ private struct WorkoutLiveActivityCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
+
+            HStack(spacing: 10) {
+                Button {
+                    moveSelection(delta: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .heavy))
+                        .frame(width: 42, height: 42)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canMoveToPreviousSet ? Theme.text : Theme.muted.opacity(0.5))
+                .background(Theme.background.opacity(0.72))
+                .clipShape(Circle())
+                .disabled(!canMoveToPreviousSet)
+                .accessibilityLabel("Previous set")
+
+                Button {
+                    moveSelection(delta: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 15, weight: .heavy))
+                        .frame(width: 42, height: 42)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canMoveToNextSet ? Theme.text : Theme.muted.opacity(0.5))
+                .background(Theme.background.opacity(0.72))
+                .clipShape(Circle())
+                .disabled(!canMoveToNextSet)
+                .accessibilityLabel("Next set")
+
+                Button {
+                    onSetCompleted(context.exerciseIndex, context.setIndex)
+                } label: {
+                    Label(isCompleted(context.set) ? "Logged" : "Log Set", systemImage: "checkmark")
+                        .font(.system(size: 15, weight: .heavy))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isCompleted(context.set) ? Theme.success : .white)
+                .background(isCompleted(context.set) ? Theme.success.opacity(0.14) : Theme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .disabled(isCompleted(context.set))
+            }
         }
+    }
+
+    private func setTypeMenu(set: Binding<WorkoutSet>) -> some View {
+        Menu {
+            ForEach(liveSetTypeOptions, id: \.value) { option in
+                Button(option.label) {
+                    set.wrappedValue.setType = option.value
+                    onChanged()
+                }
+            }
+        } label: {
+            WorkoutLiveMetric(title: "Type", value: setTypeLabel(set.wrappedValue.setType))
+        }
+        .buttonStyle(.plain)
     }
 
     private func context(exerciseIndex: Int, setIndex: Int) -> WorkoutLiveSetContext? {
@@ -828,6 +1110,10 @@ private struct WorkoutLiveActivityCard: View {
         return placeholder
     }
 
+    private func weightPlaceholder(for context: WorkoutLiveSetContext) -> String? {
+        cleaned(context.set.placeholderWeight)
+    }
+
     private func weightLabel(for context: WorkoutLiveSetContext) -> String? {
         guard context.item.weightType != "none" else { return nil }
         guard let weight = cleaned(context.set.weight) ?? cleaned(context.set.placeholderWeight) else { return nil }
@@ -857,6 +1143,26 @@ private struct WorkoutLiveActivityCard: View {
         let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return text.isEmpty ? nil : text
     }
+
+    private func stringBinding(_ set: Binding<WorkoutSet>, _ keyPath: WritableKeyPath<WorkoutSet, String?>) -> Binding<String> {
+        Binding(
+            get: { set.wrappedValue[keyPath: keyPath] ?? "" },
+            set: { value in
+                set.wrappedValue[keyPath: keyPath] = value
+                onChanged()
+            }
+        )
+    }
+
+    private func moveSelection(delta: Int) {
+        guard let index = flatSetPositions.firstIndex(where: {
+            $0.exerciseIndex == activeExerciseIndex && $0.setIndex == activeSetIndex
+        }) else { return }
+        let nextIndex = index + delta
+        guard flatSetPositions.indices.contains(nextIndex) else { return }
+        activeExerciseIndex = flatSetPositions[nextIndex].exerciseIndex
+        activeSetIndex = flatSetPositions[nextIndex].setIndex
+    }
 }
 
 private struct WorkoutLiveSetContext {
@@ -881,6 +1187,35 @@ private struct WorkoutLiveMetric: View {
             Text(value)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.background.opacity(0.68))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private struct WorkoutLiveInput: View {
+    let title: String
+    @Binding var text: String
+    let placeholder: String
+    let keyboard: UIKeyboardType
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+
+            TextField(placeholder, text: $text)
+                .keyboardType(keyboard)
+                .font(.system(size: 16, weight: .heavy))
+                .foregroundStyle(Theme.text)
+                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
         }
