@@ -8,12 +8,13 @@ import {
   Play,
   Plus,
   Settings,
+  SkipForward,
   Target,
   Trash2,
 } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
-import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram } from '../api.js';
+import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog } from '../api.js';
 
 const WEEKDAYS = [
   { value: 0, label: 'Sun', long: 'Sunday' },
@@ -162,6 +163,18 @@ function isCompletedOn(logs, template, dayKey) {
   ));
 }
 
+function isSkippedOn(logs, template, dayKey) {
+  return logs.some((log) => (
+    log.date === dayKey
+    && log.status === 'skipped'
+    && String(log.name ?? '').trim().toLowerCase() === template.name.trim().toLowerCase()
+  ));
+}
+
+function isHandledOn(logs, template, dayKey) {
+  return isCompletedOn(logs, template, dayKey) || isSkippedOn(logs, template, dayKey);
+}
+
 function scheduledTemplatesForWeekday(program, weekday, byId) {
   return (program?.schedule ?? [])
     .filter((item) => item.weekday === weekday)
@@ -180,7 +193,7 @@ function nextProgramWorkout(program, templates, logs) {
     const scheduled = scheduledTemplatesForWeekday(program, date.getDay(), byId);
     for (let index = 0; index < scheduled.length; index += 1) {
       const { entry, template } = scheduled[index];
-      if (!isCompletedOn(logs, template, dayKey)) {
+      if (!isHandledOn(logs, template, dayKey)) {
         return { date, dayKey, entry, template, position: index + 1, total: scheduled.length };
       }
     }
@@ -200,11 +213,15 @@ function weekPlan(program, templates, logs) {
     const templatesForDay = scheduled.map((item) => item.template);
     const dayKey = localDateKey(date);
     const completedCount = templatesForDay.filter((template) => isCompletedOn(logs, template, dayKey)).length;
+    const skippedCount = templatesForDay.filter((template) => isSkippedOn(logs, template, dayKey)).length;
+    const handledCount = completedCount + skippedCount;
     const done = templatesForDay.length > 0 && completedCount === templatesForDay.length;
     const isPast = date < today;
     let status = 'rest';
     if (done) {
       status = 'done';
+    } else if (templatesForDay.length > 0 && handledCount === templatesForDay.length) {
+      status = 'skipped';
     } else if (templatesForDay.length > 0 && isPast) {
       status = 'missed';
     } else if (templatesForDay.length > 0) {
@@ -217,6 +234,7 @@ function weekPlan(program, templates, logs) {
       entries: scheduled.map((item) => item.entry),
       templates: templatesForDay,
       completedCount,
+      skippedCount,
       status,
     };
   });
@@ -257,6 +275,7 @@ export default function Templates({
   settings,
   onUpdate,
   onProgramsUpdate = () => {},
+  onLogsChanged = () => {},
   onSettingsUpdate,
   onStartWorkout,
 }) {
@@ -383,6 +402,23 @@ export default function Templates({
     }
   }
 
+  async function handleSkipNextWorkout() {
+    if (!nextWorkout || saving) return;
+    setSaving(true);
+    try {
+      const updated = await saveLog({
+        name: nextWorkout.template.name,
+        date: nextWorkout.dayKey,
+        notes: 'Skipped from program',
+        exerciseItems: [],
+        status: 'skipped',
+      });
+      onLogsChanged(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function toggleScheduledTemplate(weekday, templateId, checked) {
     setProgramForm((draft) => {
       const schedule = (draft.schedule ?? []).filter((item) => !(item.weekday === weekday && item.templateId === templateId));
@@ -482,9 +518,14 @@ export default function Templates({
                   </strong>
                 </div>
               </div>
-              <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(nextWorkout.template)} disabled={!nextWorkout}>
-                <Play size={14} fill="currentColor" /> Start
-              </button>
+              <div className="program-next-actions">
+                <button className="btn btn-secondary btn-sm" onClick={handleSkipNextWorkout} disabled={!nextWorkout || saving}>
+                  <SkipForward size={14} /> Skip
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(nextWorkout.template)} disabled={!nextWorkout}>
+                  <Play size={14} fill="currentColor" /> Start
+                </button>
+              </div>
             </div>
 
             <div className="program-week-grid">
@@ -503,10 +544,13 @@ export default function Templates({
                       <strong>Rest</strong>
                     )}
                   </div>
-                  {day.templates.length > 1 && (
-                    <small className="program-day-count">{day.completedCount}/{day.templates.length}</small>
+                  {(day.templates.length > 1 || day.skippedCount > 0) && (
+                    <small className="program-day-count">
+                      {day.completedCount + day.skippedCount}/{day.templates.length}{day.skippedCount > 0 ? ' handled' : ''}
+                    </small>
                   )}
                   {day.status === 'done' && <CheckCircle2 size={14} aria-label="Done" />}
+                  {day.status === 'skipped' && <SkipForward size={14} aria-label="Skipped" />}
                 </div>
               ))}
             </div>

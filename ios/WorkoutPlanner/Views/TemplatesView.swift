@@ -34,6 +34,9 @@ struct TemplatesView: View {
                             onStart: { template in
                                 store.setStartTemplate(template)
                                 selectedPage = .log
+                            },
+                            onSkip: { workout in
+                                Task { await skip(workout) }
                             }
                         )
                     }
@@ -183,6 +186,23 @@ struct TemplatesView: View {
             store.errorMessage = error.localizedDescription
         }
     }
+
+    private func skip(_ workout: NextProgramWorkout) async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await store.saveLog(WorkoutLog(
+                name: workout.template.name,
+                date: DateHelpers.dayString(from: workout.date),
+                notes: "Skipped from program",
+                exerciseItems: [],
+                status: "skipped"
+            ))
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
 }
 
 private enum StarterTemplates {
@@ -245,6 +265,7 @@ private enum ProgramDayStatus {
     case rest
     case planned
     case done
+    case skipped
     case missed
 }
 
@@ -253,6 +274,7 @@ private struct PlannedProgramDay: Identifiable {
     let date: Date
     let templates: [WorkoutTemplate]
     let completedCount: Int
+    let skippedCount: Int
     let status: ProgramDayStatus
 
     var id: Int { weekday.value }
@@ -289,7 +311,7 @@ private enum ProgramPlanner {
             guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { continue }
             let weekday = Calendar.current.component(.weekday, from: date) - 1
             let scheduled = scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
-            for (index, template) in scheduled.enumerated() where !completedOn(logs: logs, template: template, date: date) {
+            for (index, template) in scheduled.enumerated() where !handledOn(logs: logs, template: template, date: date) {
                 return NextProgramWorkout(date: date, template: template, position: index + 1, total: scheduled.count)
             }
         }
@@ -306,6 +328,8 @@ private enum ProgramPlanner {
             guard let date = Calendar.current.date(byAdding: .day, value: weekday.value, to: weekStart) else { return nil }
             let scheduled = program.map { scheduledTemplates(for: weekday.value, program: $0, templatesById: templatesById) } ?? []
             let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
+            let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
+            let handledCount = completedCount + skippedCount
             let isDone = !scheduled.isEmpty && completedCount == scheduled.count
             let isPast = date < today
             let status: ProgramDayStatus
@@ -313,12 +337,14 @@ private enum ProgramPlanner {
                 status = .rest
             } else if isDone {
                 status = .done
+            } else if handledCount == scheduled.count {
+                status = .skipped
             } else if isPast {
                 status = .missed
             } else {
                 status = .planned
             }
-            return PlannedProgramDay(weekday: weekday, date: date, templates: scheduled, completedCount: completedCount, status: status)
+            return PlannedProgramDay(weekday: weekday, date: date, templates: scheduled, completedCount: completedCount, skippedCount: skippedCount, status: status)
         }
     }
 
@@ -340,6 +366,20 @@ private enum ProgramPlanner {
                 && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
                     .caseInsensitiveCompare(template.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
         }
+    }
+
+    private static func skippedOn(logs: [WorkoutLog], template: WorkoutTemplate, date: Date) -> Bool {
+        let day = DateHelpers.dayString(from: date)
+        return logs.contains { log in
+            log.date == day
+                && log.status == "skipped"
+                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(template.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+        }
+    }
+
+    private static func handledOn(logs: [WorkoutLog], template: WorkoutTemplate, date: Date) -> Bool {
+        completedOn(logs: logs, template: template, date: date) || skippedOn(logs: logs, template: template, date: date)
     }
 
     private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
@@ -374,6 +414,7 @@ private struct ProgramSummaryCard: View {
     let onEdit: (TrainingProgram) -> Void
     let onDelete: (TrainingProgram) -> Void
     let onStart: (WorkoutTemplate) -> Void
+    let onSkip: (NextProgramWorkout) -> Void
 
     private var nextWorkout: NextProgramWorkout? {
         ProgramPlanner.nextWorkout(program: program, templates: templates, logs: logs)
@@ -431,16 +472,29 @@ private struct ProgramSummaryCard: View {
                                 .minimumScaleFactor(0.85)
                         }
                         Spacer()
-                        Button {
-                            if let template = nextWorkout?.template {
-                                onStart(template)
+                        HStack(spacing: 8) {
+                            Button {
+                                if let workout = nextWorkout {
+                                    onSkip(workout)
+                                }
+                            } label: {
+                                Label("Skip", systemImage: "forward.end.fill")
+                                    .lineLimit(1)
                             }
-                        } label: {
-                            Label("Start", systemImage: "play.fill")
-                                .lineLimit(1)
+                            .buttonStyle(SecondaryButtonStyle(compact: true))
+                            .disabled(nextWorkout == nil)
+
+                            Button {
+                                if let template = nextWorkout?.template {
+                                    onStart(template)
+                                }
+                            } label: {
+                                Label("Start", systemImage: "play.fill")
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(PrimaryButtonStyle(compact: true))
+                            .disabled(nextWorkout == nil)
                         }
-                        .buttonStyle(PrimaryButtonStyle(compact: true))
-                        .disabled(nextWorkout == nil)
                     }
                     .padding(12)
                     .background(Theme.surface)
@@ -481,6 +535,7 @@ private struct ProgramDayChip: View {
     private var borderColor: Color {
         switch day.status {
         case .done: return Theme.success.opacity(0.45)
+        case .skipped: return Theme.accent.opacity(0.45)
         case .missed: return Theme.warning.opacity(0.55)
         case .planned, .rest: return Theme.border
         }
@@ -489,6 +544,7 @@ private struct ProgramDayChip: View {
     private var backgroundColor: Color {
         switch day.status {
         case .done: return Theme.success.opacity(0.08)
+        case .skipped: return Theme.accent.opacity(0.08)
         case .missed: return Theme.warning.opacity(0.08)
         case .planned, .rest: return Theme.background
         }
@@ -505,6 +561,10 @@ private struct ProgramDayChip: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.success)
+                } else if day.status == .skipped {
+                    Image(systemName: "forward.end.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.accent)
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -523,10 +583,13 @@ private struct ProgramDayChip: View {
             .font(.system(size: 12, weight: .semibold))
             .lineLimit(1)
 
-            if day.templates.count > 1 {
-                Text("\(day.completedCount)/\(day.templates.count)")
-                    .font(.system(size: 11, weight: .bold))
+            if day.templates.count > 1 || day.skippedCount > 0 {
+                let handledCount = day.completedCount + day.skippedCount
+                Text(day.skippedCount > 0 ? "\(handledCount)/\(day.templates.count) handled" : "\(day.completedCount)/\(day.templates.count)")
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
         .frame(width: 96, height: 74, alignment: .topLeading)

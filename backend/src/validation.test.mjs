@@ -69,6 +69,20 @@ test('validates template and settings boundaries', () => {
   assert.throws(() => validateSettings({ defaultSets: 0, defaultReps: 8 }), ValidationError);
 });
 
+test('allows skipped workout logs', () => {
+  const log = validateLog({
+    id: 'skip-1',
+    name: 'Push',
+    date: '2026-05-25',
+    status: 'skipped',
+    notes: 'Travel day',
+    exerciseItems: [],
+  }, 'skip-1');
+
+  assert.equal(log.status, 'skipped');
+  assert.equal(log.notes, 'Travel day');
+});
+
 test('validates program weekly schedules', () => {
   const program = validateProgram({
     id: 'program-1',

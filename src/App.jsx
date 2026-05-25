@@ -644,6 +644,7 @@ export default function App() {
             settings={settings}
             onUpdate={setTemplates}
             onProgramsUpdate={setPrograms}
+            onLogsChanged={setLogs}
             onSettingsUpdate={setSettings}
             onStartWorkout={handleStartWorkout}
           />

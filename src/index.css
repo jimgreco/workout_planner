@@ -441,6 +441,12 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.program-next-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .program-week-grid {
   display: grid;
   grid-auto-columns: minmax(88px, 1fr);
@@ -493,6 +499,13 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 }
 .program-day.done svg {
   color: var(--success);
+}
+.program-day.skipped {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+}
+.program-day.skipped svg {
+  color: var(--accent);
 }
 .program-day.missed {
   border-color: color-mix(in srgb, var(--warn) 50%, var(--border));

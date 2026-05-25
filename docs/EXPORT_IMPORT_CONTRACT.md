@@ -42,7 +42,8 @@ Imports are validated with the same resource validators used by normal writes:
 - Templates/routines: `id`, `name`, optional `description`, and
   `exerciseItems`.
 - Workout logs: `id`, `name`, `date`, `exerciseItems`, `status`, and optional
-  notes/timing/PB fields.
+  notes/timing/PB fields. Status must be `planning`, `active`, `finished`, or
+  `skipped`.
 - Programs: `id`, `name`, `schedule`, optional `description`, `active`,
   structured `progression`, and legacy/freeform `progressionRule`.
 - Settings: `defaultSets` and `defaultReps`.

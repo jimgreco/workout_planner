@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Templates from '../pages/Templates.jsx';
-import { saveProgram, saveTemplate } from '../api.js';
+import { saveLog, saveProgram, saveTemplate } from '../api.js';
 
 vi.mock('../api.js', () => ({
   saveTemplate: vi.fn(async (template) => [template]),
   deleteTemplate: vi.fn(async () => []),
   saveProgram: vi.fn(async (program) => [program]),
   deleteProgram: vi.fn(async () => []),
+  saveLog: vi.fn(async (log) => [log]),
   saveSettings: vi.fn(async (settings) => settings),
 }));
 
@@ -82,5 +83,33 @@ describe('Routines page', () => {
       progression: { type: 'linear_weight', weightIncrement: 10 },
     });
     expect(onProgramsUpdate).toHaveBeenCalled();
+  });
+
+  it('marks the next planned workout as skipped', async () => {
+    const onLogsChanged = vi.fn();
+    render(
+      <Templates
+        templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{ id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }] }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={() => {}}
+        onLogsChanged={onLogsChanged}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+    await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0]).toMatchObject({
+      name: 'Push Day',
+      status: 'skipped',
+      exerciseItems: [],
+    });
+    expect(onLogsChanged).toHaveBeenCalled();
   });
 });
