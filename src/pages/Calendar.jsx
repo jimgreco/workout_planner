@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil, Trash2, ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { deleteLog } from '../api.js';
+import { setLabel } from '../progress.js';
 
 const DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -70,7 +71,7 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
                 <div className="history-sets">
                   {item.sets.map((s, si) => (
                     <span key={si} className="history-set">
-                      {s.reps || '—'} {item.weightType === 'none' ? 'reps' : `× ${s.weight ? `${s.weight} lbs${item.weightType === 'double' ? ' (2x)' : ''}` : '—'}`}
+                      {setLabel(s, item.weightType)}
                     </span>
                   ))}
                 </div>

@@ -3,6 +3,8 @@ import SwiftUI
 enum WorkoutBuilderFocusedField: Hashable {
     case reps(itemIndex: Int, setIndex: Int)
     case weight(itemIndex: Int, setIndex: Int)
+    case rpe(itemIndex: Int, setIndex: Int)
+    case rir(itemIndex: Int, setIndex: Int)
 }
 
 private let restTargetOptions: [(label: String, seconds: Int?)] = [
@@ -248,74 +250,119 @@ private struct ExerciseSetsCard: View {
     @ViewBuilder
     private func setRow(_ setIndex: Int) -> some View {
         let active = isActiveExercise && activeSetIndex == setIndex
-        HStack(spacing: 8) {
-            Text("\(setIndex + 1)")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Theme.muted)
-                .frame(width: 36)
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Text("\(setIndex + 1)")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 36)
 
-            TextField(
-                planningMode && focusedField == .reps(itemIndex: itemIndex, setIndex: setIndex) ? "" : repsPlaceholder(for: setIndex),
-                text: Binding(
-                    get: { item.sets[setIndex].reps ?? "" },
-                    set: { value in
-                        item.sets[setIndex].reps = value
-                        onChanged?()
-                    }
-                )
-            )
-            .keyboardType(.numberPad)
-            .multilineTextAlignment(.center)
-            .disabled(readOnly)
-            .focused($focusedField, equals: .reps(itemIndex: itemIndex, setIndex: setIndex))
-            .fieldStyle()
-            .background(active ? Theme.accent.opacity(0.08) : Color.clear)
-
-            if showWeight && (!readOnly || item.weightType != "none") {
-                if item.weightType != "none", !planningMode {
-                    TextField(
-                        item.sets[setIndex].placeholderWeight ?? "-",
-                        text: Binding(
-                            get: { item.sets[setIndex].weight ?? "" },
-                            set: { value in
-                                item.sets[setIndex].weight = value
-                                onChanged?()
-                            }
-                        )
+                TextField(
+                    planningMode && focusedField == .reps(itemIndex: itemIndex, setIndex: setIndex) ? "" : repsPlaceholder(for: setIndex),
+                    text: Binding(
+                        get: { item.sets[setIndex].reps ?? "" },
+                        set: { value in
+                            item.sets[setIndex].reps = value
+                            onChanged?()
+                        }
                     )
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.center)
-                    .disabled(readOnly)
-                    .focused($focusedField, equals: .weight(itemIndex: itemIndex, setIndex: setIndex))
-                    .fieldStyle()
-                    .background(active ? Theme.accent.opacity(0.08) : Color.clear)
-                } else {
-                    Color.clear.frame(maxWidth: .infinity)
+                )
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .disabled(readOnly)
+                .focused($focusedField, equals: .reps(itemIndex: itemIndex, setIndex: setIndex))
+                .fieldStyle()
+                .background(active ? Theme.accent.opacity(0.08) : Color.clear)
+
+                if showWeight && (!readOnly || item.weightType != "none") {
+                    if item.weightType != "none", !planningMode {
+                        TextField(
+                            item.sets[setIndex].placeholderWeight ?? "-",
+                            text: Binding(
+                                get: { item.sets[setIndex].weight ?? "" },
+                                set: { value in
+                                    item.sets[setIndex].weight = value
+                                    onChanged?()
+                                }
+                            )
+                        )
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.center)
+                        .disabled(readOnly)
+                        .focused($focusedField, equals: .weight(itemIndex: itemIndex, setIndex: setIndex))
+                        .fieldStyle()
+                        .background(active ? Theme.accent.opacity(0.08) : Color.clear)
+                    } else {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
+                }
+
+                RestTimerText(set: item.sets[setIndex], targetSeconds: item.restTargetSeconds)
+                    .frame(width: 58, alignment: .trailing)
+
+                if !readOnly && !planningMode {
+                    SetCompleteButton(
+                        isComplete: setIsComplete(setIndex),
+                        isEnabled: setCanComplete(setIndex)
+                    ) {
+                        onSetCompleted?(itemIndex, setIndex)
+                    }
+                    .frame(width: 38)
+                }
+
+                if !readOnly {
+                    IconCircleButton(
+                        systemName: "xmark",
+                        tint: Theme.muted,
+                        disabled: item.sets.count <= 1
+                    ) {
+                        removeSet(setIndex)
+                    }
                 }
             }
-
-            RestTimerText(set: item.sets[setIndex], targetSeconds: item.restTargetSeconds)
-                .frame(width: 58, alignment: .trailing)
 
             if !readOnly && !planningMode {
-                SetCompleteButton(
-                    isComplete: setIsComplete(setIndex),
-                    isEnabled: setCanComplete(setIndex)
-                ) {
-                    onSetCompleted?(itemIndex, setIndex)
+                HStack(spacing: 8) {
+                    Color.clear.frame(width: 36)
+                    effortField(
+                        label: "RPE",
+                        value: Binding(
+                            get: { item.sets[setIndex].rpe ?? "" },
+                            set: { item.sets[setIndex].rpe = $0; onChanged?() }
+                        ),
+                        focus: .rpe(itemIndex: itemIndex, setIndex: setIndex),
+                        keyboard: .decimalPad
+                    )
+                    effortField(
+                        label: "RIR",
+                        value: Binding(
+                            get: { item.sets[setIndex].rir ?? "" },
+                            set: { item.sets[setIndex].rir = $0; onChanged?() }
+                        ),
+                        focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
+                        keyboard: .numberPad
+                    )
+                    Color.clear.frame(width: 58 + 38 + 32 + 24)
                 }
-                .frame(width: 38)
             }
+        }
+    }
 
-            if !readOnly {
-                IconCircleButton(
-                    systemName: "xmark",
-                    tint: Theme.muted,
-                    disabled: item.sets.count <= 1
-                ) {
-                    removeSet(setIndex)
-                }
-            }
+    private func effortField(
+        label: String,
+        value: Binding<String>,
+        focus: WorkoutBuilderFocusedField,
+        keyboard: UIKeyboardType
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+            TextField("-", text: value)
+                .keyboardType(keyboard)
+                .multilineTextAlignment(.center)
+                .focused($focusedField, equals: focus)
+                .fieldStyle()
         }
     }
 

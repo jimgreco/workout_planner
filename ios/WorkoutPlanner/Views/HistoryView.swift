@@ -261,12 +261,17 @@ private struct HistoryItemView: View {
 
     private func setLabel(_ set: WorkoutSet, weightType: String?) -> String {
         let reps = (set.reps?.isEmpty == false ? set.reps : "-") ?? "-"
+        let effort = [
+            set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
+            set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
+        ].compactMap { $0 }.joined(separator: " · ")
+        let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
         if weightType == "none" {
-            return "\(reps) reps"
+            return "\(reps) reps\(effortSuffix)"
         }
         let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
         let suffix = weightType == "double" ? " lbs (2x)" : " lbs"
-        return "\(reps) x \(weight)\(weight == "-" ? "" : suffix)"
+        return "\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
     }
 }
 

@@ -47,6 +47,8 @@ struct WorkoutSet: Codable, Equatable {
     var placeholderWeight: String?
     var restStartTime: Double?
     var restDuration: Int?
+    var rpe: String?
+    var rir: String?
 
     init(
         reps: String? = "",
@@ -54,7 +56,9 @@ struct WorkoutSet: Codable, Equatable {
         placeholderReps: String? = nil,
         placeholderWeight: String? = nil,
         restStartTime: Double? = nil,
-        restDuration: Int? = nil
+        restDuration: Int? = nil,
+        rpe: String? = nil,
+        rir: String? = nil
     ) {
         self.reps = reps
         self.weight = weight
@@ -62,6 +66,8 @@ struct WorkoutSet: Codable, Equatable {
         self.placeholderWeight = placeholderWeight
         self.restStartTime = restStartTime
         self.restDuration = restDuration
+        self.rpe = rpe
+        self.rir = rir
     }
 }
 

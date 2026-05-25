@@ -1761,6 +1761,32 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
+.set-effort-row td {
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+.set-effort-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.set-effort-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.set-effort-controls input {
+  height: 30px;
+  min-width: 0;
+  font-size: 13px;
+  padding: 4px;
+}
 
 .set-num-cell {
   width: 36px;

@@ -131,12 +131,16 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'weight', 'placeholderReps', 'placeholderWeight', 'restStartTime', 'restDuration']),
+    new Set(['reps', 'weight', 'placeholderReps', 'placeholderWeight', 'restStartTime', 'restDuration', 'rpe', 'rir']),
     `set ${index + 1}`,
   );
   const set = {};
   for (const field of ['reps', 'weight', 'placeholderReps', 'placeholderWeight']) {
     const str = stringValue(value[field], `set.${field}`, { max: 64 });
+    if (str !== undefined) set[field] = str;
+  }
+  for (const field of ['rpe', 'rir']) {
+    const str = stringValue(value[field], `set.${field}`, { max: 8 });
     if (str !== undefined) set[field] = str;
   }
   const restStartTime = optionalNumber(value.restStartTime, 'set.restStartTime', 0, 9_999_999_999_999);

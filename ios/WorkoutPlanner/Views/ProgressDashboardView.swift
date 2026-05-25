@@ -542,9 +542,14 @@ func estimatedOneRepMax(weight: String?, reps: String?) -> Double {
 
 func setLabel(_ set: WorkoutSet, weightType: String?) -> String {
     let reps = (set.reps?.isEmpty == false) ? set.reps! : "-"
-    guard weightType != "none" else { return "\(reps) reps" }
+    let effort = [
+        set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
+        set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
+    ].compactMap { $0 }.joined(separator: " · ")
+    let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
+    guard weightType != "none" else { return "\(reps) reps\(effortSuffix)" }
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
-    return "\(reps) x \(weight)\(weightType == "double" ? " (2x)" : "")"
+    return "\(reps) x \(weight)\(weightType == "double" ? " (2x)" : "")\(effortSuffix)"
 }
 
 func formatVolume(_ value: Double) -> String {

@@ -130,8 +130,8 @@ describe('WorkoutBuilder', () => {
       const { container } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
       
       expect(screen.queryByRole('columnheader', { name: 'Weight' })).not.toBeInTheDocument();
-      // Weight input (type="number") should be gone. 
-      expect(container.querySelector('input[type="number"]')).toBeNull();
+      expect(screen.queryByLabelText(/weight for set 1 of deadlift/i)).not.toBeInTheDocument();
+      expect(container.querySelectorAll('input[type="number"]')).toHaveLength(2); // Effort fields still render
       expect(screen.getByDisplayValue('20')).toBeInTheDocument(); // Reps input should still be there
     });
 
@@ -166,6 +166,19 @@ describe('WorkoutBuilder', () => {
 
       expect(onChange).toHaveBeenCalledOnce();
       expect(onChange.mock.calls[0][0][0].restTargetSeconds).toBe(90);
+    });
+
+    it('tracks RPE and RIR for a set while logging', () => {
+      const onChange = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+
+      fireEvent.change(screen.getByLabelText(/rpe for set 1 of bench press/i), { target: { value: '8.5' } });
+      fireEvent.change(screen.getByLabelText(/rir for set 1 of bench press/i), { target: { value: '2' } });
+
+      expect(onChange).toHaveBeenCalledTimes(2);
+      expect(onChange.mock.calls[0][0][0].sets[0].rpe).toBe('8.5');
+      expect(onChange.mock.calls[1][0][0].sets[0].rir).toBe('2');
     });
 
     it('calls onRestTargetReached when active rest passes its target', async () => {

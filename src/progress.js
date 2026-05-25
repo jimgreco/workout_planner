@@ -39,9 +39,14 @@ export function formatWeight(value) {
 
 export function setLabel(set, weightType = 'weight') {
   const reps = set.reps || '—';
-  if (weightType === 'none') return `${reps} reps`;
+  const effort = [
+    set.rpe ? `RPE ${set.rpe}` : '',
+    set.rir ? `RIR ${set.rir}` : '',
+  ].filter(Boolean).join(' · ');
+  const effortSuffix = effort ? ` · ${effort}` : '';
+  if (weightType === 'none') return `${reps} reps${effortSuffix}`;
   const weight = set.weight ? `${formatWeight(set.weight)} lb` : '—';
-  return `${reps} x ${weight}${weightType === 'double' ? ' (2x)' : ''}`;
+  return `${reps} x ${weight}${weightType === 'double' ? ' (2x)' : ''}${effortSuffix}`;
 }
 
 export function estimateOneRepMax(weight, reps) {

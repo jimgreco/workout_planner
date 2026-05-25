@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus } from 'lucide-react';
 
 /**
@@ -192,6 +192,11 @@ export default function WorkoutBuilder({
       {items.map((item, idx) => {
         const ex = exById(item.exerciseId);
         if (!ex) return null;
+        const hasWeightColumn = showWeight && (!readOnly || item.weightType !== 'none');
+        const setColumnCount = 3
+          + (hasWeightColumn ? 1 : 0)
+          + (!readOnly && !planningMode ? 1 : 0)
+          + (!readOnly ? 1 : 0);
         return (
           <div key={item.exerciseId} className={`sets-block ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
             <div className="sets-block-header">
@@ -240,7 +245,7 @@ export default function WorkoutBuilder({
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
                   <th>Reps</th>
-                  {showWeight && (!readOnly || item.weightType !== 'none') && (
+                  {hasWeightColumn && (
                     <th style={{ paddingTop: 0, paddingBottom: 0 }}>
                       {!readOnly ? (
                         <select
@@ -265,7 +270,8 @@ export default function WorkoutBuilder({
               </thead>
               <tbody>
                 {item.sets.map((set, si) => (
-                  <tr key={si} className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
+                  <Fragment key={si}>
+                  <tr className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
                     <td>
                       <input
@@ -278,7 +284,7 @@ export default function WorkoutBuilder({
                         style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                       />
                     </td>
-                    {showWeight && (!readOnly || item.weightType !== 'none') && (
+                    {hasWeightColumn && (
                       <td>
                         {item.weightType !== 'none' && !planningMode && (
                           <input
@@ -289,6 +295,7 @@ export default function WorkoutBuilder({
                             value={set.weight}
                             onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
                             disabled={readOnly}
+                            aria-label={`Weight for set ${si + 1} of ${ex.name}`}
                           />
                         )}
                       </td>
@@ -329,6 +336,42 @@ export default function WorkoutBuilder({
                       </td>
                     )}
                   </tr>
+                    {!readOnly && !planningMode && (
+                      <tr className="set-effort-row">
+                        <td aria-hidden="true"></td>
+                        <td colSpan={setColumnCount - 1}>
+                          <div className="set-effort-controls">
+                            <label>
+                              <span>RPE</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                step="0.5"
+                                placeholder="-"
+                                value={set.rpe || ''}
+                                onChange={(e) => updateSet(idx, si, 'rpe', e.target.value)}
+                                aria-label={`RPE for set ${si + 1} of ${ex.name}`}
+                              />
+                            </label>
+                            <label>
+                              <span>RIR</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                step="1"
+                                placeholder="-"
+                                value={set.rir || ''}
+                                onChange={(e) => updateSet(idx, si, 'rir', e.target.value)}
+                                aria-label={`RIR for set ${si + 1} of ${ex.name}`}
+                              />
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
