@@ -27,6 +27,9 @@ struct WorkoutLogView: View {
 
     private var isActive: Bool { workoutId != nil }
     private var isPlanningMode: Bool { workoutId != nil && startTime == nil && !isEditing }
+    private var shouldShowLiveActivityCard: Bool {
+        isActive && startTime != nil && !isEditing && !items.isEmpty
+    }
     private var pageTitle: String {
         isEditing ? "Edit Workout" : startTime == nil ? "Plan Workout" : "Log Workout"
     }
@@ -40,6 +43,9 @@ struct WorkoutLogView: View {
                     }
                     if let restAlert {
                         RestTargetBanner(message: restAlert.message)
+                    }
+                    if shouldShowLiveActivityCard {
+                        liveActivityCard
                     }
 
                     workoutFields
@@ -171,6 +177,16 @@ struct WorkoutLogView: View {
         }
     }
 
+    private var liveActivityCard: some View {
+        WorkoutLiveActivityCard(
+            items: items,
+            exercises: store.exercises,
+            startTime: startTime,
+            activeExerciseIndex: activeExerciseIndex,
+            activeSetIndex: activeSetIndex
+        )
+    }
+
     private var workoutFields: some View {
         VStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
@@ -236,6 +252,9 @@ struct WorkoutLogView: View {
         items = log.exerciseItems
         startTime = log.startTime
         isEditing = editing
+        let nextSet = firstOpenSet(in: log.exerciseItems)
+        activeExerciseIndex = nextSet.exerciseIndex
+        activeSetIndex = nextSet.setIndex
     }
 
     private func builderChanged() {
@@ -505,6 +524,18 @@ struct WorkoutLogView: View {
         isEditing = false
     }
 
+    private func firstOpenSet(in workoutItems: [ExerciseItem]) -> (exerciseIndex: Int, setIndex: Int) {
+        for itemIndex in workoutItems.indices {
+            for setIndex in workoutItems[itemIndex].sets.indices {
+                let set = workoutItems[itemIndex].sets[setIndex]
+                if set.restStartTime == nil && set.restDuration == nil {
+                    return (itemIndex, setIndex)
+                }
+            }
+        }
+        return (0, 0)
+    }
+
 }
 
 struct FinishSummary: Identifiable {
@@ -535,6 +566,314 @@ private struct RestTargetBanner: View {
                     .stroke(Theme.accent.opacity(0.32), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private struct WorkoutLiveActivityCard: View {
+    let items: [ExerciseItem]
+    let exercises: [Exercise]
+    let startTime: String?
+    let activeExerciseIndex: Int
+    let activeSetIndex: Int
+
+    private var totalSets: Int {
+        items.reduce(0) { $0 + $1.sets.count }
+    }
+
+    private var completedSets: Int {
+        items.reduce(0) { count, item in
+            count + item.sets.filter(isCompleted).count
+        }
+    }
+
+    private var isWorkoutComplete: Bool {
+        totalSets > 0 && completedSets >= totalSets
+    }
+
+    private var currentContext: WorkoutLiveSetContext? {
+        if let explicit = context(exerciseIndex: activeExerciseIndex, setIndex: activeSetIndex),
+           !isCompleted(explicit.set) {
+            return explicit
+        }
+
+        for itemIndex in items.indices {
+            for setIndex in items[itemIndex].sets.indices {
+                if let context = context(exerciseIndex: itemIndex, setIndex: setIndex),
+                   !isCompleted(context.set) {
+                    return context
+                }
+            }
+        }
+        return nil
+    }
+
+    private var restingContext: WorkoutLiveSetContext? {
+        for itemIndex in items.indices {
+            for setIndex in items[itemIndex].sets.indices {
+                guard let context = context(exerciseIndex: itemIndex, setIndex: setIndex),
+                      context.set.restStartTime != nil,
+                      context.set.restDuration == nil
+                else { continue }
+                return context
+            }
+        }
+        return nil
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: Date(), by: 1)) { _ in
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 10) {
+                    Label("Live", systemImage: "bolt.fill")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(Theme.accent)
+
+                    Spacer()
+
+                    if let startTime {
+                        Label(formatDuration(startTime: startTime), systemImage: "clock")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                            .monospacedDigit()
+                    }
+                }
+
+                if let restingContext {
+                    restSection(restingContext)
+                }
+
+                if restingContext != nil {
+                    Divider().opacity(0.25)
+                }
+
+                if isWorkoutComplete {
+                    completionSection
+                } else if let currentContext {
+                    currentSetSection(currentContext, isUpNext: restingContext != nil)
+                }
+
+                ProgressView(value: Double(completedSets), total: Double(max(totalSets, 1)))
+                    .tint(isWorkoutComplete ? Theme.success : Theme.accent)
+
+                HStack {
+                    Text("\(completedSets) of \(totalSets) sets logged")
+                    Spacer()
+                    Text("\(items.count) \(items.count == 1 ? "exercise" : "exercises")")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.muted)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [Theme.accent.opacity(0.11), Theme.background],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.accent.opacity(0.28), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+            .shadow(color: .black.opacity(0.07), radius: 8, x: 0, y: 3)
+        }
+    }
+
+    private func restSection(_ context: WorkoutLiveSetContext) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "timer")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(restTint(for: context))
+                .frame(width: 34, height: 34)
+                .background(restTint(for: context).opacity(0.12))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Resting after \(context.exercise.name)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: context.item.restTargetSeconds))
+                        .font(.system(size: 28, weight: .heavy, design: .rounded))
+                        .foregroundStyle(restTint(for: context))
+                        .monospacedDigit()
+
+                    Text("Set \(context.setIndex + 1)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+
+            Spacer()
+
+            if let targetSeconds = context.item.restTargetSeconds, targetSeconds > 0 {
+                Text(restTargetLabel(targetSeconds))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Theme.background.opacity(0.72))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    private var completionSection: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(Theme.success)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("All sets logged")
+                    .font(.system(size: 19, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+
+                Text("Ready to finish when notes look good.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.muted)
+            }
+        }
+    }
+
+    private func currentSetSection(_ context: WorkoutLiveSetContext, isUpNext: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(isUpNext ? "Up next" : "Current set")
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(context.exercise.name)
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+
+                    Badge(text: context.exercise.muscleGroup)
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], alignment: .leading, spacing: 8) {
+                WorkoutLiveMetric(title: "Set", value: "\(context.setIndex + 1) / \(context.item.sets.count)")
+                if let reps = repsLabel(for: context.set) {
+                    WorkoutLiveMetric(title: "Reps", value: reps)
+                }
+                if let weight = weightLabel(for: context) {
+                    WorkoutLiveMetric(title: "Weight", value: weight)
+                }
+                WorkoutLiveMetric(title: "Type", value: setTypeLabel(context.set.setType))
+                if let effort = effortLabel(for: context.set) {
+                    WorkoutLiveMetric(title: "Effort", value: effort)
+                }
+            }
+
+            if let personalBest = personalBestLabel(context.exercise.personalBest) {
+                Label("PB \(personalBest)", systemImage: "star.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+        }
+    }
+
+    private func context(exerciseIndex: Int, setIndex: Int) -> WorkoutLiveSetContext? {
+        guard items.indices.contains(exerciseIndex),
+              items[exerciseIndex].sets.indices.contains(setIndex),
+              let exercise = exercises.first(where: { $0.id == items[exerciseIndex].exerciseId })
+        else { return nil }
+
+        return WorkoutLiveSetContext(
+            exercise: exercise,
+            item: items[exerciseIndex],
+            set: items[exerciseIndex].sets[setIndex],
+            exerciseIndex: exerciseIndex,
+            setIndex: setIndex
+        )
+    }
+
+    private func isCompleted(_ set: WorkoutSet) -> Bool {
+        set.restStartTime != nil || set.restDuration != nil
+    }
+
+    private func repsLabel(for set: WorkoutSet) -> String? {
+        let reps = cleaned(set.reps)
+        if let reps { return reps }
+        guard let placeholder = cleaned(set.placeholderReps) else { return nil }
+        if let context = RepsFieldPlaceholder(rawValue: placeholder) {
+            if let goal = context.goal { return goal }
+            return context.last
+        }
+        return placeholder
+    }
+
+    private func weightLabel(for context: WorkoutLiveSetContext) -> String? {
+        guard context.item.weightType != "none" else { return nil }
+        guard let weight = cleaned(context.set.weight) ?? cleaned(context.set.placeholderWeight) else { return nil }
+        return context.item.weightType == "double" ? "\(weight) lb each" : "\(weight) lb"
+    }
+
+    private func effortLabel(for set: WorkoutSet) -> String? {
+        let effort = [
+            cleaned(set.rpe).map { "RPE \($0)" },
+            cleaned(set.rir).map { "RIR \($0)" },
+        ].compactMap { $0 }.joined(separator: " · ")
+        return effort.isEmpty ? nil : effort
+    }
+
+    private func restTint(for context: WorkoutLiveSetContext) -> Color {
+        guard let targetSeconds = context.item.restTargetSeconds,
+              targetSeconds > 0,
+              let startTime = context.set.restStartTime
+        else { return Theme.success }
+
+        let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+        return elapsed >= targetSeconds ? Theme.danger : Theme.accent
+    }
+
+    private func cleaned(_ value: String?) -> String? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
+}
+
+private struct WorkoutLiveSetContext {
+    let exercise: Exercise
+    let item: ExerciseItem
+    let set: WorkoutSet
+    let exerciseIndex: Int
+    let setIndex: Int
+}
+
+private struct WorkoutLiveMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+
+            Text(value)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.background.opacity(0.68))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 }
 
