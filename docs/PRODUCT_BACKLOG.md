@@ -4,6 +4,7 @@
 
 ### Recently Added
 
+- Web and iOS can label individual sets as working, warmup, drop, or failure sets.
 - Web and iOS can track optional per-set RPE and RIR while logging workouts.
 - Web and iOS can set exercise-level rest targets, show countdown/overdue rest timers, and alert when a target is reached.
 - The export/import compatibility contract is documented for support, testing, and future schema changes.
@@ -24,6 +25,7 @@
 
 ### Churn Progress
 
+- 2026-05-25: Added warmup, working, drop, and failure labels for individual logged sets.
 - 2026-05-25: Added optional per-set RPE/RIR effort tracking to live workout logging.
 - 2026-05-25: Added exercise-level rest timer targets with web and iOS completion alerts.
 - 2026-05-25: Documented the backup/export compatibility contract.
@@ -31,7 +33,6 @@
 
 ### Live Workout Execution
 
-- Support warmup, working, drop, and failure set labels.
 - Support supersets and paired exercises.
 - Add a plate calculator for weighted lifts.
 

@@ -62,7 +62,9 @@ Import limits are intentionally larger than normal app use:
 - Up to 50 sets per exercise item.
 - Rest targets are stored as optional `restTargetSeconds` values on exercise
   items and must be between 0 and 3,600 seconds.
-- Set effort is stored as optional `rpe` and `rir` strings on individual sets.
+- Set labels and effort are stored as optional `setType`, `rpe`, and `rir`
+  strings on individual sets. `setType` must be `warmup`, `working`, `drop`, or
+  `failure`.
 - Up to 70 schedule entries per program.
 
 ## Import Modes

@@ -15,6 +15,7 @@ const MUSCLE_GROUPS = new Set([
   'Calves', 'Full Body', 'Cardio', 'Other',
 ]);
 const WEIGHT_TYPES = new Set(['weight', 'double', 'none']);
+const SET_TYPES = new Set(['warmup', 'working', 'drop', 'failure']);
 const LOG_STATUSES = new Set(['planning', 'active', 'finished']);
 
 function fail(message) {
@@ -131,7 +132,7 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'weight', 'placeholderReps', 'placeholderWeight', 'restStartTime', 'restDuration', 'rpe', 'rir']),
+    new Set(['reps', 'weight', 'placeholderReps', 'placeholderWeight', 'restStartTime', 'restDuration', 'rpe', 'rir', 'setType']),
     `set ${index + 1}`,
   );
   const set = {};
@@ -142,6 +143,11 @@ function workoutSet(value, index) {
   for (const field of ['rpe', 'rir']) {
     const str = stringValue(value[field], `set.${field}`, { max: 8 });
     if (str !== undefined) set[field] = str;
+  }
+  const setType = stringValue(value.setType, 'set.setType', { max: 16 });
+  if (setType !== undefined) {
+    if (!SET_TYPES.has(setType)) fail('set.setType is invalid');
+    set.setType = setType;
   }
   const restStartTime = optionalNumber(value.restStartTime, 'set.restStartTime', 0, 9_999_999_999_999);
   if (restStartTime !== undefined) set.restStartTime = restStartTime;

@@ -1767,7 +1767,7 @@ input:focus, select:focus, textarea:focus {
 }
 .set-effort-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(82px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
 }
 .set-effort-controls label {
@@ -1786,6 +1786,18 @@ input:focus, select:focus, textarea:focus {
   min-width: 0;
   font-size: 13px;
   padding: 4px;
+}
+.set-effort-controls select {
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  padding: 4px 18px 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .set-num-cell {

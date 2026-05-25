@@ -26,6 +26,13 @@ const REST_TARGET_OPTIONS = [
   { value: 300, label: '5:00' },
 ];
 
+const SET_TYPE_OPTIONS = [
+  { value: 'working', label: 'Working' },
+  { value: 'warmup', label: 'Warmup' },
+  { value: 'drop', label: 'Drop' },
+  { value: 'failure', label: 'Failure' },
+];
+
 function formatRestDuration(sec) {
   if (sec < 0) sec = 0;
   const m = Math.floor(sec / 60);
@@ -341,6 +348,18 @@ export default function WorkoutBuilder({
                         <td aria-hidden="true"></td>
                         <td colSpan={setColumnCount - 1}>
                           <div className="set-effort-controls">
+                            <label className="set-type-field">
+                              <span>Type</span>
+                              <select
+                                value={set.setType || 'working'}
+                                onChange={(e) => updateSet(idx, si, 'setType', e.target.value)}
+                                aria-label={`Set type for set ${si + 1} of ${ex.name}`}
+                              >
+                                {SET_TYPE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
                             <label>
                               <span>RPE</span>
                               <input

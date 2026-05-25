@@ -17,6 +17,13 @@ private let restTargetOptions: [(label: String, seconds: Int?)] = [
     ("5:00", 300),
 ]
 
+private let setTypeOptions: [(label: String, value: String)] = [
+    ("Working", "working"),
+    ("Warmup", "warmup"),
+    ("Drop", "drop"),
+    ("Failure", "failure"),
+]
+
 struct WorkoutBuilderView: View {
     let exercises: [Exercise]
     @Binding var items: [ExerciseItem]
@@ -324,6 +331,27 @@ private struct ExerciseSetsCard: View {
             if !readOnly && !planningMode {
                 HStack(spacing: 8) {
                     Color.clear.frame(width: 36)
+                    Menu {
+                        ForEach(setTypeOptions, id: \.value) { option in
+                            Button(option.label) {
+                                item.sets[setIndex].setType = option.value
+                                onChanged?()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Type")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(Theme.muted)
+                            Text(setTypeLabel(item.sets[setIndex].setType))
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
                     effortField(
                         label: "RPE",
                         value: Binding(

@@ -168,17 +168,19 @@ describe('WorkoutBuilder', () => {
       expect(onChange.mock.calls[0][0][0].restTargetSeconds).toBe(90);
     });
 
-    it('tracks RPE and RIR for a set while logging', () => {
+    it('tracks type, RPE, and RIR for a set while logging', () => {
       const onChange = vi.fn();
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
       render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
 
+      fireEvent.change(screen.getByLabelText(/set type for set 1 of bench press/i), { target: { value: 'warmup' } });
       fireEvent.change(screen.getByLabelText(/rpe for set 1 of bench press/i), { target: { value: '8.5' } });
       fireEvent.change(screen.getByLabelText(/rir for set 1 of bench press/i), { target: { value: '2' } });
 
-      expect(onChange).toHaveBeenCalledTimes(2);
-      expect(onChange.mock.calls[0][0][0].sets[0].rpe).toBe('8.5');
-      expect(onChange.mock.calls[1][0][0].sets[0].rir).toBe('2');
+      expect(onChange).toHaveBeenCalledTimes(3);
+      expect(onChange.mock.calls[0][0][0].sets[0].setType).toBe('warmup');
+      expect(onChange.mock.calls[1][0][0].sets[0].rpe).toBe('8.5');
+      expect(onChange.mock.calls[2][0][0].sets[0].rir).toBe('2');
     });
 
     it('calls onRestTargetReached when active rest passes its target', async () => {

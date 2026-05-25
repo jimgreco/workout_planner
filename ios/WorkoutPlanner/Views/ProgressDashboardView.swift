@@ -547,9 +547,10 @@ func setLabel(_ set: WorkoutSet, weightType: String?) -> String {
         set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
     ].compactMap { $0 }.joined(separator: " · ")
     let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
-    guard weightType != "none" else { return "\(reps) reps\(effortSuffix)" }
+    let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
+    guard weightType != "none" else { return "\(typePrefix)\(reps) reps\(effortSuffix)" }
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
-    return "\(reps) x \(weight)\(weightType == "double" ? " (2x)" : "")\(effortSuffix)"
+    return "\(typePrefix)\(reps) x \(weight)\(weightType == "double" ? " (2x)" : "")\(effortSuffix)"
 }
 
 func formatVolume(_ value: Double) -> String {

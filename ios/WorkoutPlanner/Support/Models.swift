@@ -49,6 +49,7 @@ struct WorkoutSet: Codable, Equatable {
     var restDuration: Int?
     var rpe: String?
     var rir: String?
+    var setType: String?
 
     init(
         reps: String? = "",
@@ -58,7 +59,8 @@ struct WorkoutSet: Codable, Equatable {
         restStartTime: Double? = nil,
         restDuration: Int? = nil,
         rpe: String? = nil,
-        rir: String? = nil
+        rir: String? = nil,
+        setType: String? = nil
     ) {
         self.reps = reps
         self.weight = weight
@@ -68,6 +70,7 @@ struct WorkoutSet: Codable, Equatable {
         self.restDuration = restDuration
         self.rpe = rpe
         self.rir = rir
+        self.setType = setType
     }
 }
 
@@ -351,6 +354,15 @@ func restTargetLabel(_ seconds: Int?) -> String {
     let minutes = seconds / 60
     let remaining = seconds % 60
     return remaining == 0 ? "\(minutes)m" : "\(minutes):\(String(format: "%02d", remaining))"
+}
+
+func setTypeLabel(_ type: String?) -> String {
+    switch type {
+    case "warmup": return "Warmup"
+    case "drop": return "Drop"
+    case "failure": return "Failure"
+    default: return "Working"
+    }
 }
 
 func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {

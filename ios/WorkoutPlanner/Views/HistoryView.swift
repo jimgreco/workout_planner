@@ -266,12 +266,13 @@ private struct HistoryItemView: View {
             set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
         ].compactMap { $0 }.joined(separator: " · ")
         let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
+        let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
         if weightType == "none" {
-            return "\(reps) reps\(effortSuffix)"
+            return "\(typePrefix)\(reps) reps\(effortSuffix)"
         }
         let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
         let suffix = weightType == "double" ? " lbs (2x)" : " lbs"
-        return "\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
+        return "\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
     }
 }
 
