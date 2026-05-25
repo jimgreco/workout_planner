@@ -7,6 +7,7 @@
 - Web and iOS can store structured program progression rules for reps, weight, and double progression.
 - Web and iOS can mark the next planned program workout as skipped, and skipped workouts no longer block the next scheduled routine.
 - Web and iOS can store program deload cadence rules and show active or upcoming deload weeks.
+- Web and iOS show a four-week program adherence summary with completed, skipped, missed, and remaining counts.
 - Web and iOS show a simple 45 lb barbell plate breakdown for standard weighted sets.
 - Web and iOS can assign routine/log exercises to simple superset groups A-D.
 - Web and iOS can label individual sets as working, warmup, drop, or failure sets.
@@ -33,6 +34,7 @@
 - 2026-05-25: Added structured program progression rules while keeping legacy notes.
 - 2026-05-25: Added skipped-workout handling for planned program workouts.
 - 2026-05-25: Added structured program deload cadence rules and week status summaries.
+- 2026-05-25: Added four-week planned-versus-completed adherence summaries for active programs.
 - 2026-05-25: Added client-side plate calculator hints for standard weighted sets.
 - 2026-05-25: Added optional superset grouping for paired exercises in routines and workout logs.
 - 2026-05-25: Added warmup, working, drop, and failure labels for individual logged sets.
@@ -47,7 +49,7 @@ No open items in this bucket.
 
 ### Programming And Planning
 
-- Deepen planned-versus-completed reporting beyond the current weekly program view.
+No open items in this bucket.
 
 ### Import And Restore
 

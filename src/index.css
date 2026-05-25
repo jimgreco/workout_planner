@@ -513,6 +513,29 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .program-day.rest .program-day-routines strong {
   color: var(--text-muted);
 }
+.program-adherence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 10px;
+  padding-top: 4px;
+}
+.program-adherence div {
+  min-width: 0;
+}
+.program-adherence strong {
+  display: block;
+  font-size: 17px;
+  line-height: 1.1;
+}
+.program-adherence span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
 .program-rule,
 .program-empty {
   display: flex;

@@ -24,6 +24,12 @@ const exercises = [
   { id: 'calf', name: 'Standing Calf Raise', muscleGroup: 'Calves' },
 ];
 
+function todayKey() {
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  return today.toISOString().slice(0, 10);
+}
+
 describe('Routines page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,5 +123,24 @@ describe('Routines page', () => {
       exerciseItems: [],
     });
     expect(onLogsChanged).toHaveBeenCalled();
+  });
+
+  it('shows active program adherence beyond the current week', () => {
+    render(
+      <Templates
+        templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
+        exercises={exercises}
+        logs={[{ id: 'log-1', name: 'Push Day', date: todayKey(), status: 'finished', exerciseItems: [] }]}
+        programs={[{ id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }] }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={() => {}}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText(/4 week program adherence/i)).toBeTruthy();
+    expect(screen.getByText(/4-week completion/i)).toBeTruthy();
   });
 });

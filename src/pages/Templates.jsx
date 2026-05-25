@@ -341,6 +341,47 @@ function weekPlan(program, templates, logs) {
   });
 }
 
+function programAdherence(program, templates, logs, weeks = 4) {
+  const byId = templateById(templates);
+  const today = startOfToday();
+  const start = new Date(today);
+  start.setDate(today.getDate() - ((weeks * 7) - 1));
+  const summary = {
+    weeks,
+    scheduled: 0,
+    completed: 0,
+    skipped: 0,
+    missed: 0,
+    remainingToday: 0,
+    completionRate: 0,
+  };
+
+  if (!program?.schedule?.length) return summary;
+
+  for (let date = new Date(start); date <= today; date.setDate(date.getDate() + 1)) {
+    const day = new Date(date);
+    const dayKey = localDateKey(day);
+    const scheduled = scheduledTemplatesForWeekday(program, day.getDay(), byId).map((item) => item.template);
+    for (const template of scheduled) {
+      summary.scheduled += 1;
+      if (isCompletedOn(logs, template, dayKey)) {
+        summary.completed += 1;
+      } else if (isSkippedOn(logs, template, dayKey)) {
+        summary.skipped += 1;
+      } else if (day < today) {
+        summary.missed += 1;
+      } else {
+        summary.remainingToday += 1;
+      }
+    }
+  }
+
+  summary.completionRate = summary.scheduled > 0
+    ? Math.round((summary.completed / summary.scheduled) * 100)
+    : 0;
+  return summary;
+}
+
 function cleanProgram(program) {
   const seen = new Set();
   const cleaned = {
@@ -407,6 +448,10 @@ export default function Templates({
   );
   const currentWeek = useMemo(
     () => weekPlan(activeProgram, templates, logs),
+    [activeProgram, templates, logs],
+  );
+  const adherence = useMemo(
+    () => programAdherence(activeProgram, templates, logs),
     [activeProgram, templates, logs],
   );
   const activeDeload = useMemo(
@@ -676,6 +721,33 @@ export default function Templates({
                 </div>
               ))}
             </div>
+
+            {adherence.scheduled > 0 && (
+              <div className="program-adherence" aria-label={`${adherence.weeks} week program adherence`}>
+                <div>
+                  <strong>{adherence.completionRate}%</strong>
+                  <span>{adherence.weeks}-week completion</span>
+                </div>
+                <div>
+                  <strong>{adherence.completed}</strong>
+                  <span>Completed</span>
+                </div>
+                <div>
+                  <strong>{adherence.skipped}</strong>
+                  <span>Skipped</span>
+                </div>
+                <div>
+                  <strong>{adherence.missed}</strong>
+                  <span>Missed</span>
+                </div>
+                {adherence.remainingToday > 0 && (
+                  <div>
+                    <strong>{adherence.remainingToday}</strong>
+                    <span>Today</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {activeDeload && (
               <p className={`program-rule ${activeDeload.isDeload ? 'program-rule-highlight' : ''}`}>

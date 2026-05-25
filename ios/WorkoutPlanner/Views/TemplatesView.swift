@@ -294,6 +294,20 @@ private struct ProgramDeloadWeekInfo {
     let instruction: String
 }
 
+private struct ProgramAdherenceSummary {
+    let weeks: Int
+    let scheduled: Int
+    let completed: Int
+    let skipped: Int
+    let missed: Int
+    let remainingToday: Int
+
+    var completionRate: Int {
+        guard scheduled > 0 else { return 0 }
+        return Int((Double(completed) / Double(scheduled) * 100).rounded())
+    }
+}
+
 private enum ProgramPlanner {
     static let weekdays = [
         ProgramWeekday(value: 0, label: "Sun", long: "Sunday"),
@@ -371,6 +385,49 @@ private enum ProgramPlanner {
         let nextDate = Calendar.current.date(byAdding: .weekOfYear, value: weeksUntilNext, to: currentWeekStart) ?? currentWeekStart
 
         return ProgramDeloadWeekInfo(isDeload: isDeload, nextDate: nextDate, weekNumber: weekNumber, instruction: instruction)
+    }
+
+    static func adherenceSummary(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], weeks: Int = 4) -> ProgramAdherenceSummary {
+        guard let program, !program.schedule.isEmpty else {
+            return ProgramAdherenceSummary(weeks: weeks, scheduled: 0, completed: 0, skipped: 0, missed: 0, remainingToday: 0)
+        }
+
+        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let today = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.date(byAdding: .day, value: -((weeks * 7) - 1), to: today) ?? today
+        var scheduledCount = 0
+        var completedCount = 0
+        var skippedCount = 0
+        var missedCount = 0
+        var remainingTodayCount = 0
+
+        var date = start
+        while date <= today {
+            let weekday = Calendar.current.component(.weekday, from: date) - 1
+            let scheduled = scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
+            for template in scheduled {
+                scheduledCount += 1
+                if completedOn(logs: logs, template: template, date: date) {
+                    completedCount += 1
+                } else if skippedOn(logs: logs, template: template, date: date) {
+                    skippedCount += 1
+                } else if date < today {
+                    missedCount += 1
+                } else {
+                    remainingTodayCount += 1
+                }
+            }
+            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? today.addingTimeInterval(24 * 60 * 60)
+        }
+
+        return ProgramAdherenceSummary(
+            weeks: weeks,
+            scheduled: scheduledCount,
+            completed: completedCount,
+            skipped: skippedCount,
+            missed: missedCount,
+            remainingToday: remainingTodayCount
+        )
     }
 
     static func displayDate(_ date: Date) -> String {
@@ -459,6 +516,10 @@ private struct ProgramSummaryCard: View {
         ProgramPlanner.deloadInfo(program: program)
     }
 
+    private var adherence: ProgramAdherenceSummary {
+        ProgramPlanner.adherenceSummary(program: program, templates: templates, logs: logs)
+    }
+
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 14) {
@@ -543,6 +604,10 @@ private struct ProgramSummaryCard: View {
                         }
                     }
 
+                    if adherence.scheduled > 0 {
+                        ProgramAdherenceRow(summary: adherence)
+                    }
+
                     if let deload {
                         Label(
                             deload.isDeload
@@ -572,6 +637,38 @@ private struct ProgramSummaryCard: View {
                 }
             }
         }
+    }
+}
+
+private struct ProgramAdherenceRow: View {
+    let summary: ProgramAdherenceSummary
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                metric("\(summary.completionRate)%", "\(summary.weeks)-week")
+                metric("\(summary.completed)", "Done")
+                metric("\(summary.skipped)", "Skipped")
+                metric("\(summary.missed)", "Missed")
+                if summary.remainingToday > 0 {
+                    metric("\(summary.remainingToday)", "Today")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func metric(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.system(size: 17, weight: .heavy))
+                .foregroundStyle(Theme.text)
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+        }
+        .frame(minWidth: 52, alignment: .leading)
     }
 }
 
