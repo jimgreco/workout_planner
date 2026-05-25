@@ -9,12 +9,16 @@ function numeric(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function weightMultiplier(weightType) {
-  return weightType === 'double' ? 2 : 1;
+function effectiveWeight(weight, weightType = 'weight') {
+  const value = numeric(weight);
+  if (value <= 0 || weightType === 'none') return 0;
+  if (weightType === 'bar_double') return (value * 2) + 45;
+  if (weightType === 'double') return value * 2;
+  return value;
 }
 
 function setVolume(set, weightType) {
-  return numeric(set.weight) * numeric(set.reps) * weightMultiplier(weightType);
+  return effectiveWeight(set.weight, weightType) * numeric(set.reps);
 }
 
 function formatNumber(value) {
@@ -51,9 +55,9 @@ export function personalBestLabel(personalBest) {
   return numeric(personalBest.reps) > 0 ? `${weight} x ${reps} reps` : weight;
 }
 
-export function bestPersonalBestSet(sets = []) {
+export function bestPersonalBestSet(sets = [], weightType = 'weight') {
   return sets.reduce((best, set) => {
-    const weightValue = numeric(set.weight);
+    const weightValue = effectiveWeight(set.weight, weightType);
     if (weightValue <= 0) return best;
     const repsValue = numeric(set.reps);
     if (!best || weightValue > best.weightValue || (weightValue === best.weightValue && repsValue > best.repsValue)) {
@@ -98,7 +102,8 @@ export function setLabel(set, weightType = 'weight') {
   const effortSuffix = effort ? ` · ${effort}` : '';
   if (weightType === 'none') return `${typePrefix}${reps} reps${effortSuffix}`;
   const weight = set.weight ? `${formatWeight(set.weight)} lb` : '—';
-  return `${typePrefix}${reps} x ${weight}${weightType === 'double' ? ' (2x)' : ''}${effortSuffix}`;
+  const suffix = weightType === 'bar_double' ? ' (bar + 2x)' : weightType === 'double' ? ' (2x)' : '';
+  return `${typePrefix}${reps} x ${weight}${suffix}${effortSuffix}`;
 }
 
 export function estimateOneRepMax(weight, reps) {
@@ -116,11 +121,11 @@ export function getExerciseHistory(exerciseId, logs = []) {
       const sets = item.sets || [];
       const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
       const bestSet = sets.reduce((best, set) => {
-        const weight = numeric(set.weight) * weightMultiplier(item.weightType);
+        const weight = effectiveWeight(set.weight, item.weightType);
         const reps = numeric(set.reps);
         const score = item.weightType === 'none'
           ? reps
-          : estimateOneRepMax(set.weight, set.reps) * weightMultiplier(item.weightType);
+          : estimateOneRepMax(weight, set.reps);
         if (!best || score > best.score) {
           return { set, score, weight, reps };
         }

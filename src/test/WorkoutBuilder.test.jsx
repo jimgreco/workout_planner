@@ -125,6 +125,15 @@ describe('WorkoutBuilder', () => {
       expect(screen.getByDisplayValue('50')).toBeInTheDocument();
     });
 
+    it('shows "Bar + 2x" when type is bar_double', () => {
+      const items = [{ exerciseId: 'ex2', weightType: 'bar_double', sets: [{ reps: '10', weight: '45' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
+
+      expect(screen.getByRole('columnheader', { name: 'Bar + 2x' })).toBeInTheDocument();
+      expect(screen.getByLabelText(/weight type for squat/i)).toHaveValue('bar_double');
+      expect(screen.getByDisplayValue('45')).toBeInTheDocument();
+    });
+
     it('does not show a barbell plate breakdown for standard weighted sets', () => {
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '135' }] }];
       render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
@@ -224,6 +233,18 @@ describe('WorkoutBuilder', () => {
       expect(onChange).toHaveBeenCalledOnce();
       const updated = onChange.mock.calls[0][0];
       expect(updated[0].weightType).toBe('double');
+    });
+
+    it('persists bar_double when selector is changed', () => {
+      const onChange = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+
+      fireEvent.change(screen.getByLabelText(/weight type for bench press/i), { target: { value: 'bar_double' } });
+
+      expect(onChange).toHaveBeenCalledOnce();
+      const updated = onChange.mock.calls[0][0];
+      expect(updated[0].weightType).toBe('bar_double');
     });
   });
 });

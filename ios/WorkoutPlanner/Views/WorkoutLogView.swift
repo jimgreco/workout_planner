@@ -289,7 +289,7 @@ struct WorkoutLogView: View {
             var pbExercises: [String] = []
 
             for item in items {
-                let candidate = bestPersonalBestCandidate(from: item.sets)
+                let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType)
                 guard var exercise = store.exercise(id: item.exerciseId),
                       isPersonalBestImprovement(candidate, over: exercise.personalBest),
                       let candidate
@@ -817,6 +817,7 @@ private struct WorkoutLiveActivityCard: View {
     private func weightLabel(for context: WorkoutLiveSetContext) -> String? {
         guard context.item.weightType != "none" else { return nil }
         guard let weight = cleaned(context.set.weight) ?? cleaned(context.set.placeholderWeight) else { return nil }
+        if context.item.weightType == "bar_double" { return "\(weight) lb each + bar" }
         return context.item.weightType == "double" ? "\(weight) lb each" : "\(weight) lb"
     }
 

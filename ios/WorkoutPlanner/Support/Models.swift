@@ -520,6 +520,14 @@ private func personalBestNumberLabel(_ value: Double) -> String {
     value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
 }
 
+private func effectivePersonalBestWeight(_ weight: String?, weightType: String?) -> Double {
+    let value = personalBestNumber(weight)
+    guard value > 0, weightType != "none" else { return 0 }
+    if weightType == "bar_double" { return (value * 2) + 45 }
+    if weightType == "double" { return value * 2 }
+    return value
+}
+
 private func personalBestTextLabel(_ value: String?) -> String? {
     let text = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { return nil }
@@ -538,9 +546,9 @@ func personalBestLabel(_ best: PersonalBest?) -> String? {
     return "\(weight) lbs"
 }
 
-func bestPersonalBestCandidate(from sets: [WorkoutSet]) -> PersonalBestCandidate? {
+func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "weight") -> PersonalBestCandidate? {
     sets.reduce(PersonalBestCandidate?.none) { current, set in
-        let weight = personalBestNumber(set.weight)
+        let weight = effectivePersonalBestWeight(set.weight, weightType: weightType)
         guard weight > 0 else { return current }
         let reps = personalBestNumber(set.reps)
         if current == nil || weight > current!.weightValue || (weight == current!.weightValue && reps > current!.repsValue) {

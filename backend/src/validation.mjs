@@ -14,7 +14,7 @@ const MUSCLE_GROUPS = new Set([
   'Forearms', 'Core', 'Quads', 'Hamstrings', 'Glutes',
   'Calves', 'Full Body', 'Cardio', 'Other',
 ]);
-const WEIGHT_TYPES = new Set(['weight', 'double', 'none']);
+const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'none']);
 const SET_TYPES = new Set(['warmup', 'working', 'drop', 'failure']);
 const SUPERSET_GROUPS = new Set(['A', 'B', 'C', 'D']);
 const PROGRESSION_TYPES = new Set(['double_progression', 'linear_weight', 'linear_reps', 'none']);

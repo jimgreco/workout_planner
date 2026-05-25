@@ -58,6 +58,13 @@ function supersetLabel(group) {
   return group ? `Superset ${group}` : 'No pairing';
 }
 
+function weightTypeLabel(weightType) {
+  if (weightType === 'bar_double') return 'Bar + 2x';
+  if (weightType === 'double') return 'Weight (2x)';
+  if (weightType === 'none') return 'No Weight';
+  return 'Weight';
+}
+
 function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
   const [now, setNow] = useState(() => Date.now());
   const alertedRef = useRef(false);
@@ -306,10 +313,11 @@ export default function WorkoutBuilder({
                         >
                           <option value="weight">Weight</option>
                           <option value="double">Weight (2x)</option>
+                          <option value="bar_double">Bar + 2x</option>
                           <option value="none">No Weight</option>
                         </select>
                       ) : (
-                        item.weightType === 'double' ? 'Weight (2x)' : 'Weight'
+                        weightTypeLabel(item.weightType)
                       )}
                     </th>
                   )}

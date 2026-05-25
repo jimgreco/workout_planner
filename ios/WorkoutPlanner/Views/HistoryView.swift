@@ -274,7 +274,7 @@ private struct HistoryItemView: View {
             return "\(typePrefix)\(reps) reps\(effortSuffix)"
         }
         let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
-        let suffix = weightType == "double" ? " lbs (2x)" : " lbs"
+        let suffix = weightType == "bar_double" ? " lbs (bar + 2x)" : weightType == "double" ? " lbs (2x)" : " lbs"
         return "\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
     }
 }

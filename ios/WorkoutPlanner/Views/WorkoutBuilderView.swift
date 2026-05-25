@@ -198,6 +198,7 @@ private struct ExerciseSetsCard: View {
                 )) {
                     Text("Weight").tag("weight")
                     Text("2x").tag("double")
+                    Text("Bar + 2x").tag("bar_double")
                     Text("None").tag("none")
                 }
                 .pickerStyle(.segmented)
@@ -288,7 +289,7 @@ private struct ExerciseSetsCard: View {
             Text("Reps")
                 .frame(maxWidth: .infinity)
             if showsWeightColumn {
-                Text(item.weightType == "double" ? "2x Weight" : item.weightType == "none" ? "" : "Weight")
+                Text(weightHeaderLabel)
                     .frame(maxWidth: .infinity)
             }
             Text("Rest")
@@ -302,6 +303,15 @@ private struct ExerciseSetsCard: View {
         .font(.system(size: 10, weight: .heavy))
         .foregroundStyle(Theme.muted)
         .textCase(.uppercase)
+    }
+
+    private var weightHeaderLabel: String {
+        switch item.weightType {
+        case "double": return "2x Weight"
+        case "bar_double": return "Bar + 2x"
+        case "none": return ""
+        default: return "Weight"
+        }
     }
 
     @ViewBuilder

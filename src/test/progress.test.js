@@ -91,6 +91,20 @@ describe('progress calculations', () => {
     expect(personalBestLabel({ weight: '225', reps: '5' })).toBe('225 lbs x 5 reps');
   });
 
+  it('uses weight type when calculating personal best weight', () => {
+    expect(bestPersonalBestSet([{ reps: '5', weight: '50' }], 'double')).toMatchObject({
+      weight: '100',
+      reps: '5',
+      weightValue: 100,
+    });
+    expect(bestPersonalBestSet([{ reps: '5', weight: '45' }], 'bar_double')).toMatchObject({
+      weight: '135',
+      reps: '5',
+      weightValue: 135,
+    });
+    expect(bestPersonalBestSet([{ reps: '20', weight: '' }], 'none')).toBeNull();
+  });
+
   it('filters the 7-day range inclusively', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-24T12:00:00'));

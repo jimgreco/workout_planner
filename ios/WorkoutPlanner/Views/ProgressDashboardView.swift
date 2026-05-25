@@ -472,7 +472,7 @@ func exerciseHistory(exerciseId: String, logs: [WorkoutLog]) -> [ExerciseHistory
             if item.weightType == "none" {
                 score = number(set.reps)
             } else {
-                score = estimatedOneRepMax(weight: set.weight, reps: set.reps) * weightMultiplier(item.weightType)
+                score = estimatedOneRepMax(weight: effectiveWeight(set.weight, weightType: item.weightType), reps: set.reps)
             }
             guard score > 0 else { return nil }
             return ExerciseBestSet(set: set, weightType: item.weightType, score: score, date: log.date)
@@ -527,7 +527,7 @@ private func workoutStreak(_ logs: [WorkoutLog]) -> Int {
 
 func volumeForItem(_ item: ExerciseItem) -> Double {
     item.sets.reduce(0) { total, set in
-        total + number(set.weight) * number(set.reps) * weightMultiplier(item.weightType)
+        total + effectiveWeight(set.weight, weightType: item.weightType) * number(set.reps)
     }
 }
 
@@ -535,12 +535,15 @@ func number(_ value: String?) -> Double {
     Double((value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 }
 
-func weightMultiplier(_ weightType: String?) -> Double {
-    weightType == "double" ? 2 : 1
+func effectiveWeight(_ weight: String?, weightType: String?) -> Double {
+    let value = number(weight)
+    guard value > 0, weightType != "none" else { return 0 }
+    if weightType == "bar_double" { return (value * 2) + 45 }
+    if weightType == "double" { return value * 2 }
+    return value
 }
 
-func estimatedOneRepMax(weight: String?, reps: String?) -> Double {
-    let weight = number(weight)
+func estimatedOneRepMax(weight: Double, reps: String?) -> Double {
     let reps = number(reps)
     guard weight > 0, reps > 0 else { return 0 }
     return weight * (1 + reps / 30)
@@ -556,7 +559,8 @@ func setLabel(_ set: WorkoutSet, weightType: String?) -> String {
     let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
     guard weightType != "none" else { return "\(typePrefix)\(reps) reps\(effortSuffix)" }
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
-    return "\(typePrefix)\(reps) x \(weight)\(weightType == "double" ? " (2x)" : "")\(effortSuffix)"
+    let suffix = weightType == "bar_double" ? " (bar + 2x)" : weightType == "double" ? " (2x)" : ""
+    return "\(typePrefix)\(reps) x \(weight)\(suffix)\(effortSuffix)"
 }
 
 func formatVolume(_ value: Double) -> String {

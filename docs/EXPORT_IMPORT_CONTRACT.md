@@ -41,10 +41,12 @@ Imports are validated with the same resource validators used by normal writes:
 - Exercises: `id`, `name`, `muscleGroup`, optional `notes`, optional
   `personalBest` (`weight`, optional `reps`, optional `date`).
 - Templates/routines: `id`, `name`, optional `description`, and
-  `exerciseItems`.
+  `exerciseItems`. Exercise item `weightType` may be `weight`, `double`,
+  `bar_double`, or `none`.
 - Workout logs: `id`, `name`, `date`, `exerciseItems`, `status`, and optional
-  notes/timing/PB fields. Status must be `planning`, `active`, `finished`, or
-  `skipped`.
+  notes/timing/PB fields. Exercise item `weightType` may be `weight`,
+  `double`, `bar_double`, or `none`. Status must be `planning`, `active`,
+  `finished`, or `skipped`.
 - Programs: `id`, `name`, `schedule`, optional `description`, `active`,
   structured `progression`, structured `deload`, and legacy/freeform
   `progressionRule`.
