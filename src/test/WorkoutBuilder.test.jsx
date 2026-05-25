@@ -136,15 +136,26 @@ describe('WorkoutBuilder', () => {
       expect(screen.getByDisplayValue('20')).toBeInTheDocument(); // Reps input should still be there
     });
 
-    it('calls onSetWeightBlur when reps blurred in "none" type', () => {
-      const onSetWeightBlur = vi.fn();
+    it('calls onSetCompleted from the explicit done button in "none" type', () => {
+      const onSetCompleted = vi.fn();
       const items = [{ exerciseId: 'ex3', weightType: 'none', sets: [{ reps: '20', weight: '' }] }];
-      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} onSetWeightBlur={onSetWeightBlur} />);
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} onSetCompleted={onSetCompleted} />);
       
-      const repsInput = screen.getByDisplayValue('20');
-      fireEvent.blur(repsInput);
+      fireEvent.click(screen.getByRole('button', { name: /complete set 1 for deadlift/i }));
       
-      expect(onSetWeightBlur).toHaveBeenCalledWith(0, 0);
+      expect(onSetCompleted).toHaveBeenCalledWith(0, 0);
+    });
+
+    it('does not complete a weighted set just by editing the weight', () => {
+      const onSetCompleted = vi.fn();
+      const onChange = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} onSetCompleted={onSetCompleted} />);
+
+      fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '105' } });
+
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(onSetCompleted).not.toHaveBeenCalled();
     });
 
     it('changes weightType when selector is changed', () => {

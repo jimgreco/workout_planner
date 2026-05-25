@@ -1776,6 +1776,36 @@ input:focus, select:focus, textarea:focus {
   color: var(--success);
   font-variant-numeric: tabular-nums;
 }
+.set-complete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.15s;
+}
+.set-complete-btn:hover:not(:disabled) {
+  border-color: var(--success);
+  color: var(--success);
+  transform: translateY(-1px);
+}
+.set-complete-btn.completed {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--bg));
+  color: var(--success);
+}
+.set-complete-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.set-complete-btn.completed:disabled {
+  opacity: 1;
+}
 
 /* ── History List ───────────────────────────────────────── */
 .history-list {

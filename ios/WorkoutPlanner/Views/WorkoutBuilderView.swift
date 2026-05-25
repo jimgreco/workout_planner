@@ -205,6 +205,10 @@ private struct ExerciseSetsCard: View {
             }
             Text("Rest")
                 .frame(width: 58, alignment: .trailing)
+            if !readOnly && !planningMode {
+                Text("Done")
+                    .frame(width: 38)
+            }
             if !readOnly { Color.clear.frame(width: 32) }
         }
         .font(.system(size: 10, weight: .heavy))
@@ -227,9 +231,6 @@ private struct ExerciseSetsCard: View {
                     get: { item.sets[setIndex].reps ?? "" },
                     set: { value in
                         item.sets[setIndex].reps = value
-                        if !planningMode, item.weightType == "none", !value.isEmpty {
-                            onSetCompleted?(itemIndex, setIndex)
-                        }
                         onChanged?()
                     }
                 )
@@ -249,7 +250,6 @@ private struct ExerciseSetsCard: View {
                             get: { item.sets[setIndex].weight ?? "" },
                             set: { value in
                                 item.sets[setIndex].weight = value
-                                if !value.isEmpty { onSetCompleted?(itemIndex, setIndex) }
                                 onChanged?()
                             }
                         )
@@ -267,6 +267,16 @@ private struct ExerciseSetsCard: View {
 
             RestTimerText(set: item.sets[setIndex])
                 .frame(width: 58, alignment: .trailing)
+
+            if !readOnly && !planningMode {
+                SetCompleteButton(
+                    isComplete: setIsComplete(setIndex),
+                    isEnabled: setCanComplete(setIndex)
+                ) {
+                    onSetCompleted?(itemIndex, setIndex)
+                }
+                .frame(width: 38)
+            }
 
             if !readOnly {
                 IconCircleButton(
@@ -298,10 +308,48 @@ private struct ExerciseSetsCard: View {
         return planningMode ? "Target" : "-"
     }
 
+    private func setCanComplete(_ setIndex: Int) -> Bool {
+        guard item.sets.indices.contains(setIndex),
+              item.sets[setIndex].restStartTime == nil,
+              item.sets[setIndex].restDuration == nil
+        else { return false }
+        if item.weightType == "none" {
+            return !(item.sets[setIndex].reps ?? "").isEmpty
+        }
+        return !(item.sets[setIndex].weight ?? "").isEmpty
+    }
+
+    private func setIsComplete(_ setIndex: Int) -> Bool {
+        guard item.sets.indices.contains(setIndex) else { return false }
+        return item.sets[setIndex].restStartTime != nil || item.sets[setIndex].restDuration != nil
+    }
+
     private func removeSet(_ index: Int) {
         guard item.sets.count > 1 else { return }
         item.sets.remove(at: index)
         onChanged?()
+    }
+}
+
+private struct SetCompleteButton: View {
+    let isComplete: Bool
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(isComplete ? Theme.success : Theme.muted)
+                .frame(width: 30, height: 30)
+                .background(isComplete ? Theme.success.opacity(0.1) : Theme.background)
+                .overlay(Circle().stroke(isComplete ? Theme.success.opacity(0.55) : Theme.border, lineWidth: 1))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled || isComplete ? 1 : 0.45)
+        .accessibilityLabel(isComplete ? "Set complete" : "Complete set")
     }
 }
 

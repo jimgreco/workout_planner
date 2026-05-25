@@ -199,15 +199,13 @@ export default function WorkoutLog({
   }
 
   
-  function handleSetWeightBlur(exIdx, setIdx) {
+  function handleSetCompleted(exIdx, setIdx) {
     if (!workoutId) return;
 
-    // Only proceed if this set will actually start a new timer.
-    // If it has no value yet, or its timer was already stopped, leave everything alone.
     const targetEx = items[exIdx];
     const targetSet = targetEx.sets[setIdx];
     const hasValue = targetEx.weightType === 'none' ? !!targetSet.reps : !!targetSet.weight;
-    if (!hasValue || targetSet.restDuration) return;
+    if (!hasValue || targetSet.restStartTime || targetSet.restDuration) return;
 
     const now = Date.now();
     const newItems = items.map((ex, i) => ({
@@ -507,7 +505,7 @@ export default function WorkoutLog({
         onChange={handleItemsChange}
         activeExerciseIdx={activeExerciseIdx}
         activeSetIdx={activeSetIdx}
-        onSetWeightBlur={handleSetWeightBlur}
+        onSetCompleted={handleSetCompleted}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
         planningMode={isPlanningMode}

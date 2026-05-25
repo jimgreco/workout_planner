@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowUp, ArrowDown, X, Plus } from 'lucide-react';
+import { ArrowUp, ArrowDown, Check, X, Plus } from 'lucide-react';
 
 /**
  * WorkoutBuilder — reusable component for building a workout's exercise list.
@@ -53,7 +53,7 @@ export default function WorkoutBuilder({
   defaultReps = 8,
   activeExerciseIdx = null,
   activeSetIdx = null,
-  onSetWeightBlur,
+  onSetCompleted,
   planningMode = false,
 }) {
   function exById(id) {
@@ -120,6 +120,16 @@ export default function WorkoutBuilder({
     onChange(copy);
   }
 
+  function setCanComplete(item, set) {
+    if (planningMode || readOnly || set.restStartTime || set.restDuration) return false;
+    if (item.weightType === 'none') return Boolean(set.reps);
+    return Boolean(set.weight);
+  }
+
+  function setIsCompleted(set) {
+    return Boolean(set.restStartTime || set.restDuration);
+  }
+
   const usedIds = new Set(items.map((i) => i.exerciseId));
   const availableExercises = exercises
     .filter((e) => !usedIds.has(e.id))
@@ -179,6 +189,7 @@ export default function WorkoutBuilder({
                     </th>
                   )}
                   <th style={{ width: 60, textAlign: 'right' }}>Rest</th>
+                  {!readOnly && !planningMode && <th style={{ width: 44 }}>Done</th>}
                   {!readOnly && <th style={{ width: 36 }}></th>}
                 </tr>
               </thead>
@@ -193,7 +204,6 @@ export default function WorkoutBuilder({
                         placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
                         value={planningMode ? (set.placeholderReps || '') : set.reps}
                         onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value)}
-                        onBlur={() => !planningMode && item.weightType === 'none' && onSetWeightBlur && onSetWeightBlur(idx, si)}
                         disabled={readOnly}
                         style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                       />
@@ -208,7 +218,6 @@ export default function WorkoutBuilder({
                             placeholder={set.placeholderWeight || "—"}
                             value={set.weight}
                             onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                            onBlur={() => onSetWeightBlur && onSetWeightBlur(idx, si)}
                             disabled={readOnly}
                           />
                         )}
@@ -217,6 +226,20 @@ export default function WorkoutBuilder({
                     <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
                       <RestTimer startTime={set.restStartTime} duration={set.restDuration} />
                     </td>
+                    {!readOnly && !planningMode && (
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          className={`set-complete-btn ${setIsCompleted(set) ? 'completed' : ''}`}
+                          onClick={() => onSetCompleted && onSetCompleted(idx, si)}
+                          disabled={!setCanComplete(item, set)}
+                          title={setIsCompleted(set) ? 'Set complete' : 'Complete set'}
+                          aria-label={`Complete set ${si + 1} for ${ex.name}`}
+                        >
+                          <Check size={15} />
+                        </button>
+                      </td>
+                    )}
                     {!readOnly && (
                       <td style={{ textAlign: 'center' }}>
                         <button

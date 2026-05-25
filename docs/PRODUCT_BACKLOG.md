@@ -4,6 +4,8 @@
 
 ### Recently Added
 
+- The export/import compatibility contract is documented for support, testing, and future schema changes.
+- Web and iOS now expose explicit set-complete controls in the workout builder, so rest tracking starts from a deliberate tap instead of hidden field-blur behavior.
 - Client writes now send backend revisions to prevent silent overwrites.
 - Web shows an offline save warning when the browser loses connectivity.
 - iOS settings show cloud/local sync status.
@@ -18,10 +20,15 @@
 - Web and iOS now have a server-backed program layer with weekday routine scheduling and next-workout starts.
 - Conflict responses now include the cloud copy, web can resolve side-by-side sync conflicts, iOS retries pending sync automatically while active, and active-workout offline recovery is covered by regression tests.
 
+### Churn Progress
+
+- 2026-05-25: Documented the backup/export compatibility contract.
+- 2026-05-25: Completed explicit set-complete controls for live workouts on web and iOS.
+- 2026-05-25: Next live-workout target is rest-timer goals with completion alerts.
+
 ### Live Workout Execution
 
 - Add target rest timers with completion alerts.
-- Add explicit set-complete controls instead of relying only on field blur.
 - Track RPE/RIR per set.
 - Support warmup, working, drop, and failure set labels.
 - Support supersets and paired exercises.
@@ -35,7 +42,6 @@
 
 ### Import And Restore
 
-- Document the backup/export compatibility contract.
 - Add an import-result history or audit trail if support needs to investigate restores.
 
 ### Offline And Conflict Handling
