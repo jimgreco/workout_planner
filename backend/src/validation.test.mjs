@@ -89,6 +89,7 @@ test('validates program weekly schedules', () => {
     name: 'Strength Plan',
     active: true,
     progression: { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 },
+    deload: { type: 'every_n_weeks', everyWeeks: 4, loadPercent: 85, repPercent: 100, startDate: '2026-05-25' },
     schedule: [
       { weekday: 5, templateId: 'legs' },
       { weekday: 1, templateId: 'push', notes: 'Heavy' },
@@ -99,12 +100,17 @@ test('validates program weekly schedules', () => {
   assert.deepEqual(program.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '1:pull', '5:legs']);
   assert.equal(program.active, true);
   assert.deepEqual(program.progression, { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 });
+  assert.deepEqual(program.deload, { type: 'every_n_weeks', everyWeeks: 4, loadPercent: 85, repPercent: 100, startDate: '2026-05-25' });
   assert.throws(
     () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'push' }] }, 'program-1'),
     ValidationError,
   );
   assert.throws(
     () => validateProgram({ id: 'program-1', name: 'Bad', progression: { type: 'double_progression', minReps: 12, maxReps: 8 }, schedule: [] }, 'program-1'),
+    ValidationError,
+  );
+  assert.throws(
+    () => validateProgram({ id: 'program-1', name: 'Bad', deload: { type: 'every_n_weeks', everyWeeks: 1, startDate: '2026-05-25' }, schedule: [] }, 'program-1'),
     ValidationError,
   );
 });

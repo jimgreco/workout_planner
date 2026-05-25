@@ -145,6 +145,28 @@ struct ProgramProgressionRule: Codable, Equatable {
     }
 }
 
+struct ProgramDeloadRule: Codable, Equatable {
+    var type: String
+    var everyWeeks: Int?
+    var loadPercent: Int?
+    var repPercent: Int?
+    var startDate: String?
+
+    init(
+        type: String = "none",
+        everyWeeks: Int? = 4,
+        loadPercent: Int? = 85,
+        repPercent: Int? = 100,
+        startDate: String? = nil
+    ) {
+        self.type = type
+        self.everyWeeks = everyWeeks
+        self.loadPercent = loadPercent
+        self.repPercent = repPercent
+        self.startDate = startDate ?? DateHelpers.todayString()
+    }
+}
+
 struct TrainingProgram: Codable, Identifiable, Equatable {
     var id: String
     var name: String
@@ -152,6 +174,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
     var schedule: [ProgramScheduleItem]
     var active: Bool?
     var progression: ProgramProgressionRule?
+    var deload: ProgramDeloadRule?
     var progressionRule: String?
     var updatedAt: String?
     var revision: Int?
@@ -163,6 +186,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         schedule: [ProgramScheduleItem] = [],
         active: Bool? = true,
         progression: ProgramProgressionRule? = ProgramProgressionRule(),
+        deload: ProgramDeloadRule? = nil,
         progressionRule: String? = "",
         updatedAt: String? = nil,
         revision: Int? = nil
@@ -173,6 +197,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.schedule = schedule
         self.active = active
         self.progression = progression
+        self.deload = deload
         self.progressionRule = progressionRule
         self.updatedAt = updatedAt
         self.revision = revision
@@ -409,6 +434,18 @@ func progressionSummary(_ rule: ProgramProgressionRule?) -> String? {
     default:
         return nil
     }
+}
+
+func deloadInstruction(_ rule: ProgramDeloadRule?) -> String? {
+    guard let rule, rule.type != "none" else { return nil }
+    return "\(rule.loadPercent ?? 85)% load / \(rule.repPercent ?? 100)% reps"
+}
+
+func deloadSummary(_ rule: ProgramDeloadRule?) -> String? {
+    guard let rule, rule.type != "none", let instruction = deloadInstruction(rule) else { return nil }
+    let start = DateHelpers.date(from: rule.startDate ?? DateHelpers.todayString())
+    let startLabel = start.formatted(.dateTime.month(.abbreviated).day())
+    return "Every \(rule.everyWeeks ?? 4) weeks: \(instruction), starting \(startLabel)"
 }
 
 func formatProgressionNumber(_ value: Double) -> String {

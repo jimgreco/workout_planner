@@ -287,6 +287,13 @@ private struct NextProgramWorkout {
     let total: Int
 }
 
+private struct ProgramDeloadWeekInfo {
+    let isDeload: Bool
+    let nextDate: Date
+    let weekNumber: Int
+    let instruction: String
+}
+
 private enum ProgramPlanner {
     static let weekdays = [
         ProgramWeekday(value: 0, label: "Sun", long: "Sunday"),
@@ -348,6 +355,24 @@ private enum ProgramPlanner {
         }
     }
 
+    static func deloadInfo(program: TrainingProgram?, date: Date = Date()) -> ProgramDeloadWeekInfo? {
+        guard let deload = program?.deload,
+              deload.type != "none",
+              let instruction = deloadInstruction(deload)
+        else { return nil }
+
+        let everyWeeks = max(2, deload.everyWeeks ?? 4)
+        let currentWeekStart = startOfWeek(date)
+        let startWeek = startOfWeek(DateHelpers.date(from: deload.startDate ?? DateHelpers.todayString()))
+        let weeksSinceStart = max(0, Calendar.current.dateComponents([.weekOfYear], from: startWeek, to: currentWeekStart).weekOfYear ?? 0)
+        let weekNumber = weeksSinceStart + 1
+        let isDeload = weekNumber % everyWeeks == 0
+        let weeksUntilNext = isDeload ? everyWeeks : everyWeeks - (weekNumber % everyWeeks)
+        let nextDate = Calendar.current.date(byAdding: .weekOfYear, value: weeksUntilNext, to: currentWeekStart) ?? currentWeekStart
+
+        return ProgramDeloadWeekInfo(isDeload: isDeload, nextDate: nextDate, weekNumber: weekNumber, instruction: instruction)
+    }
+
     static func displayDate(_ date: Date) -> String {
         let today = Calendar.current.startOfDay(for: Date())
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
@@ -380,6 +405,12 @@ private enum ProgramPlanner {
 
     private static func handledOn(logs: [WorkoutLog], template: WorkoutTemplate, date: Date) -> Bool {
         completedOn(logs: logs, template: template, date: date) || skippedOn(logs: logs, template: template, date: date)
+    }
+
+    private static func startOfWeek(_ date: Date) -> Date {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        let weekdayOffset = Calendar.current.component(.weekday, from: startOfDay) - 1
+        return Calendar.current.date(byAdding: .day, value: -weekdayOffset, to: startOfDay) ?? startOfDay
     }
 
     private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
@@ -422,6 +453,10 @@ private struct ProgramSummaryCard: View {
 
     private var week: [PlannedProgramDay] {
         ProgramPlanner.weekPlan(program: program, templates: templates, logs: logs)
+    }
+
+    private var deload: ProgramDeloadWeekInfo? {
+        ProgramPlanner.deloadInfo(program: program)
     }
 
     var body: some View {
@@ -506,6 +541,17 @@ private struct ProgramSummaryCard: View {
                                 ProgramDayChip(day: day)
                             }
                         }
+                    }
+
+                    if let deload {
+                        Label(
+                            deload.isDeload
+                                ? "Deload week: use \(deload.instruction)"
+                                : "Next deload \(ProgramPlanner.displayDate(deload.nextDate)): use \(deload.instruction)",
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
+                        .font(.system(size: 13, weight: deload.isDeload ? .semibold : .regular))
+                        .foregroundStyle(deload.isDeload ? Theme.text : Theme.muted)
                     }
 
                     if let summary = progressionSummary(program.progression) {
@@ -867,6 +913,28 @@ private struct ProgramFormSheet: View {
                 }
 
                 Section {
+                    Picker("Rule", selection: deloadTypeBinding) {
+                        Text("No structured deload").tag("none")
+                        Text("Every N weeks").tag("every_n_weeks")
+                    }
+
+                    if currentDeload.type == "every_n_weeks" {
+                        Stepper("Every \(currentDeload.everyWeeks ?? 4) weeks", value: deloadIntBinding(\.everyWeeks, fallback: 4), in: 2...12)
+                        Stepper("Load: \(currentDeload.loadPercent ?? 85)%", value: deloadIntBinding(\.loadPercent, fallback: 85), in: 40...100)
+                        Stepper("Reps: \(currentDeload.repPercent ?? 100)%", value: deloadIntBinding(\.repPercent, fallback: 100), in: 40...100)
+                        DatePicker("Start", selection: deloadStartDateBinding, displayedComponents: .date)
+                    }
+
+                    if let summary = deloadSummary(form.deload) {
+                        Text(summary)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                    }
+                } header: {
+                    Text("Deload Rule")
+                }
+
+                Section {
                     TextEditor(text: Binding(
                         get: { form.progressionRule ?? "" },
                         set: { form.progressionRule = $0 }
@@ -903,11 +971,44 @@ private struct ProgramFormSheet: View {
         form.progression ?? ProgramProgressionRule(type: "none")
     }
 
+    private var currentDeload: ProgramDeloadRule {
+        form.deload ?? ProgramDeloadRule(type: "none")
+    }
+
     private var progressionTypeBinding: Binding<String> {
         Binding(
             get: { currentProgression.type },
             set: { type in
                 form.progression = ProgramProgressionRule(type: type)
+            }
+        )
+    }
+
+    private var deloadTypeBinding: Binding<String> {
+        Binding(
+            get: { currentDeload.type },
+            set: { type in
+                var rule = currentDeload
+                rule.type = type
+                if type == "every_n_weeks" {
+                    rule.everyWeeks = rule.everyWeeks ?? 4
+                    rule.loadPercent = rule.loadPercent ?? 85
+                    rule.repPercent = rule.repPercent ?? 100
+                    rule.startDate = rule.startDate ?? DateHelpers.todayString()
+                }
+                form.deload = rule
+            }
+        )
+    }
+
+    private var deloadStartDateBinding: Binding<Date> {
+        Binding(
+            get: { DateHelpers.date(from: currentDeload.startDate ?? DateHelpers.todayString()) },
+            set: { date in
+                var rule = currentDeload
+                if rule.type == "none" { rule.type = "every_n_weeks" }
+                rule.startDate = DateHelpers.dayString(from: date)
+                form.deload = rule
             }
         )
     }
@@ -932,6 +1033,18 @@ private struct ProgramFormSheet: View {
                 if rule.type == "none" { rule.type = "double_progression" }
                 rule[keyPath: keyPath] = value
                 form.progression = rule
+            }
+        )
+    }
+
+    private func deloadIntBinding(_ keyPath: WritableKeyPath<ProgramDeloadRule, Int?>, fallback: Int) -> Binding<Int> {
+        Binding(
+            get: { currentDeload[keyPath: keyPath] ?? fallback },
+            set: { value in
+                var rule = currentDeload
+                if rule.type == "none" { rule.type = "every_n_weeks" }
+                rule[keyPath: keyPath] = value
+                form.deload = rule
             }
         )
     }
@@ -996,6 +1109,16 @@ private struct ProgramFormSheet: View {
         return rule
     }
 
+    private func cleanedDeload(_ deload: ProgramDeloadRule?) -> ProgramDeloadRule? {
+        guard var rule = deload, rule.type != "none" else { return nil }
+        rule.type = "every_n_weeks"
+        rule.everyWeeks = max(2, min(rule.everyWeeks ?? 4, 12))
+        rule.loadPercent = max(40, min(rule.loadPercent ?? 85, 100))
+        rule.repPercent = max(40, min(rule.repPercent ?? 100, 100))
+        rule.startDate = DateHelpers.dayString(from: DateHelpers.date(from: rule.startDate ?? DateHelpers.todayString()))
+        return rule
+    }
+
     private func save() async {
         isSaving = true
         defer { isSaving = false }
@@ -1005,6 +1128,7 @@ private struct ProgramFormSheet: View {
             cleaned.description = cleaned.description?.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.progressionRule = cleaned.progressionRule?.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.progression = cleanedProgression(cleaned.progression)
+            cleaned.deload = cleanedDeload(cleaned.deload)
             cleaned.schedule = cleanedSchedule(cleaned.schedule)
             try await store.saveProgram(cleaned)
             dismiss()

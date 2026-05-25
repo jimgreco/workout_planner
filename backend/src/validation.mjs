@@ -18,6 +18,7 @@ const WEIGHT_TYPES = new Set(['weight', 'double', 'none']);
 const SET_TYPES = new Set(['warmup', 'working', 'drop', 'failure']);
 const SUPERSET_GROUPS = new Set(['A', 'B', 'C', 'D']);
 const PROGRESSION_TYPES = new Set(['double_progression', 'linear_weight', 'linear_reps', 'none']);
+const DELOAD_TYPES = new Set(['every_n_weeks', 'none']);
 const LOG_STATUSES = new Set(['planning', 'active', 'finished', 'skipped']);
 
 function fail(message) {
@@ -288,11 +289,30 @@ function programProgression(value) {
   return progression;
 }
 
+function programDeload(value) {
+  if (value === undefined || value === null) return undefined;
+  assertObject(value, 'deload');
+  assertAllowedKeys(value, new Set(['type', 'everyWeeks', 'loadPercent', 'repPercent', 'startDate']), 'deload');
+
+  const type = stringValue(value.type, 'deload.type', { required: true, max: 32, allowEmpty: false });
+  if (!DELOAD_TYPES.has(type)) fail('deload.type is invalid');
+
+  const deload = { type };
+  if (type === 'none') return deload;
+
+  deload.everyWeeks = optionalIntValue(value.everyWeeks, 'deload.everyWeeks', 2, 12) ?? 4;
+  deload.loadPercent = optionalIntValue(value.loadPercent, 'deload.loadPercent', 40, 100) ?? 85;
+  deload.repPercent = optionalIntValue(value.repPercent, 'deload.repPercent', 40, 100) ?? 100;
+  deload.startDate = dateValue(value.startDate, 'deload.startDate', { required: true });
+
+  return deload;
+}
+
 export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'active', 'progression', 'progressionRule', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'active', 'progression', 'deload', 'progressionRule', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -308,6 +328,8 @@ export function validateProgram(body, pathId) {
   if (active !== undefined) program.active = active;
   const progression = programProgression(body.progression);
   if (progression !== undefined) program.progression = progression;
+  const deload = programDeload(body.deload);
+  if (deload !== undefined) program.deload = deload;
   const progressionRule = stringValue(body.progressionRule, 'progressionRule', { max: 1000 });
   if (progressionRule !== undefined) program.progressionRule = progressionRule;
   return program;

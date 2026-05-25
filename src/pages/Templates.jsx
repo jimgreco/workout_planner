@@ -7,6 +7,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCcw,
   Settings,
   SkipForward,
   Target,
@@ -33,6 +34,11 @@ const PROGRESSION_TYPES = [
   { value: 'none', label: 'No structured rule' },
 ];
 
+const DELOAD_TYPES = [
+  { value: 'none', label: 'No structured deload' },
+  { value: 'every_n_weeks', label: 'Every N weeks' },
+];
+
 function defaultProgression(type = 'double_progression') {
   return {
     type,
@@ -43,8 +49,26 @@ function defaultProgression(type = 'double_progression') {
   };
 }
 
+function defaultDeload(type = 'none') {
+  return {
+    type,
+    everyWeeks: 4,
+    loadPercent: 85,
+    repPercent: 100,
+    startDate: localDateKey(startOfToday()),
+  };
+}
+
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
-const emptyProgram = () => ({ name: '', description: '', active: true, schedule: [], progression: defaultProgression(), progressionRule: '' });
+const emptyProgram = () => ({
+  name: '',
+  description: '',
+  active: true,
+  schedule: [],
+  progression: defaultProgression(),
+  deload: defaultDeload(),
+  progressionRule: '',
+});
 const STARTER_TEMPLATES = [
   {
     name: 'Push Starter',
@@ -149,6 +173,83 @@ function progressionSummary(progression) {
     return `Add ${rule.repIncrement} rep when all target reps are hit`;
   }
   return '';
+}
+
+function parseLocalDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfWeek(date) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - start.getDay());
+  return start;
+}
+
+function deloadForForm(deload, fallbackType = 'none') {
+  return {
+    ...defaultDeload(fallbackType),
+    ...(deload || {}),
+    type: deload?.type || fallbackType,
+  };
+}
+
+function cleanDeload(deload) {
+  const rule = deloadForForm(deload);
+  if (rule.type === 'none') return null;
+
+  const everyWeeks = Number.parseInt(rule.everyWeeks, 10);
+  const loadPercent = Number.parseInt(rule.loadPercent, 10);
+  const repPercent = Number.parseInt(rule.repPercent, 10);
+  const startDate = parseLocalDate(rule.startDate) ? rule.startDate : localDateKey(startOfToday());
+
+  return {
+    type: 'every_n_weeks',
+    everyWeeks: Number.isInteger(everyWeeks) ? Math.min(Math.max(everyWeeks, 2), 12) : 4,
+    loadPercent: Number.isInteger(loadPercent) ? Math.min(Math.max(loadPercent, 40), 100) : 85,
+    repPercent: Number.isInteger(repPercent) ? Math.min(Math.max(repPercent, 40), 100) : 100,
+    startDate,
+  };
+}
+
+function deloadInstruction(deload) {
+  const rule = deloadForForm(deload);
+  return `${rule.loadPercent ?? 85}% load / ${rule.repPercent ?? 100}% reps`;
+}
+
+function deloadSummary(deload) {
+  const rule = deloadForForm(deload, deload?.type || 'none');
+  if (!deload || rule.type === 'none') return '';
+  const start = parseLocalDate(rule.startDate);
+  const startLabel = start ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(start) : 'today';
+  return `Every ${rule.everyWeeks ?? 4} weeks: ${deloadInstruction(rule)}, starting ${startLabel}`;
+}
+
+function deloadWeekInfo(program, date = new Date()) {
+  const rule = deloadForForm(program?.deload, program?.deload?.type || 'none');
+  if (!program?.deload || rule.type === 'none') return null;
+  const start = parseLocalDate(rule.startDate);
+  if (!start) return null;
+
+  const everyWeeks = Math.max(2, Number.parseInt(rule.everyWeeks, 10) || 4);
+  const currentWeekStart = startOfWeek(date);
+  const startWeek = startOfWeek(start);
+  const weeksSinceStart = Math.max(0, Math.floor((currentWeekStart - startWeek) / (7 * 24 * 60 * 60 * 1000)));
+  const weekNumber = weeksSinceStart + 1;
+  const isDeload = weekNumber % everyWeeks === 0;
+  const weeksUntilNext = isDeload ? everyWeeks : everyWeeks - (weekNumber % everyWeeks);
+  const nextDate = new Date(currentWeekStart);
+  nextDate.setDate(currentWeekStart.getDate() + weeksUntilNext * 7);
+
+  return {
+    isDeload,
+    nextDate,
+    weekNumber,
+    instruction: deloadInstruction(rule),
+  };
 }
 
 function templateById(templates) {
@@ -264,6 +365,12 @@ function cleanProgram(program) {
   } else {
     delete cleaned.progression;
   }
+  const deload = cleanDeload(program.deload);
+  if (deload) {
+    cleaned.deload = deload;
+  } else {
+    delete cleaned.deload;
+  }
   return cleaned;
 }
 
@@ -302,6 +409,10 @@ export default function Templates({
     () => weekPlan(activeProgram, templates, logs),
     [activeProgram, templates, logs],
   );
+  const activeDeload = useMemo(
+    () => deloadWeekInfo(activeProgram),
+    [activeProgram],
+  );
 
   function openAdd()      { setShowAddMenu(false); setForm(emptyTemplate()); setModal('add'); }
   function openEdit(t)    { setForm({ ...t }); setModal('edit'); }
@@ -314,6 +425,7 @@ export default function Templates({
       ...emptyProgram(),
       ...program,
       progression: progressionForForm(program.progression, isExisting ? 'none' : 'double_progression'),
+      deload: deloadForForm(program.deload, program.deload?.type || 'none'),
       schedule: [...(program.schedule ?? [])],
     });
     setModal('program');
@@ -441,6 +553,16 @@ export default function Templates({
     }));
   }
 
+  function updateProgramDeload(patch) {
+    setProgramForm((draft) => ({
+      ...draft,
+      deload: {
+        ...deloadForForm(draft.deload, draft.deload?.type || 'none'),
+        ...patch,
+      },
+    }));
+  }
+
   const settingsDirty = settingsForm.defaultSets !== settings.defaultSets || settingsForm.defaultReps !== settings.defaultReps;
 
   return (
@@ -555,6 +677,14 @@ export default function Templates({
               ))}
             </div>
 
+            {activeDeload && (
+              <p className={`program-rule ${activeDeload.isDeload ? 'program-rule-highlight' : ''}`}>
+                <RefreshCcw size={15} />
+                {activeDeload.isDeload
+                  ? `Deload week: use ${activeDeload.instruction}`
+                  : `Next deload ${dateLabel(activeDeload.nextDate)}: use ${activeDeload.instruction}`}
+              </p>
+            )}
             {progressionSummary(activeProgram.progression) && (
               <p className="program-rule">
                 <Target size={15} />
@@ -853,6 +983,73 @@ export default function Templates({
           {progressionSummary(programForm.progression) && (
             <p className="program-rule-preview">
               {progressionSummary(programForm.progression)}
+            </p>
+          )}
+
+          <hr className="divider" />
+          <div className="form-group">
+            <label>Deload Rule</label>
+            <select
+              aria-label="Deload rule"
+              value={programForm.deload?.type || 'none'}
+              onChange={(e) => updateProgramDeload({ type: e.target.value })}
+            >
+              {DELOAD_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {programForm.deload?.type === 'every_n_weeks' && (
+            <div className="progression-grid">
+              <div className="form-group">
+                <label>Every Weeks</label>
+                <input
+                  type="number"
+                  aria-label="Deload every weeks"
+                  min="2"
+                  max="12"
+                  value={programForm.deload?.everyWeeks ?? 4}
+                  onChange={(e) => updateProgramDeload({ everyWeeks: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Load Percent</label>
+                <input
+                  type="number"
+                  aria-label="Deload load percent"
+                  min="40"
+                  max="100"
+                  value={programForm.deload?.loadPercent ?? 85}
+                  onChange={(e) => updateProgramDeload({ loadPercent: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Rep Percent</label>
+                <input
+                  type="number"
+                  aria-label="Deload rep percent"
+                  min="40"
+                  max="100"
+                  value={programForm.deload?.repPercent ?? 100}
+                  onChange={(e) => updateProgramDeload({ repPercent: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Start Date</label>
+                <input
+                  type="date"
+                  aria-label="Deload start date"
+                  value={programForm.deload?.startDate || localDateKey(startOfToday())}
+                  onChange={(e) => updateProgramDeload({ startDate: e.target.value })}
+                />
+              </div>
+            </div>
+          )}
+
+          {deloadSummary(programForm.deload) && (
+            <p className="program-rule-preview">
+              {deloadSummary(programForm.deload)}
             </p>
           )}
 

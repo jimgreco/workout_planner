@@ -527,6 +527,13 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   color: var(--text-muted);
   flex-shrink: 0;
 }
+.program-rule-highlight {
+  color: var(--text);
+  font-weight: 600;
+}
+.program-rule-highlight svg {
+  color: var(--accent);
+}
 .program-schedule-editor {
   display: flex;
   flex-direction: column;

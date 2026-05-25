@@ -45,7 +45,8 @@ Imports are validated with the same resource validators used by normal writes:
   notes/timing/PB fields. Status must be `planning`, `active`, `finished`, or
   `skipped`.
 - Programs: `id`, `name`, `schedule`, optional `description`, `active`,
-  structured `progression`, and legacy/freeform `progressionRule`.
+  structured `progression`, structured `deload`, and legacy/freeform
+  `progressionRule`.
 - Settings: `defaultSets` and `defaultReps`.
 
 Unknown top-level import keys and unknown resource fields are rejected. The
@@ -72,6 +73,9 @@ Import limits are intentionally larger than normal app use:
   `type`, `minReps`, `maxReps`, `repIncrement`, and `weightIncrement`.
   Supported types are `double_progression`, `linear_weight`, `linear_reps`, and
   `none`.
+- Program deloads can be stored as an optional `deload` object with `type`,
+  `everyWeeks`, `loadPercent`, `repPercent`, and `startDate`. Supported types
+  are `every_n_weeks` and `none`.
 - Up to 70 schedule entries per program.
 
 ## Import Modes

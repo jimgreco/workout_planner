@@ -75,12 +75,18 @@ describe('Routines page', () => {
     fireEvent.change(screen.getByPlaceholderText(/3 day strength/i), { target: { value: 'Strength Block' } });
     fireEvent.change(screen.getByLabelText(/progression rule/i), { target: { value: 'linear_weight' } });
     fireEvent.change(screen.getByLabelText(/weight increment/i), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText(/deload rule/i), { target: { value: 'every_n_weeks' } });
+    fireEvent.change(screen.getByLabelText(/deload every weeks/i), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText(/deload load percent/i), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText(/deload rep percent/i), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText(/deload start date/i), { target: { value: '2026-05-25' } });
     fireEvent.click(screen.getByRole('button', { name: /create program/i }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
     expect(saveProgram.mock.calls[0][0]).toMatchObject({
       name: 'Strength Block',
       progression: { type: 'linear_weight', weightIncrement: 10 },
+      deload: { type: 'every_n_weeks', everyWeeks: 5, loadPercent: 80, repPercent: 90, startDate: '2026-05-25' },
     });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
