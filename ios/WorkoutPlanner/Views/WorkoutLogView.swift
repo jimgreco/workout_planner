@@ -67,6 +67,7 @@ struct WorkoutLogView: View {
                         activeSetIndex: activeSetIndex,
                         planningMode: isPlanningMode,
                         onSetCompleted: markSetCompleted,
+                        onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
                         onChanged: builderChanged
                     )
 
@@ -276,6 +277,19 @@ struct WorkoutLogView: View {
         promotePlanningRepsToPlaceholders()
         startTime = ISO8601DateFormatter().string(from: Date())
         Task { await persist(status: "active") }
+    }
+
+    private func resetPersonalBest(_ exercise: Exercise) {
+        guard !isPlanningMode, !isEditing, exercise.personalBest != nil else { return }
+        Task {
+            do {
+                var updated = exercise
+                updated.personalBest = nil
+                try await store.saveExercise(updated)
+            } catch {
+                store.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func finishWorkout() async {

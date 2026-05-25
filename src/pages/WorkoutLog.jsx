@@ -385,6 +385,17 @@ export default function WorkoutLog({
     }
   }
 
+  async function handleResetPersonalBest(exercise) {
+    const withoutPersonalBest = { ...exercise };
+    delete withoutPersonalBest.personalBest;
+    try {
+      const updated = await saveExercise(withoutPersonalBest);
+      onExercisesChanged(updated);
+    } catch (error) {
+      console.error('Failed to reset PB:', error);
+    }
+  }
+
   // ── Discard workout ──────────────────────────────────────────────────────
   async function handleDiscard() {
     if (!workoutId) return;
@@ -545,6 +556,7 @@ export default function WorkoutLog({
         activeSetIdx={activeSetIdx}
         onSetCompleted={handleSetCompleted}
         onRestTargetReached={handleRestTargetReached}
+        onResetPersonalBest={!isEditing.current && startTime ? handleResetPersonalBest : undefined}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
         planningMode={isPlanningMode}

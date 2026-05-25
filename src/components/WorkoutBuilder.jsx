@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ArrowUp, ArrowDown, Check, X, Plus } from 'lucide-react';
+import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw } from 'lucide-react';
 import { personalBestLabel } from '../progress.js';
 
 /**
@@ -119,6 +119,7 @@ export default function WorkoutBuilder({
   activeSetIdx = null,
   onSetCompleted,
   onRestTargetReached,
+  onResetPersonalBest,
   planningMode = false,
 }) {
   function exById(id) {
@@ -245,7 +246,19 @@ export default function WorkoutBuilder({
                   <span className="exercise-name">{ex.name}</span>
                   <span className="badge">{ex.muscleGroup}</span>
                   {ex.personalBest?.weight && (
-                    <span className="pb-label">• PB: {personalBestLabel(ex.personalBest)}</span>
+                    <span className="pb-label">
+                      • PB: {personalBestLabel(ex.personalBest)}
+                      {onResetPersonalBest && !planningMode && !readOnly && (
+                        <button
+                          type="button"
+                          className="pb-reset-btn"
+                          onClick={() => onResetPersonalBest(ex)}
+                          title={`Reset PB for ${ex.name}`}
+                        >
+                          <RotateCcw size={11} /> Reset PB
+                        </button>
+                      )}
+                    </span>
                   )}
                   {!readOnly && (
                     <label className="superset-control">

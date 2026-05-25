@@ -1779,9 +1779,30 @@ input:focus, select:focus, textarea:focus {
 }
 
 .pb-label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 500;
+}
+
+.pb-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.pb-reset-btn:hover {
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 
 .action-buttons-group {

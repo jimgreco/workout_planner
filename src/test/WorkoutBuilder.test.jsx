@@ -19,6 +19,44 @@ describe('WorkoutBuilder', () => {
     expect(screen.getByText('Chest')).toBeInTheDocument();
   });
 
+  it('calls reset PB action from a workout exercise card', () => {
+    const onResetPersonalBest = vi.fn();
+    const exercisesWithPB = [
+      { ...exercises[0], personalBest: { weight: '225', reps: '5' } },
+      ...exercises.slice(1),
+    ];
+    render(
+      <WorkoutBuilder
+        exercises={exercisesWithPB}
+        items={oneItem}
+        onChange={() => {}}
+        onResetPersonalBest={onResetPersonalBest}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /reset pb/i }));
+
+    expect(onResetPersonalBest).toHaveBeenCalledWith(exercisesWithPB[0]);
+  });
+
+  it('hides reset PB action while planning', () => {
+    const exercisesWithPB = [
+      { ...exercises[0], personalBest: { weight: '225', reps: '5' } },
+      ...exercises.slice(1),
+    ];
+    render(
+      <WorkoutBuilder
+        exercises={exercisesWithPB}
+        items={oneItem}
+        onChange={() => {}}
+        onResetPersonalBest={() => {}}
+        planningMode
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /reset pb/i })).not.toBeInTheDocument();
+  });
+
   it('renders set inputs with correct values', () => {
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={() => {}} />);
     const repsInput = screen.getByDisplayValue('8');

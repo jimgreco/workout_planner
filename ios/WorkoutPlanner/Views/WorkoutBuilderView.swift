@@ -44,6 +44,7 @@ struct WorkoutBuilderView: View {
     var activeSetIndex: Int?
     var planningMode = false
     var onSetCompleted: ((Int, Int) -> Void)?
+    var onResetPersonalBest: ((Exercise) -> Void)?
     var onChanged: (() -> Void)?
 
     var body: some View {
@@ -66,6 +67,7 @@ struct WorkoutBuilderView: View {
                         onMove: { direction in move(index, direction) },
                         onRemove: { removeExercise(index) },
                         onSetCompleted: onSetCompleted,
+                        onResetPersonalBest: onResetPersonalBest,
                         onChanged: onChanged
                     )
                 }
@@ -149,6 +151,7 @@ private struct ExerciseSetsCard: View {
     let onMove: (Int) -> Void
     let onRemove: () -> Void
     let onSetCompleted: ((Int, Int) -> Void)?
+    let onResetPersonalBest: ((Exercise) -> Void)?
     let onChanged: (() -> Void)?
 
     private let setColumnWidth: CGFloat = 28
@@ -158,6 +161,9 @@ private struct ExerciseSetsCard: View {
     private let rowSpacing: CGFloat = 6
     private var showsWeightColumn: Bool {
         showWeight && item.weightType != "none" && !planningMode
+    }
+    private var canResetPersonalBest: Bool {
+        !readOnly && !planningMode && exercise.personalBest != nil && onResetPersonalBest != nil
     }
 
     var body: some View {
@@ -172,9 +178,26 @@ private struct ExerciseSetsCard: View {
                         Badge(text: exercise.muscleGroup)
                     }
                     if let pb = personalBestLabel(exercise.personalBest) {
-                        Text("PB: \(pb)")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.muted)
+                        HStack(spacing: 8) {
+                            Text("PB: \(pb)")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.76)
+
+                            if canResetPersonalBest {
+                                Button(role: .destructive) {
+                                    onResetPersonalBest?(exercise)
+                                } label: {
+                                    Label("Reset PB", systemImage: "arrow.counterclockwise")
+                                        .labelStyle(.titleAndIcon)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .lineLimit(1)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Theme.danger)
+                            }
+                        }
                     }
                 }
 
