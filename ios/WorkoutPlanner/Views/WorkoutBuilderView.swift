@@ -156,6 +156,9 @@ private struct ExerciseSetsCard: View {
     private let doneColumnWidth: CGFloat = 34
     private let removeColumnWidth: CGFloat = 32
     private let rowSpacing: CGFloat = 6
+    private var showsWeightColumn: Bool {
+        showWeight && item.weightType != "none" && !planningMode
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -201,38 +204,46 @@ private struct ExerciseSetsCard: View {
             }
 
             if !readOnly {
-                Menu {
-                    ForEach(restTargetOptions, id: \.label) { option in
-                        Button(option.label) {
-                            item.restTargetSeconds = option.seconds
-                            onChanged?()
+                HStack(spacing: 8) {
+                    Menu {
+                        ForEach(restTargetOptions, id: \.label) { option in
+                            Button(option.label) {
+                                item.restTargetSeconds = option.seconds
+                                onChanged?()
+                            }
                         }
+                    } label: {
+                        Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                } label: {
-                    Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .frame(maxWidth: .infinity)
+
+                    Menu {
+                        ForEach(supersetOptions, id: \.label) { option in
+                            Button(option.label) {
+                                item.supersetGroup = option.value
+                                onChanged?()
+                            }
+                        }
+                    } label: {
+                        Label("Pair \(supersetLabel(item.supersetGroup))", systemImage: "link")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
             } else if item.restTargetSeconds ?? 0 > 0 {
                 Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.accent)
             }
 
-            if !readOnly {
-                Menu {
-                    ForEach(supersetOptions, id: \.label) { option in
-                        Button(option.label) {
-                            item.supersetGroup = option.value
-                            onChanged?()
-                        }
-                    }
-                } label: {
-                    Label("Pair \(supersetLabel(item.supersetGroup))", systemImage: "link")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
-            } else if item.supersetGroup?.isEmpty == false {
+            if readOnly, item.supersetGroup?.isEmpty == false {
                 Label(supersetLabel(item.supersetGroup), systemImage: "link")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.success)
@@ -276,7 +287,7 @@ private struct ExerciseSetsCard: View {
                 .frame(width: setColumnWidth)
             Text("Reps")
                 .frame(maxWidth: .infinity)
-            if showWeight && (!readOnly || item.weightType != "none") {
+            if showsWeightColumn {
                 Text(item.weightType == "double" ? "2x Weight" : item.weightType == "none" ? "" : "Weight")
                     .frame(maxWidth: .infinity)
             }
@@ -316,41 +327,38 @@ private struct ExerciseSetsCard: View {
                     focus: .reps(itemIndex: itemIndex, setIndex: setIndex),
                     focusedField: $focusedField,
                     isActive: active,
-                    isDisabled: readOnly
+                    isDisabled: readOnly,
+                    placeholderRole: .reps
                 )
 
-                if showWeight && (!readOnly || item.weightType != "none") {
-                    if item.weightType != "none", !planningMode {
-                        VStack(spacing: 3) {
-                            SetNumericField(
-                                placeholder: item.sets[setIndex].placeholderWeight ?? "-",
-                                text: Binding(
-                                    get: { item.sets[setIndex].weight ?? "" },
-                                    set: { value in
-                                        item.sets[setIndex].weight = value
-                                        onChanged?()
-                                    }
-                                ),
-                                keyboard: .decimalPad,
-                                focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
-                                focusedField: $focusedField,
-                                isActive: active,
-                                isDisabled: readOnly
-                            )
+                if showsWeightColumn {
+                    VStack(spacing: 3) {
+                        SetNumericField(
+                            placeholder: item.sets[setIndex].placeholderWeight ?? "-",
+                            text: Binding(
+                                get: { item.sets[setIndex].weight ?? "" },
+                                set: { value in
+                                    item.sets[setIndex].weight = value
+                                    onChanged?()
+                                }
+                            ),
+                            keyboard: .decimalPad,
+                            focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
+                            focusedField: $focusedField,
+                            isActive: active,
+                            isDisabled: readOnly
+                        )
 
-                            if let plates = plateBreakdownLabel(weight: item.sets[setIndex].weight, weightType: item.weightType) {
-                                Text(plates)
-                                    .font(.system(size: 10, weight: .heavy))
-                                    .foregroundStyle(Theme.muted)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.8)
-                            }
+                        if let plates = plateBreakdownLabel(weight: item.sets[setIndex].weight, weightType: item.weightType) {
+                            Text(plates)
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(Theme.muted)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.8)
                         }
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        Color.clear.frame(maxWidth: .infinity)
                     }
+                    .frame(maxWidth: .infinity)
                 }
 
                 RestTimerText(set: item.sets[setIndex], targetSeconds: item.restTargetSeconds)
@@ -507,6 +515,11 @@ private struct ExerciseSetsCard: View {
     }
 }
 
+private enum SetNumericFieldPlaceholderRole: Equatable {
+    case plain
+    case reps
+}
+
 private struct SetNumericField: View {
     let placeholder: String
     let text: Binding<String>
@@ -515,19 +528,27 @@ private struct SetNumericField: View {
     @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
     let isActive: Bool
     let isDisabled: Bool
+    var placeholderRole: SetNumericFieldPlaceholderRole = .plain
 
     var body: some View {
         ZStack {
             if text.wrappedValue.isEmpty, !placeholder.isEmpty {
-                Text(placeholder)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.muted.opacity(0.58))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 4)
-                    .frame(maxWidth: .infinity)
-                    .allowsHitTesting(false)
+                if placeholderRole == .reps, let repsPlaceholder = RepsFieldPlaceholder(rawValue: placeholder) {
+                    RepsFieldPlaceholderView(value: repsPlaceholder)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity)
+                        .allowsHitTesting(false)
+                } else {
+                    Text(placeholder)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.muted.opacity(0.58))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity)
+                        .allowsHitTesting(false)
+                }
             }
 
             TextField("", text: text)
@@ -547,6 +568,61 @@ private struct SetNumericField: View {
                 .stroke(Theme.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private struct RepsFieldPlaceholder {
+    let last: String?
+    let goal: String?
+
+    init?(rawValue: String) {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "-", trimmed.localizedCaseInsensitiveCompare("Target") != .orderedSame else {
+            return nil
+        }
+
+        if let open = trimmed.firstIndex(of: "("),
+           let close = trimmed.lastIndex(of: ")"),
+           open < close {
+            let rawLast = String(trimmed[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawGoal = String(trimmed[trimmed.index(after: open)..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
+            last = rawLast.isEmpty ? nil : rawLast
+            goal = rawGoal.isEmpty ? nil : rawGoal
+        } else {
+            last = nil
+            goal = trimmed
+        }
+
+        guard last != nil || goal != nil else { return nil }
+    }
+}
+
+private struct RepsFieldPlaceholderView: View {
+    let value: RepsFieldPlaceholder
+
+    var body: some View {
+        VStack(spacing: 1) {
+            if let last = value.last {
+                placeholderLine(label: "Last", value: last)
+            }
+            if let goal = value.goal {
+                placeholderLine(label: "Goal", value: goal)
+            }
+        }
+        .foregroundStyle(Theme.muted.opacity(0.62))
+        .lineLimit(1)
+        .minimumScaleFactor(0.72)
+        .multilineTextAlignment(.center)
+    }
+
+    private func placeholderLine(label: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9, weight: .heavy))
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold))
+        }
     }
 }
 

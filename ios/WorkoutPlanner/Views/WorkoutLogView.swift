@@ -387,10 +387,11 @@ struct WorkoutLogView: View {
         let sets = item.sets.enumerated().map { offset, set in
             let targetReps = set.reps?.isEmpty == false ? set.reps ?? String(store.settings.defaultReps) : String(store.settings.defaultReps)
             if let last, last.sets.indices.contains(offset) {
+                let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return WorkoutSet(
                     reps: "",
                     weight: "",
-                    placeholderReps: "\(last.sets[offset].reps ?? "") (\(targetReps))",
+                    placeholderReps: lastReps.isEmpty ? targetReps : "\(lastReps) (\(targetReps))",
                     placeholderWeight: last.sets[offset].weight
                 )
             }
