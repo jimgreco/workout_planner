@@ -59,18 +59,35 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
 
+      - name: Set up App Store Connect API key
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$API_KEY_ID"
+          test -n "$API_ISSUER_ID"
+          test -n "$API_PRIVATE_KEY"
+
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
+          printf '%s' "$API_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APP_STORE_CONNECT_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "APP_STORE_CONNECT_KEY_ID=$API_KEY_ID" >> "$GITHUB_ENV"
+          echo "APP_STORE_CONNECT_ISSUER_ID=$API_ISSUER_ID" >> "$GITHUB_ENV"
+
       - name: Import signing assets
         env:
           CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
           CERT_PWD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
-          LIVE_ACTIVITY_PROFILE: ${{ secrets.IOS_LIVE_ACTIVITY_PROVISIONING_PROFILE }}
           KC_PWD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "$CERT_P12"
           test -n "$PROFILE"
-          test -n "$LIVE_ACTIVITY_PROFILE"
           test -n "$KC_PWD"
 
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
@@ -86,6 +103,8 @@ jobs:
             echo "Certificate import preflight failed; check IOS_DIST_CERT_P12 and IOS_DIST_CERT_PASSWORD."
             exit 1
           fi
+          openssl pkcs12 -in "$RUNNER_TEMP/distribution.p12" -clcerts -nokeys -passin pass:"$CERT_PWD" -out "$RUNNER_TEMP/distribution-cert.pem"
+          openssl x509 -in "$RUNNER_TEMP/distribution-cert.pem" -outform DER -out "$RUNNER_TEMP/distribution-cert.der"
 
           security import "$RUNNER_TEMP/distribution.p12" \
             -k "$KEYCHAIN_PATH" \
@@ -108,7 +127,12 @@ jobs:
 
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
 
-          printf '%s' "$LIVE_ACTIVITY_PROFILE" | base64 -d > "$RUNNER_TEMP/live-activity-profile.mobileprovision"
+          node .github/scripts/ensure-app-store-profile.mjs \
+            --bundle-id "$IOS_LIVE_ACTIVITY_BUNDLE_ID" \
+            --profile-name "Forge Live Activity App Store" \
+            --certificate-der "$RUNNER_TEMP/distribution-cert.der" \
+            --output "$RUNNER_TEMP/live-activity-profile.mobileprovision"
+
           LIVE_ACTIVITY_PROFILE_UUID="$(security cms -D -i "$RUNNER_TEMP/live-activity-profile.mobileprovision" | plutil -extract UUID raw -o - -)"
           LIVE_ACTIVITY_PROFILE_NAME="$(security cms -D -i "$RUNNER_TEMP/live-activity-profile.mobileprovision" | plutil -extract Name raw -o - -)"
           LIVE_ACTIVITY_PROFILE_APP_ID="$(security cms -D -i "$RUNNER_TEMP/live-activity-profile.mobileprovision" | plutil -extract Entitlements.application-identifier raw -o - -)"
@@ -123,23 +147,6 @@ jobs:
           echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "IOS_LIVE_ACTIVITY_PROFILE_NAME=$LIVE_ACTIVITY_PROFILE_NAME" >> "$GITHUB_ENV"
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-
-      - name: Set up App Store Connect API key
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$API_KEY_ID"
-          test -n "$API_ISSUER_ID"
-          test -n "$API_PRIVATE_KEY"
-
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
-          printf '%s' "$API_PRIVATE_KEY" > "$KEY_PATH"
-          chmod 600 "$KEY_PATH"
-          echo "APP_STORE_CONNECT_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Compute build number
         run: |
