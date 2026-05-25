@@ -44,6 +44,7 @@ import Calendar from './pages/Calendar.jsx';
 import Progress from './pages/Progress.jsx';
 import Logo from './components/Logo.jsx';
 import Modal from './components/Modal.jsx';
+import { personalBestLabel } from './progress.js';
 
 const PAGES = [
   { id: 'log',       label: 'Workout',          icon: Dumbbell },
@@ -107,7 +108,7 @@ function conflictDetails(item, resource) {
   if (resource === 'exercises') {
     return [
       item.muscleGroup ? `Group: ${item.muscleGroup}` : '',
-      item.personalBest?.weight ? `PB: ${item.personalBest.weight}` : '',
+      item.personalBest?.weight ? `PB: ${personalBestLabel(item.personalBest)}` : '',
       item.notes ? `Notes: ${item.notes}` : '',
     ].filter(Boolean);
   }

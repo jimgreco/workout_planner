@@ -554,10 +554,10 @@ final class WorkoutStore: ObservableObject {
 
     private func loadDemoDataIfNeeded() {
         guard exercises.isEmpty, templates.isEmpty, logs.isEmpty, programs.isEmpty else { return }
-        let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", notes: "Pause first rep", personalBest: PersonalBest(weight: "225", date: DateHelpers.todayString()))
+        let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", notes: "Pause first rep", personalBest: PersonalBest(weight: "225", date: DateHelpers.todayString(), reps: "5"))
         let row = Exercise(name: "Barbell Row", muscleGroup: "Back")
         let press = Exercise(name: "Overhead Press", muscleGroup: "Shoulders")
-        let squat = Exercise(name: "Back Squat", muscleGroup: "Quads", personalBest: PersonalBest(weight: "315", date: DateHelpers.todayString()))
+        let squat = Exercise(name: "Back Squat", muscleGroup: "Quads", personalBest: PersonalBest(weight: "315", date: DateHelpers.todayString(), reps: "3"))
         exercises = [bench, row, press, squat].sortedByName()
         templates = [
             WorkoutTemplate(

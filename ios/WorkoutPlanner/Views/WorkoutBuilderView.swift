@@ -171,8 +171,8 @@ private struct ExerciseSetsCard: View {
                             .lineLimit(2)
                         Badge(text: exercise.muscleGroup)
                     }
-                    if let pb = exercise.personalBest?.weight, !pb.isEmpty {
-                        Text("PB: \(pb) lbs")
+                    if let pb = personalBestLabel(exercise.personalBest) {
+                        Text("PB: \(pb)")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Theme.muted)
                     }
@@ -333,32 +333,21 @@ private struct ExerciseSetsCard: View {
                 )
 
                 if showsWeightColumn {
-                    VStack(spacing: 3) {
-                        SetNumericField(
-                            placeholder: item.sets[setIndex].placeholderWeight ?? "-",
-                            text: Binding(
-                                get: { item.sets[setIndex].weight ?? "" },
-                                set: { value in
-                                    item.sets[setIndex].weight = value
-                                    onChanged?()
-                                }
-                            ),
-                            keyboard: .decimalPad,
-                            focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
-                            focusedField: $focusedField,
-                            isActive: active,
-                            isDisabled: readOnly
-                        )
-
-                        if let plates = plateBreakdownLabel(weight: item.sets[setIndex].weight, weightType: item.weightType) {
-                            Text(plates)
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundStyle(Theme.muted)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.8)
-                        }
-                    }
+                    SetNumericField(
+                        placeholder: item.sets[setIndex].placeholderWeight ?? "-",
+                        text: Binding(
+                            get: { item.sets[setIndex].weight ?? "" },
+                            set: { value in
+                                item.sets[setIndex].weight = value
+                                onChanged?()
+                            }
+                        ),
+                        keyboard: .decimalPad,
+                        focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
+                        focusedField: $focusedField,
+                        isActive: active,
+                        isDisabled: readOnly
+                    )
                     .frame(maxWidth: .infinity)
                 }
 
@@ -718,40 +707,4 @@ private struct RestTimerText: View {
         let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
         return elapsed >= targetSeconds ? Theme.danger : Theme.accent
     }
-}
-
-private func plateBreakdownLabel(weight: String?, weightType: String?) -> String? {
-    guard weightType == nil || weightType == "weight",
-          let raw = weight,
-          let target = Double(raw.replacingOccurrences(of: ",", with: "")),
-          target >= 45
-    else { return nil }
-
-    var remaining = (target - 45) / 2
-    if remaining <= 0.01 { return "Bar only" }
-
-    let plates = [45.0, 35.0, 25.0, 10.0, 5.0, 2.5]
-    var counts: [(Double, Int)] = []
-    for plate in plates {
-        var count = 0
-        while remaining + 0.01 >= plate {
-            count += 1
-            remaining = ((remaining - plate) * 10).rounded() / 10
-        }
-        if count > 0 {
-            counts.append((plate, count))
-        }
-    }
-
-    guard remaining <= 0.01, !counts.isEmpty else { return nil }
-    return counts
-        .map { item in "\(formatPlate(item.0))\(item.1 > 1 ? " x\(item.1)" : "")" }
-        .joined(separator: " + ") + " / side"
-}
-
-private func formatPlate(_ plate: Double) -> String {
-    if plate.rounded() == plate {
-        return String(Int(plate))
-    }
-    return String(format: "%.1f", plate)
 }

@@ -3,6 +3,12 @@ import { Check, X, Clock, Trophy, Clipboard, Trash2 } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Modal from '../components/Modal.jsx';
 import { saveLog, deleteLog, saveExercise } from '../api.js';
+import {
+  bestPersonalBestSet,
+  isPersonalBestImprovement,
+  personalBestLabel,
+  personalBestPayload,
+} from '../progress.js';
 
 /**
  * Find the most recent finished log containing a given exercise and return
@@ -326,19 +332,20 @@ export default function WorkoutLog({
 
       // Check for personal bests
       const pbExerciseIds = [];
+      const pbExercises = [];
       let currentExercises = [...exercises];
       for (const item of items) {
-        const maxWeight = Math.max(...item.sets.map((s) => parseFloat(s.weight) || 0));
-        if (maxWeight <= 0) continue;
+        const candidate = bestPersonalBestSet(item.sets);
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
-        if (!ex) continue;
-        const currentPB = parseFloat(ex.personalBest?.weight) || 0;
-        if (maxWeight > currentPB) {
+        if (!ex || !isPersonalBestImprovement(candidate, ex.personalBest)) continue;
+        const personalBest = personalBestPayload(candidate, date);
+        if (personalBest) {
           pbExerciseIds.push(item.exerciseId);
+          pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest)}`);
           // Update the exercise's PB
           const updated = await saveExercise({
             ...ex,
-            personalBest: { weight: String(maxWeight), date },
+            personalBest,
           });
           currentExercises = updated;
           onExercisesChanged(updated);
@@ -367,7 +374,7 @@ export default function WorkoutLog({
         if (onClearEditing) onClearEditing();
       } else {
         setFinishModal({
-          pbExercises: pbExerciseIds.map((id) => exercises.find((e) => e.id === id)?.name).filter(Boolean),
+          pbExercises,
           duration: formatDuration(startTime, endTime),
           exerciseCount: items.length,
           setCount: items.reduce((acc, i) => acc + i.sets.length, 0),

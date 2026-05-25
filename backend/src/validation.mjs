@@ -125,10 +125,15 @@ function optionalRevision(value, label) {
 function personalBest(value) {
   if (value === undefined || value === null) return undefined;
   assertObject(value, 'personalBest');
-  assertAllowedKeys(value, new Set(['weight', 'date']), 'personalBest');
+  assertAllowedKeys(value, new Set(['weight', 'reps', 'date']), 'personalBest');
   const weight = stringValue(value.weight, 'personalBest.weight', { required: true, max: 32, allowEmpty: false });
+  const reps = stringValue(value.reps, 'personalBest.reps', { max: 32, allowEmpty: false });
   const date = dateValue(value.date, 'personalBest.date');
-  return date ? { weight, date } : { weight };
+  return {
+    weight,
+    ...(reps ? { reps } : {}),
+    ...(date ? { date } : {}),
+  };
 }
 
 function workoutSet(value, index) {

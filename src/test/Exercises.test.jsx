@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Exercises from '../pages/Exercises';
+import { saveExercise } from '../api.js';
 
 // Mock api.js — functions are now async and have no userId param
 vi.mock('../api.js', () => ({
@@ -19,6 +20,10 @@ const sampleExercises = [
 ];
 
 describe('Exercises page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders exercise names', () => {
     render(<Exercises exercises={sampleExercises} onUpdate={() => {}} />);
     expect(screen.getByText('Bench Press')).toBeInTheDocument();
@@ -34,6 +39,14 @@ describe('Exercises page', () => {
   it('shows notes when present', () => {
     render(<Exercises exercises={sampleExercises} onUpdate={() => {}} />);
     expect(screen.getByText(/Keep back straight/i)).toBeInTheDocument();
+  });
+
+  it('shows personal best reps when present', () => {
+    render(<Exercises exercises={[
+      { ...sampleExercises[0], personalBest: { weight: '225', reps: '5', date: '2026-05-21' } },
+    ]} onUpdate={() => {}} />);
+
+    expect(screen.getByText(/225 lbs x 5 reps/i)).toBeInTheDocument();
   });
 
   it('shows empty state when no exercises', () => {
@@ -86,6 +99,23 @@ describe('Exercises page', () => {
     fireEvent.click(screen.getAllByText(/Add Exercise/i, { selector: 'button.btn-primary' })[1]);
     await waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
     expect(screen.queryByPlaceholderText(/e.g. Bench Press/i)).not.toBeInTheDocument();
+  });
+
+  it('saves optional reps with manual personal bests', async () => {
+    const onUpdate = vi.fn();
+    render(<Exercises exercises={sampleExercises} onUpdate={onUpdate} />);
+
+    fireEvent.click(screen.getAllByTitle('Edit PB')[0]);
+    fireEvent.change(screen.getByPlaceholderText(/e.g. 225/i), { target: { value: '225' } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g. 5/i), { target: { value: '5' } });
+    fireEvent.click(screen.getByText(/Save PB/i, { selector: 'button.btn-primary' }));
+
+    await waitFor(() => expect(saveExercise).toHaveBeenCalledOnce());
+    expect(saveExercise.mock.calls[0][0].personalBest).toEqual({
+      weight: '225',
+      reps: '5',
+      date: expect.any(String),
+    });
   });
 
   it('opens delete confirmation modal', () => {

@@ -164,9 +164,9 @@ private struct ExerciseRow: View {
 
                 HStack(spacing: 8) {
                     Badge(text: exercise.muscleGroup)
-                    if let best = exercise.personalBest?.weight, !best.isEmpty {
+                    if let best = personalBestLabel(exercise.personalBest) {
                         Button(action: onPB) {
-                            Badge(text: "\(best) lbs", icon: "star.fill", accent: true)
+                            Badge(text: best, icon: "star.fill", accent: true)
                         }
                     }
                     if let notes = exercise.notes, !notes.isEmpty {
@@ -408,12 +408,14 @@ private struct PersonalBestSheet: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var exercise: Exercise
     @State private var weight: String
+    @State private var reps: String
     @State private var date: Date
     @Binding var isSaving: Bool
 
     init(exercise: Exercise, isSaving: Binding<Bool>) {
         _exercise = State(initialValue: exercise)
         _weight = State(initialValue: exercise.personalBest?.weight ?? "")
+        _reps = State(initialValue: exercise.personalBest?.reps ?? "")
         _date = State(initialValue: exercise.personalBest?.date.map(DateHelpers.date(from:)) ?? Date())
         _isSaving = isSaving
     }
@@ -424,6 +426,8 @@ private struct PersonalBestSheet: View {
                 Section("Personal Best") {
                     TextField("e.g. 225", text: $weight)
                         .keyboardType(.decimalPad)
+                    TextField("Reps (optional)", text: $reps)
+                        .keyboardType(.numberPad)
                     DatePicker("Date Achieved", selection: $date, displayedComponents: .date)
                 }
                 Section {
@@ -454,7 +458,12 @@ private struct PersonalBestSheet: View {
             if weight.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 exercise.personalBest = nil
             } else {
-                exercise.personalBest = PersonalBest(weight: weight, date: DateHelpers.dayString(from: date))
+                let cleanedReps = reps.trimmingCharacters(in: .whitespacesAndNewlines)
+                exercise.personalBest = PersonalBest(
+                    weight: weight,
+                    date: DateHelpers.dayString(from: date),
+                    reps: (Double(cleanedReps) ?? 0) > 0 ? cleanedReps : nil
+                )
             }
             try await store.saveExercise(exercise)
             dismiss()

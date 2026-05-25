@@ -16,14 +16,14 @@ test('sanitizes valid exercise payloads', () => {
       name: 'Bench Press',
       muscleGroup: 'Chest',
       notes: '',
-      personalBest: { weight: '225', date: '2026-05-21' },
+      personalBest: { weight: '225', reps: '5', date: '2026-05-21' },
     }, 'ex-1'),
     {
       id: 'ex-1',
       name: 'Bench Press',
       muscleGroup: 'Chest',
       notes: '',
-      personalBest: { weight: '225', date: '2026-05-21' },
+      personalBest: { weight: '225', reps: '5', date: '2026-05-21' },
     },
   );
 });

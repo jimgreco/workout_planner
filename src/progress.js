@@ -37,6 +37,55 @@ export function formatWeight(value) {
   return formatNumber(numeric(value));
 }
 
+function formatPersonalBestValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? formatNumber(parsed) : text;
+}
+
+export function personalBestLabel(personalBest) {
+  if (!personalBest?.weight) return '';
+  const weight = `${formatPersonalBestValue(personalBest.weight)} lbs`;
+  const reps = formatPersonalBestValue(personalBest.reps);
+  return numeric(personalBest.reps) > 0 ? `${weight} x ${reps} reps` : weight;
+}
+
+export function bestPersonalBestSet(sets = []) {
+  return sets.reduce((best, set) => {
+    const weightValue = numeric(set.weight);
+    if (weightValue <= 0) return best;
+    const repsValue = numeric(set.reps);
+    if (!best || weightValue > best.weightValue || (weightValue === best.weightValue && repsValue > best.repsValue)) {
+      return {
+        weight: formatNumber(weightValue),
+        reps: repsValue > 0 ? formatNumber(repsValue) : undefined,
+        weightValue,
+        repsValue,
+      };
+    }
+    return best;
+  }, null);
+}
+
+export function isPersonalBestImprovement(candidate, personalBest) {
+  if (!candidate) return false;
+  const currentWeight = numeric(personalBest?.weight);
+  const currentReps = numeric(personalBest?.reps);
+  if (candidate.weightValue > currentWeight) return true;
+  if (candidate.weightValue === currentWeight && candidate.repsValue > currentReps) return true;
+  return false;
+}
+
+export function personalBestPayload(candidate, date) {
+  if (!candidate) return undefined;
+  return {
+    weight: candidate.weight,
+    ...(candidate.reps ? { reps: candidate.reps } : {}),
+    date,
+  };
+}
+
 export function setLabel(set, weightType = 'weight') {
   const reps = set.reps || '—';
   const typePrefix = set.setType && set.setType !== 'working'

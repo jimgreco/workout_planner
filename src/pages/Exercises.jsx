@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { BarChart3, Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
-import { formatVolume, getExerciseHistory, setLabel, summarizeExercise } from '../progress.js';
+import { formatVolume, getExerciseHistory, personalBestLabel, setLabel, summarizeExercise } from '../progress.js';
 
 const MUSCLE_GROUPS = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
@@ -138,6 +138,7 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
     setPbForm({
       ...ex,
       pbWeight: ex.personalBest?.weight || '',
+      pbReps: ex.personalBest?.reps || '',
       pbDate: ex.personalBest?.date || new Date().toISOString().slice(0, 10),
     });
     setModal('pb');
@@ -161,9 +162,16 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
     try {
       const exercise = { ...pbForm };
       delete exercise.pbWeight;
+      delete exercise.pbReps;
       delete exercise.pbDate;
       if (pbForm.pbWeight) {
-        exercise.personalBest = { weight: pbForm.pbWeight, date: pbForm.pbDate };
+        const reps = pbForm.pbReps?.trim();
+        const repsValue = Number.parseFloat(reps);
+        exercise.personalBest = {
+          weight: pbForm.pbWeight,
+          ...(Number.isFinite(repsValue) && repsValue > 0 ? { reps } : {}),
+          date: pbForm.pbDate,
+        };
       } else {
         delete exercise.personalBest;
       }
@@ -221,7 +229,7 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
                 <span className="badge">{ex.muscleGroup}</span>
                 {ex.personalBest && (
                   <span className="pb-badge" onClick={() => openPB(ex)} title="Click to edit PB">
-                    <Star size={12} fill="currentColor" /> {ex.personalBest.weight} lbs
+                    <Star size={12} fill="currentColor" /> {personalBestLabel(ex.personalBest)}
                   </span>
                 )}
                 {ex.notes && <span className="text-muted" style={{ fontSize: 13 }}>• {ex.notes}</span>}
@@ -310,6 +318,17 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
                 value={pbForm.pbWeight}
                 onChange={(e) => setPbForm({ ...pbForm, pbWeight: e.target.value })}
                 autoFocus
+              />
+            </div>
+            <div className="form-group">
+              <label>Reps (optional)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="e.g. 5"
+                value={pbForm.pbReps}
+                onChange={(e) => setPbForm({ ...pbForm, pbReps: e.target.value })}
               />
             </div>
             <div className="form-group">

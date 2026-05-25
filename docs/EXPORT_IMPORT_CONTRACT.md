@@ -39,7 +39,7 @@ Collection names intentionally match the API data model. The product UI calls
 Imports are validated with the same resource validators used by normal writes:
 
 - Exercises: `id`, `name`, `muscleGroup`, optional `notes`, optional
-  `personalBest`.
+  `personalBest` (`weight`, optional `reps`, optional `date`).
 - Templates/routines: `id`, `name`, optional `description`, and
   `exerciseItems`.
 - Workout logs: `id`, `name`, `date`, `exerciseItems`, `status`, and optional

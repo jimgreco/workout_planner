@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildProgress, summarizeExercise } from '../progress.js';
+import {
+  bestPersonalBestSet,
+  buildProgress,
+  isPersonalBestImprovement,
+  personalBestLabel,
+  summarizeExercise,
+} from '../progress.js';
 
 const exercises = [
   { id: 'bench', name: 'Bench Press', muscleGroup: 'Chest' },
@@ -69,6 +75,20 @@ describe('progress calculations', () => {
     expect(bench.sessions).toBe(1);
     expect(bench.totalVolume).toBe(1520);
     expect(bench.best.set.weight).toBe('120');
+  });
+
+  it('ranks personal bests by weight first and reps second', () => {
+    const candidate = bestPersonalBestSet([
+      { reps: '10', weight: '220' },
+      { reps: '3', weight: '225' },
+      { reps: '5', weight: '225' },
+    ]);
+
+    expect(candidate).toMatchObject({ weight: '225', reps: '5' });
+    expect(isPersonalBestImprovement(candidate, { weight: '225', reps: '4' })).toBe(true);
+    expect(isPersonalBestImprovement(candidate, { weight: '225', reps: '5' })).toBe(false);
+    expect(isPersonalBestImprovement(candidate, { weight: '230', reps: '1' })).toBe(false);
+    expect(personalBestLabel({ weight: '225', reps: '5' })).toBe('225 lbs x 5 reps');
   });
 
   it('filters the 7-day range inclusively', () => {

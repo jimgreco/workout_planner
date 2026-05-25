@@ -46,7 +46,7 @@ DynamoDB
 
 ```js
 // Exercise
-{ id, name, muscleGroup, notes, personalBest }
+{ id, name, muscleGroup, notes, personalBest: { weight, reps?, date? } }
 
 // Template
 { id, name, description, exerciseItems }

@@ -267,18 +267,19 @@ struct WorkoutLogView: View {
         do {
             let endTime = isEditing ? nil : ISO8601DateFormatter().string(from: Date())
             var pbExerciseIds: [String] = []
+            var pbExercises: [String] = []
 
             for item in items {
-                let maxWeight = item.sets
-                    .compactMap { Double($0.weight ?? "") }
-                    .max() ?? 0
-                guard maxWeight > 0, var exercise = store.exercise(id: item.exerciseId) else { continue }
-                let currentPB = Double(exercise.personalBest?.weight ?? "") ?? 0
-                if maxWeight > currentPB {
-                    pbExerciseIds.append(item.exerciseId)
-                    exercise.personalBest = PersonalBest(weight: cleanWeight(maxWeight), date: DateHelpers.dayString(from: date))
-                    try await store.saveExercise(exercise)
-                }
+                let candidate = bestPersonalBestCandidate(from: item.sets)
+                guard var exercise = store.exercise(id: item.exerciseId),
+                      isPersonalBestImprovement(candidate, over: exercise.personalBest),
+                      let candidate
+                else { continue }
+                let personalBest = personalBestPayload(candidate, date: DateHelpers.dayString(from: date))
+                pbExerciseIds.append(item.exerciseId)
+                pbExercises.append("\(exercise.name) - \(personalBestLabel(personalBest) ?? candidate.weight)")
+                exercise.personalBest = personalBest
+                try await store.saveExercise(exercise)
             }
 
             let log = WorkoutLog(
@@ -302,7 +303,7 @@ struct WorkoutLogView: View {
                     duration: formatDuration(startTime: startTime, endTime: endTime),
                     exerciseCount: items.count,
                     setCount: items.reduce(0) { $0 + $1.sets.count },
-                    pbExercises: pbExerciseIds.compactMap { store.exercise(id: $0)?.name }
+                    pbExercises: pbExercises
                 )
             }
         } catch {
@@ -504,9 +505,6 @@ struct WorkoutLogView: View {
         isEditing = false
     }
 
-    private func cleanWeight(_ value: Double) -> String {
-        value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
-    }
 }
 
 struct FinishSummary: Identifiable {

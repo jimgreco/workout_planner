@@ -10,6 +10,13 @@ struct UserProfile: Codable, Equatable {
 struct PersonalBest: Codable, Equatable {
     var weight: String
     var date: String?
+    var reps: String?
+
+    init(weight: String, date: String? = nil, reps: String? = nil) {
+        self.weight = weight
+        self.date = date
+        self.reps = reps
+    }
 }
 
 struct Exercise: Codable, Identifiable, Equatable {
@@ -496,6 +503,69 @@ func restTargetLabel(_ seconds: Int?) -> String {
     let minutes = seconds / 60
     let remaining = seconds % 60
     return remaining == 0 ? "\(minutes)m" : "\(minutes):\(String(format: "%02d", remaining))"
+}
+
+struct PersonalBestCandidate {
+    let weight: String
+    let reps: String?
+    let weightValue: Double
+    let repsValue: Double
+}
+
+private func personalBestNumber(_ value: String?) -> Double {
+    Double((value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+}
+
+private func personalBestNumberLabel(_ value: Double) -> String {
+    value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
+}
+
+private func personalBestTextLabel(_ value: String?) -> String? {
+    let text = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { return nil }
+    if let number = Double(text) {
+        return personalBestNumberLabel(number)
+    }
+    return text
+}
+
+func personalBestLabel(_ best: PersonalBest?) -> String? {
+    guard let best, let weight = personalBestTextLabel(best.weight) else { return nil }
+    let reps = personalBestNumber(best.reps)
+    if reps > 0 {
+        return "\(weight) lbs x \(personalBestNumberLabel(reps)) reps"
+    }
+    return "\(weight) lbs"
+}
+
+func bestPersonalBestCandidate(from sets: [WorkoutSet]) -> PersonalBestCandidate? {
+    sets.reduce(PersonalBestCandidate?.none) { current, set in
+        let weight = personalBestNumber(set.weight)
+        guard weight > 0 else { return current }
+        let reps = personalBestNumber(set.reps)
+        if current == nil || weight > current!.weightValue || (weight == current!.weightValue && reps > current!.repsValue) {
+            return PersonalBestCandidate(
+                weight: personalBestNumberLabel(weight),
+                reps: reps > 0 ? personalBestNumberLabel(reps) : nil,
+                weightValue: weight,
+                repsValue: reps
+            )
+        }
+        return current
+    }
+}
+
+func isPersonalBestImprovement(_ candidate: PersonalBestCandidate?, over current: PersonalBest?) -> Bool {
+    guard let candidate else { return false }
+    let currentWeight = personalBestNumber(current?.weight)
+    let currentReps = personalBestNumber(current?.reps)
+    if candidate.weightValue > currentWeight { return true }
+    if candidate.weightValue == currentWeight && candidate.repsValue > currentReps { return true }
+    return false
+}
+
+func personalBestPayload(_ candidate: PersonalBestCandidate, date: String) -> PersonalBest {
+    PersonalBest(weight: candidate.weight, date: date, reps: candidate.reps)
 }
 
 func setTypeLabel(_ type: String?) -> String {
