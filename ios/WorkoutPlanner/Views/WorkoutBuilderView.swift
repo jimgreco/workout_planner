@@ -388,15 +388,26 @@ private struct ExerciseSetsCard: View {
                             Text("Type")
                                 .font(.system(size: 10, weight: .heavy))
                                 .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                             Text(setTypeLabel(item.sets[setIndex].setType))
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundStyle(Theme.text)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(Theme.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                .stroke(Theme.border, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                     }
-                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 116, maxWidth: .infinity)
                     effortField(
                         label: "RPE",
                         value: Binding(
@@ -415,7 +426,6 @@ private struct ExerciseSetsCard: View {
                         focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .numberPad
                     )
-                    Color.clear.frame(width: 58 + 38 + 32 + 24)
                 }
             }
         }
@@ -427,16 +437,28 @@ private struct ExerciseSetsCard: View {
         focus: WorkoutBuilderFocusedField,
         keyboard: UIKeyboardType
     ) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .heavy))
                 .foregroundStyle(Theme.muted)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             TextField("-", text: value)
                 .keyboardType(keyboard)
                 .multilineTextAlignment(.center)
                 .focused($focusedField, equals: focus)
-                .fieldStyle()
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 26)
         }
+        .padding(.horizontal, 8)
+        .frame(width: 74, height: 34)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
     private func addSet() {
