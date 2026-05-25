@@ -292,6 +292,7 @@ test('program routes persist weekly routine schedules', async () => {
     name: 'Strength Block',
     description: 'Simple weekly plan',
     active: true,
+    progression: { type: 'linear_weight', weightIncrement: 5 },
     progressionRule: 'Add weight when all sets hit the target.',
     schedule: [
       { weekday: 1, templateId: 'push', notes: 'Heavy' },
@@ -304,6 +305,7 @@ test('program routes persist weekly routine schedules', async () => {
   assert.equal(saved.statusCode, 200);
   assert.equal(savedBody.id, 'strength');
   assert.equal(savedBody.revision, 1);
+  assert.deepEqual(savedBody.progression, { type: 'linear_weight', weightIncrement: 5 });
   assert.deepEqual(savedBody.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '1:pull', '3:push']);
 
   const listed = await handler(event('GET', '/programs', undefined, headers));

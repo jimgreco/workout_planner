@@ -572,6 +572,22 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.progression-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.program-rule-preview {
+  margin: -2px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
 .checkbox-row {
   display: flex;
   align-items: center;

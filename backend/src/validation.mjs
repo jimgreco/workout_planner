@@ -17,6 +17,7 @@ const MUSCLE_GROUPS = new Set([
 const WEIGHT_TYPES = new Set(['weight', 'double', 'none']);
 const SET_TYPES = new Set(['warmup', 'working', 'drop', 'failure']);
 const SUPERSET_GROUPS = new Set(['A', 'B', 'C', 'D']);
+const PROGRESSION_TYPES = new Set(['double_progression', 'linear_weight', 'linear_reps', 'none']);
 const LOG_STATUSES = new Set(['planning', 'active', 'finished']);
 
 function fail(message) {
@@ -260,11 +261,38 @@ function programSchedule(value) {
   }).sort((a, b) => a.weekday - b.weekday);
 }
 
+function programProgression(value) {
+  if (value === undefined || value === null) return undefined;
+  assertObject(value, 'progression');
+  assertAllowedKeys(value, new Set(['type', 'minReps', 'maxReps', 'repIncrement', 'weightIncrement']), 'progression');
+
+  const type = stringValue(value.type, 'progression.type', { required: true, max: 32, allowEmpty: false });
+  if (!PROGRESSION_TYPES.has(type)) fail('progression.type is invalid');
+
+  const progression = { type };
+  if (type === 'none') return progression;
+
+  const minReps = optionalIntValue(value.minReps, 'progression.minReps', 1, 100);
+  if (minReps !== undefined) progression.minReps = minReps;
+  const maxReps = optionalIntValue(value.maxReps, 'progression.maxReps', 1, 100);
+  if (maxReps !== undefined) progression.maxReps = maxReps;
+  if (minReps !== undefined && maxReps !== undefined && minReps > maxReps) {
+    fail('progression.minReps must be less than or equal to progression.maxReps');
+  }
+
+  const repIncrement = optionalIntValue(value.repIncrement, 'progression.repIncrement', 1, 20);
+  if (repIncrement !== undefined) progression.repIncrement = repIncrement;
+  const weightIncrement = optionalNumber(value.weightIncrement, 'progression.weightIncrement', 0.25, 200);
+  if (weightIncrement !== undefined) progression.weightIncrement = weightIncrement;
+
+  return progression;
+}
+
 export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'active', 'progressionRule', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'active', 'progression', 'progressionRule', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -278,6 +306,8 @@ export function validateProgram(body, pathId) {
   if (description !== undefined) program.description = description;
   const active = boolValue(body.active, 'active');
   if (active !== undefined) program.active = active;
+  const progression = programProgression(body.progression);
+  if (progression !== undefined) program.progression = progression;
   const progressionRule = stringValue(body.progressionRule, 'progressionRule', { max: 1000 });
   if (progressionRule !== undefined) program.progressionRule = progressionRule;
   return program;

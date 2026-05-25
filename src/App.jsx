@@ -84,6 +84,16 @@ function formatConflictRevision(item) {
   return bits.join(' · ') || 'Unsynced';
 }
 
+function programProgressionLabel(progression) {
+  if (!progression || progression.type === 'none') return '';
+  if (progression.type === 'double_progression') {
+    return `Rule: ${progression.minReps ?? 8}-${progression.maxReps ?? 12} reps, then +${progression.weightIncrement ?? 5} lb`;
+  }
+  if (progression.type === 'linear_weight') return `Rule: +${progression.weightIncrement ?? 5} lb`;
+  if (progression.type === 'linear_reps') return `Rule: +${progression.repIncrement ?? 1} rep`;
+  return '';
+}
+
 function conflictDetails(item, resource) {
   if (!item) return ['Deleted or unavailable'];
   if (resource === 'logs') {
@@ -105,6 +115,7 @@ function conflictDetails(item, resource) {
     return [
       item.active ? 'Active program' : 'Inactive program',
       `${item.schedule?.length || 0} scheduled days`,
+      programProgressionLabel(item.progression),
       item.progressionRule ? `Rule: ${item.progressionRule}` : '',
     ].filter(Boolean);
   }

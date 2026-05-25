@@ -123,12 +123,35 @@ struct ProgramScheduleItem: Codable, Identifiable, Equatable {
     var notes: String?
 }
 
+struct ProgramProgressionRule: Codable, Equatable {
+    var type: String
+    var minReps: Int?
+    var maxReps: Int?
+    var repIncrement: Int?
+    var weightIncrement: Double?
+
+    init(
+        type: String = "double_progression",
+        minReps: Int? = 8,
+        maxReps: Int? = 12,
+        repIncrement: Int? = 1,
+        weightIncrement: Double? = 5
+    ) {
+        self.type = type
+        self.minReps = minReps
+        self.maxReps = maxReps
+        self.repIncrement = repIncrement
+        self.weightIncrement = weightIncrement
+    }
+}
+
 struct TrainingProgram: Codable, Identifiable, Equatable {
     var id: String
     var name: String
     var description: String?
     var schedule: [ProgramScheduleItem]
     var active: Bool?
+    var progression: ProgramProgressionRule?
     var progressionRule: String?
     var updatedAt: String?
     var revision: Int?
@@ -139,6 +162,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         description: String? = "",
         schedule: [ProgramScheduleItem] = [],
         active: Bool? = true,
+        progression: ProgramProgressionRule? = ProgramProgressionRule(),
         progressionRule: String? = "",
         updatedAt: String? = nil,
         revision: Int? = nil
@@ -148,6 +172,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.description = description
         self.schedule = schedule
         self.active = active
+        self.progression = progression
         self.progressionRule = progressionRule
         self.updatedAt = updatedAt
         self.revision = revision
@@ -370,6 +395,27 @@ func setTypeLabel(_ type: String?) -> String {
 func supersetLabel(_ group: String?) -> String {
     guard let group, !group.isEmpty else { return "None" }
     return "Superset \(group)"
+}
+
+func progressionSummary(_ rule: ProgramProgressionRule?) -> String? {
+    guard let rule, rule.type != "none" else { return nil }
+    switch rule.type {
+    case "double_progression":
+        return "\(rule.minReps ?? 8)-\(rule.maxReps ?? 12) reps, +\(rule.repIncrement ?? 1) rep until cap, then +\(formatProgressionNumber(rule.weightIncrement ?? 5)) lb"
+    case "linear_weight":
+        return "Add \(formatProgressionNumber(rule.weightIncrement ?? 5)) lb when all target reps are hit"
+    case "linear_reps":
+        return "Add \(rule.repIncrement ?? 1) rep when all target reps are hit"
+    default:
+        return nil
+    }
+}
+
+func formatProgressionNumber(_ value: Double) -> String {
+    if value.rounded() == value {
+        return String(Int(value))
+    }
+    return String(format: "%.1f", value)
 }
 
 func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {

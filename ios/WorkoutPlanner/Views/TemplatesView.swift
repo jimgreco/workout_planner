@@ -454,6 +454,12 @@ private struct ProgramSummaryCard: View {
                         }
                     }
 
+                    if let summary = progressionSummary(program.progression) {
+                        Label(summary, systemImage: "target")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
+                    }
+
                     if let rule = program.progressionRule, !rule.isEmpty {
                         Label(rule, systemImage: "calendar.badge.clock")
                             .font(.system(size: 13))
@@ -768,6 +774,36 @@ private struct ProgramFormSheet: View {
                 }
 
                 Section {
+                    Picker("Rule", selection: progressionTypeBinding) {
+                        Text("Reps, then weight").tag("double_progression")
+                        Text("Add weight").tag("linear_weight")
+                        Text("Add reps").tag("linear_reps")
+                        Text("No structured rule").tag("none")
+                    }
+
+                    if currentProgression.type == "double_progression" {
+                        Stepper("Min reps: \(currentProgression.minReps ?? 8)", value: progressionIntBinding(\.minReps, fallback: 8), in: 1...100)
+                        Stepper("Max reps: \(currentProgression.maxReps ?? 12)", value: progressionIntBinding(\.maxReps, fallback: 12), in: 1...100)
+                    }
+
+                    if currentProgression.type == "double_progression" || currentProgression.type == "linear_reps" {
+                        Stepper("Rep increment: \(currentProgression.repIncrement ?? 1)", value: progressionIntBinding(\.repIncrement, fallback: 1), in: 1...20)
+                    }
+
+                    if currentProgression.type == "double_progression" || currentProgression.type == "linear_weight" {
+                        Stepper("Weight increment: \(formatProgressionNumber(currentProgression.weightIncrement ?? 5)) lb", value: progressionDoubleBinding(\.weightIncrement, fallback: 5), in: 0.25...200, step: 0.25)
+                    }
+
+                    if let summary = progressionSummary(form.progression) {
+                        Text(summary)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                    }
+                } header: {
+                    Text("Progression Rule")
+                }
+
+                Section {
                     TextEditor(text: Binding(
                         get: { form.progressionRule ?? "" },
                         set: { form.progressionRule = $0 }
@@ -798,6 +834,43 @@ private struct ProgramFormSheet: View {
                 }
             }
         }
+    }
+
+    private var currentProgression: ProgramProgressionRule {
+        form.progression ?? ProgramProgressionRule(type: "none")
+    }
+
+    private var progressionTypeBinding: Binding<String> {
+        Binding(
+            get: { currentProgression.type },
+            set: { type in
+                form.progression = ProgramProgressionRule(type: type)
+            }
+        )
+    }
+
+    private func progressionIntBinding(_ keyPath: WritableKeyPath<ProgramProgressionRule, Int?>, fallback: Int) -> Binding<Int> {
+        Binding(
+            get: { currentProgression[keyPath: keyPath] ?? fallback },
+            set: { value in
+                var rule = currentProgression
+                if rule.type == "none" { rule.type = "double_progression" }
+                rule[keyPath: keyPath] = value
+                form.progression = rule
+            }
+        )
+    }
+
+    private func progressionDoubleBinding(_ keyPath: WritableKeyPath<ProgramProgressionRule, Double?>, fallback: Double) -> Binding<Double> {
+        Binding(
+            get: { currentProgression[keyPath: keyPath] ?? fallback },
+            set: { value in
+                var rule = currentProgression
+                if rule.type == "none" { rule.type = "double_progression" }
+                rule[keyPath: keyPath] = value
+                form.progression = rule
+            }
+        )
     }
 
     private func scheduleToggleBinding(for weekday: Int, templateId: String) -> Binding<Bool> {
@@ -838,6 +911,28 @@ private struct ProgramFormSheet: View {
         .map { $0.1 }
     }
 
+    private func cleanedProgression(_ progression: ProgramProgressionRule?) -> ProgramProgressionRule? {
+        guard var rule = progression, rule.type != "none" else { return nil }
+        if rule.type == "double_progression" {
+            rule.minReps = max(1, min(rule.minReps ?? 8, 100))
+            rule.maxReps = max(rule.minReps ?? 8, min(rule.maxReps ?? 12, 100))
+        } else {
+            rule.minReps = nil
+            rule.maxReps = nil
+        }
+        if rule.type == "double_progression" || rule.type == "linear_reps" {
+            rule.repIncrement = max(1, min(rule.repIncrement ?? 1, 20))
+        } else {
+            rule.repIncrement = nil
+        }
+        if rule.type == "double_progression" || rule.type == "linear_weight" {
+            rule.weightIncrement = max(0.25, min(rule.weightIncrement ?? 5, 200))
+        } else {
+            rule.weightIncrement = nil
+        }
+        return rule
+    }
+
     private func save() async {
         isSaving = true
         defer { isSaving = false }
@@ -846,6 +941,7 @@ private struct ProgramFormSheet: View {
             cleaned.name = cleaned.name.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.description = cleaned.description?.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.progressionRule = cleaned.progressionRule?.trimmingCharacters(in: .whitespacesAndNewlines)
+            cleaned.progression = cleanedProgression(cleaned.progression)
             cleaned.schedule = cleanedSchedule(cleaned.schedule)
             try await store.saveProgram(cleaned)
             dismiss()

@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Templates from '../pages/Templates.jsx';
-import { saveTemplate } from '../api.js';
+import { saveProgram, saveTemplate } from '../api.js';
 
 vi.mock('../api.js', () => ({
   saveTemplate: vi.fn(async (template) => [template]),
   deleteTemplate: vi.fn(async () => []),
+  saveProgram: vi.fn(async (program) => [program]),
+  deleteProgram: vi.fn(async () => []),
   saveSettings: vi.fn(async (settings) => settings),
 }));
 
@@ -51,5 +53,34 @@ describe('Routines page', () => {
       ],
     });
     expect(onUpdate).toHaveBeenCalled();
+  });
+
+  it('saves a structured program progression rule', async () => {
+    const onProgramsUpdate = vi.fn();
+    render(
+      <Templates
+        templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
+        exercises={exercises}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /new program/i }));
+    fireEvent.change(screen.getByPlaceholderText(/3 day strength/i), { target: { value: 'Strength Block' } });
+    fireEvent.change(screen.getByLabelText(/progression rule/i), { target: { value: 'linear_weight' } });
+    fireEvent.change(screen.getByLabelText(/weight increment/i), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /create program/i }));
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    expect(saveProgram.mock.calls[0][0]).toMatchObject({
+      name: 'Strength Block',
+      progression: { type: 'linear_weight', weightIncrement: 10 },
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
   });
 });

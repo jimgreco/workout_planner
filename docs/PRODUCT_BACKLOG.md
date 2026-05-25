@@ -4,6 +4,7 @@
 
 ### Recently Added
 
+- Web and iOS can store structured program progression rules for reps, weight, and double progression.
 - Web and iOS show a simple 45 lb barbell plate breakdown for standard weighted sets.
 - Web and iOS can assign routine/log exercises to simple superset groups A-D.
 - Web and iOS can label individual sets as working, warmup, drop, or failure sets.
@@ -27,6 +28,7 @@
 
 ### Churn Progress
 
+- 2026-05-25: Added structured program progression rules while keeping legacy notes.
 - 2026-05-25: Added client-side plate calculator hints for standard weighted sets.
 - 2026-05-25: Added optional superset grouping for paired exercises in routines and workout logs.
 - 2026-05-25: Added warmup, working, drop, and failure labels for individual logged sets.
@@ -41,7 +43,6 @@ No open items in this bucket.
 
 ### Programming And Planning
 
-- Turn freeform progression notes into structured weight/reps rules.
 - Add deload and skipped-workout handling.
 - Deepen planned-versus-completed reporting beyond the current weekly program view.
 

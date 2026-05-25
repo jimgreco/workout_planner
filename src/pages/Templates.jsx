@@ -25,8 +25,25 @@ const WEEKDAYS = [
   { value: 6, label: 'Sat', long: 'Saturday' },
 ];
 
+const PROGRESSION_TYPES = [
+  { value: 'double_progression', label: 'Reps, then weight' },
+  { value: 'linear_weight', label: 'Add weight' },
+  { value: 'linear_reps', label: 'Add reps' },
+  { value: 'none', label: 'No structured rule' },
+];
+
+function defaultProgression(type = 'double_progression') {
+  return {
+    type,
+    minReps: 8,
+    maxReps: 12,
+    repIncrement: 1,
+    weightIncrement: 5,
+  };
+}
+
 const emptyTemplate = () => ({ name: '', description: '', exerciseItems: [] });
-const emptyProgram = () => ({ name: '', description: '', active: true, schedule: [], progressionRule: '' });
+const emptyProgram = () => ({ name: '', description: '', active: true, schedule: [], progression: defaultProgression(), progressionRule: '' });
 const STARTER_TEMPLATES = [
   {
     name: 'Push Starter',
@@ -79,6 +96,58 @@ function dateLabel(date) {
   if (localDateKey(date) === localDateKey(today)) return 'Today';
   if (localDateKey(date) === localDateKey(tomorrow)) return 'Tomorrow';
   return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+}
+
+function formatNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return Number.isInteger(number) ? String(number) : number.toFixed(1);
+}
+
+function progressionForForm(progression, fallbackType = 'double_progression') {
+  return {
+    ...defaultProgression(fallbackType),
+    ...(progression || {}),
+    type: progression?.type || fallbackType,
+  };
+}
+
+function cleanProgression(progression) {
+  const rule = progressionForForm(progression);
+  if (rule.type === 'none') return null;
+
+  const cleaned = { type: rule.type };
+  const minReps = Number.parseInt(rule.minReps, 10);
+  const maxReps = Number.parseInt(rule.maxReps, 10);
+  const repIncrement = Number.parseInt(rule.repIncrement, 10);
+  const weightIncrement = Number.parseFloat(rule.weightIncrement);
+
+  if (rule.type === 'double_progression') {
+    if (Number.isInteger(minReps)) cleaned.minReps = minReps;
+    if (Number.isInteger(maxReps)) cleaned.maxReps = Math.max(maxReps, cleaned.minReps ?? maxReps);
+  }
+  if (rule.type === 'double_progression' || rule.type === 'linear_reps') {
+    if (Number.isInteger(repIncrement)) cleaned.repIncrement = repIncrement;
+  }
+  if (rule.type === 'double_progression' || rule.type === 'linear_weight') {
+    if (Number.isFinite(weightIncrement)) cleaned.weightIncrement = weightIncrement;
+  }
+  return cleaned;
+}
+
+function progressionSummary(progression) {
+  const rule = progressionForForm(progression, progression?.type || 'none');
+  if (!progression || rule.type === 'none') return '';
+  if (rule.type === 'double_progression') {
+    return `${rule.minReps}-${rule.maxReps} reps, +${rule.repIncrement} rep until cap, then +${formatNumber(rule.weightIncrement)} lb`;
+  }
+  if (rule.type === 'linear_weight') {
+    return `Add ${formatNumber(rule.weightIncrement)} lb when all target reps are hit`;
+  }
+  if (rule.type === 'linear_reps') {
+    return `Add ${rule.repIncrement} rep when all target reps are hit`;
+  }
+  return '';
 }
 
 function templateById(templates) {
@@ -155,7 +224,7 @@ function weekPlan(program, templates, logs) {
 
 function cleanProgram(program) {
   const seen = new Set();
-  return {
+  const cleaned = {
     ...program,
     name: program.name.trim(),
     description: program.description?.trim() || '',
@@ -171,6 +240,13 @@ function cleanProgram(program) {
       })
       .sort((a, b) => a.weekday - b.weekday),
   };
+  const progression = cleanProgression(program.progression);
+  if (progression) {
+    cleaned.progression = progression;
+  } else {
+    delete cleaned.progression;
+  }
+  return cleaned;
 }
 
 export default function Templates({
@@ -214,7 +290,13 @@ export default function Templates({
   function openSettings() { setSettingsForm({ ...settings }); setModal('settings'); setSaved(false); }
   function openProgram(program = emptyProgram()) {
     setShowAddMenu(false);
-    setProgramForm({ ...emptyProgram(), ...program, schedule: [...(program.schedule ?? [])] });
+    const isExisting = Boolean(program.id);
+    setProgramForm({
+      ...emptyProgram(),
+      ...program,
+      progression: progressionForForm(program.progression, isExisting ? 'none' : 'double_progression'),
+      schedule: [...(program.schedule ?? [])],
+    });
     setModal('program');
   }
 
@@ -311,6 +393,16 @@ export default function Templates({
 
   function scheduledTemplateIdsFor(weekday) {
     return new Set((programForm.schedule ?? []).filter((item) => item.weekday === weekday).map((item) => item.templateId));
+  }
+
+  function updateProgramProgression(patch) {
+    setProgramForm((draft) => ({
+      ...draft,
+      progression: {
+        ...progressionForForm(draft.progression, draft.progression?.type || 'double_progression'),
+        ...patch,
+      },
+    }));
   }
 
   const settingsDirty = settingsForm.defaultSets !== settings.defaultSets || settingsForm.defaultReps !== settings.defaultReps;
@@ -419,6 +511,12 @@ export default function Templates({
               ))}
             </div>
 
+            {progressionSummary(activeProgram.progression) && (
+              <p className="program-rule">
+                <Target size={15} />
+                {progressionSummary(activeProgram.progression)}
+              </p>
+            )}
             {activeProgram.progressionRule && (
               <p className="program-rule">
                 <CalendarDays size={15} />
@@ -638,10 +736,87 @@ export default function Templates({
           </div>
 
           <div className="form-group">
+            <label>Progression Rule</label>
+            <select
+              aria-label="Progression rule"
+              value={programForm.progression?.type || 'none'}
+              onChange={(e) => updateProgramProgression({ type: e.target.value })}
+            >
+              {PROGRESSION_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {programForm.progression?.type !== 'none' && (
+            <div className="progression-grid">
+              {programForm.progression?.type === 'double_progression' && (
+                <>
+                  <div className="form-group">
+                    <label>Min Reps</label>
+                    <input
+                      type="number"
+                      aria-label="Minimum reps"
+                      min="1"
+                      max="100"
+                      value={programForm.progression?.minReps ?? 8}
+                      onChange={(e) => updateProgramProgression({ minReps: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Max Reps</label>
+                    <input
+                      type="number"
+                      aria-label="Maximum reps"
+                      min="1"
+                      max="100"
+                      value={programForm.progression?.maxReps ?? 12}
+                      onChange={(e) => updateProgramProgression({ maxReps: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
+              {(programForm.progression?.type === 'double_progression' || programForm.progression?.type === 'linear_reps') && (
+                <div className="form-group">
+                  <label>Rep Increment</label>
+                  <input
+                    type="number"
+                    aria-label="Rep increment"
+                    min="1"
+                    max="20"
+                    value={programForm.progression?.repIncrement ?? 1}
+                    onChange={(e) => updateProgramProgression({ repIncrement: e.target.value })}
+                  />
+                </div>
+              )}
+              {(programForm.progression?.type === 'double_progression' || programForm.progression?.type === 'linear_weight') && (
+                <div className="form-group">
+                  <label>Weight Increment</label>
+                  <input
+                    type="number"
+                    aria-label="Weight increment"
+                    min="0.25"
+                    max="200"
+                    step="0.25"
+                    value={programForm.progression?.weightIncrement ?? 5}
+                    onChange={(e) => updateProgramProgression({ weightIncrement: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {progressionSummary(programForm.progression) && (
+            <p className="program-rule-preview">
+              {progressionSummary(programForm.progression)}
+            </p>
+          )}
+
+          <div className="form-group">
             <label>Progression Notes (optional)</label>
             <textarea
               rows={3}
-              placeholder="e.g. Add 5 lbs when all sets hit the target"
+              placeholder="Any exercise-specific exceptions, deload notes, or coaching cues"
               value={programForm.progressionRule || ''}
               onChange={(e) => setProgramForm({ ...programForm, progressionRule: e.target.value })}
             />

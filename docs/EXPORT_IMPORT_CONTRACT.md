@@ -43,8 +43,8 @@ Imports are validated with the same resource validators used by normal writes:
   `exerciseItems`.
 - Workout logs: `id`, `name`, `date`, `exerciseItems`, `status`, and optional
   notes/timing/PB fields.
-- Programs: `id`, `name`, `schedule`, optional `description`, `active`, and
-  `progressionRule`.
+- Programs: `id`, `name`, `schedule`, optional `description`, `active`,
+  structured `progression`, and legacy/freeform `progressionRule`.
 - Settings: `defaultSets` and `defaultReps`.
 
 Unknown top-level import keys and unknown resource fields are rejected. The
@@ -67,6 +67,10 @@ Import limits are intentionally larger than normal app use:
 - Set labels and effort are stored as optional `setType`, `rpe`, and `rir`
   strings on individual sets. `setType` must be `warmup`, `working`, `drop`, or
   `failure`.
+- Program progression can be stored as an optional `progression` object with
+  `type`, `minReps`, `maxReps`, `repIncrement`, and `weightIncrement`.
+  Supported types are `double_progression`, `linear_weight`, `linear_reps`, and
+  `none`.
 - Up to 70 schedule entries per program.
 
 ## Import Modes
