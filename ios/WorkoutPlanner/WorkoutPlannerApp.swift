@@ -9,8 +9,10 @@ struct WorkoutPlannerApp: App {
 
     init() {
         let authManager = AuthManager()
+        let workoutStore = WorkoutStore(auth: authManager)
         _auth = StateObject(wrappedValue: authManager)
-        _store = StateObject(wrappedValue: WorkoutStore(auth: authManager))
+        _store = StateObject(wrappedValue: workoutStore)
+        BackgroundSyncScheduler.register(store: workoutStore)
     }
 
     var body: some Scene {
@@ -30,6 +32,8 @@ struct WorkoutPlannerApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active, auth.user != nil {
                         store.appBecameActive()
+                    } else if phase == .background, auth.user != nil {
+                        store.appMovedToBackground()
                     }
                 }
         }

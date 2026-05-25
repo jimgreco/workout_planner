@@ -141,6 +141,8 @@ test('admin feedback route returns sanitized recent feedback', async () => {
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.items.length, 1);
+    assert.equal(body.total, 2);
+    assert.equal(typeof body.nextCursor, 'string');
     assert.deepEqual(body.items[0], {
       id: 'b',
       createdAt: '2026-01-02T00:00:00.000Z',
@@ -148,6 +150,42 @@ test('admin feedback route returns sanitized recent feedback', async () => {
       build: '1.1',
       userHash: hashUserId('user-2'),
     });
+  } finally {
+    if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
+    else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
+  }
+});
+
+test('admin feedback route supports cursor paging and CSV export', async () => {
+  const originalSecret = process.env.ADMIN_SUPPORT_SECRET;
+  process.env.ADMIN_SUPPORT_SECRET = 'test-admin-support-secret';
+  __setTestDb(fakeDb([
+    { PK: 'USER#user-1', SK: 'FEEDBACK#2026-01-01T00:00:00.000Z#a', id: 'a', createdAt: '2026-01-01T00:00:00.000Z', message: 'Older', build: '1.0' },
+    { PK: 'USER#user-2', SK: 'FEEDBACK#2026-01-02T00:00:00.000Z#b', id: 'b', createdAt: '2026-01-02T00:00:00.000Z', message: 'Newer, with comma', build: '1.1' },
+  ]));
+
+  try {
+    const first = await handler(event('GET', '/admin/feedback?limit=1', undefined, {
+      'X-Admin-Support-Secret': 'test-admin-support-secret',
+    }));
+    const firstBody = JSON.parse(first.body);
+    const second = await handler(event('GET', `/admin/feedback?limit=1&cursor=${encodeURIComponent(firstBody.nextCursor)}`, undefined, {
+      'X-Admin-Support-Secret': 'test-admin-support-secret',
+    }));
+    const secondBody = JSON.parse(second.body);
+
+    assert.equal(second.statusCode, 200);
+    assert.equal(secondBody.items.length, 1);
+    assert.equal(secondBody.items[0].id, 'a');
+    assert.equal(secondBody.nextCursor, undefined);
+
+    const csv = await handler(event('GET', '/admin/feedback?format=csv&limit=2', undefined, {
+      'X-Admin-Support-Secret': 'test-admin-support-secret',
+    }));
+    assert.equal(csv.statusCode, 200);
+    assert.equal(csv.headers['Content-Type'], 'text/csv; charset=utf-8');
+    assert.match(csv.body, /^createdAt,userHash,build,message\n/);
+    assert.match(csv.body, /"Newer, with comma"/);
   } finally {
     if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
     else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
@@ -180,7 +218,7 @@ test('admin overview summarizes feedback builds', async () => {
   }
 });
 
-test('admin account lookup returns read-only user summary by verified email alias', async () => {
+test('admin account lookup returns read-only user summary and drilldown by verified email alias', async () => {
   const originalSecret = process.env.ADMIN_SUPPORT_SECRET;
   process.env.ADMIN_SUPPORT_SECRET = 'test-admin-support-secret';
   __setTestDb(fakeDb([
@@ -190,10 +228,11 @@ test('admin account lookup returns read-only user summary by verified email alia
     { PK: 'USER#user-1', SK: 'LOG#active', id: 'active', name: 'Active', date: '2026-01-03', exerciseItems: [], status: 'active' },
     { PK: 'USER#user-1', SK: 'LOG#done', id: 'done', name: 'Done', date: '2026-01-02', exerciseItems: [], status: 'finished' },
     { PK: 'USER#user-1', SK: 'FEEDBACK#2026-01-04T00:00:00.000Z#a', id: 'fb', createdAt: '2026-01-04T00:00:00.000Z', message: 'Help', build: '1.1' },
+    { PK: 'USER#user-1', SK: 'IMPORT#2026-01-05T00:00:00.000Z#import', id: 'import', createdAt: '2026-01-05T00:00:00.000Z', mode: 'merge', imported: { exercises: 1 } },
   ]));
 
   try {
-    const result = await handler(event('GET', '/admin/accounts?email=tester%40example.com', undefined, {
+    const result = await handler(event('GET', '/admin/accounts?email=tester%40example.com&detail=1', undefined, {
       'X-Admin-Support-Secret': 'test-admin-support-secret',
     }));
     const body = JSON.parse(result.body);
@@ -202,9 +241,14 @@ test('admin account lookup returns read-only user summary by verified email alia
     assert.equal(body.found, true);
     assert.equal(body.account.userHash, hashUserId('user-1'));
     assert.equal(body.account.email, 'tester@example.com');
-    assert.deepEqual(body.account.counts, { exercises: 1, templates: 1, logs: 2, programs: 0, feedback: 1 });
+    assert.deepEqual(body.account.counts, { exercises: 1, templates: 1, logs: 2, programs: 0, feedback: 1, imports: 1 });
     assert.equal(body.account.activeWorkoutCount, 1);
     assert.equal(body.account.lastWorkoutDate, '2026-01-03');
+    assert.equal(body.account.latestImportAt, '2026-01-05T00:00:00.000Z');
+    assert.deepEqual(body.account.detail.exercises[0], { id: 'bench', name: 'Bench', muscleGroup: 'Chest' });
+    assert.deepEqual(body.account.detail.templates[0], { id: 'push', name: 'Push', exerciseCount: 0 });
+    assert.deepEqual(body.account.detail.recentLogs.map((log) => log.id), ['active', 'done']);
+    assert.equal(body.account.detail.recentImports[0].id, 'import');
   } finally {
     if (originalSecret === undefined) delete process.env.ADMIN_SUPPORT_SECRET;
     else process.env.ADMIN_SUPPORT_SECRET = originalSecret;
@@ -327,6 +371,7 @@ test('import restores Forge export data into an empty account', async () => {
   const result = await handler(event('POST', '/import', {
     mode: 'emptyOnly',
     data: {
+      exportedAt: '2026-01-01T00:00:00.000Z',
       settings: { defaultSets: 5, defaultReps: 6 },
       exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
       templates: [{ id: 'push', name: 'Push', exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '6', weight: '100' }] }] }],
@@ -338,11 +383,19 @@ test('import restores Forge export data into an empty account', async () => {
 
   assert.equal(result.statusCode, 200);
   assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, programs: 1, settings: true });
+  assert.equal(typeof body.audit.id, 'string');
+  assert.equal(typeof body.audit.createdAt, 'string');
   assert.equal(db.items.get('USER#dev-user-local|SETTINGS').defaultSets, 5);
   assert.equal(db.items.get('USER#dev-user-local|EXERCISE#bench').revision, 1);
   assert.equal(db.items.get('USER#dev-user-local|TEMPLATE#push').exerciseItems[0].exerciseId, 'bench');
   assert.equal(db.items.get('USER#dev-user-local|LOG#done').status, 'finished');
   assert.equal(db.items.get('USER#dev-user-local|PROGRAM#program').schedule[0].templateId, 'push');
+  const audit = [...db.items.values()].find((item) => item.PK === 'USER#dev-user-local' && item.SK.startsWith('IMPORT#'));
+  assert.equal(audit.mode, 'emptyOnly');
+  assert.equal(audit.sourceExportedAt, '2026-01-01T00:00:00.000Z');
+  assert.deepEqual(audit.source, { exercises: 1, templates: 1, logs: 1, programs: 1, settings: true });
+  assert.deepEqual(audit.before, { exercises: 0, templates: 0, logs: 0, programs: 0, feedback: 0, imports: 0 });
+  assert.deepEqual(audit.imported, body.imported);
 });
 
 test('empty-only import refuses to restore over existing account data', async () => {

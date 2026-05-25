@@ -4,7 +4,7 @@ enum WorkoutAPIError: LocalizedError {
     case missingConfiguration
     case unauthorized
     case invalidResponse
-    case server(Int, String, requestID: String?)
+    case server(Int, String, requestID: String?, conflict: WorkoutAPIConflict?)
 
     var errorDescription: String? {
         switch self {
@@ -14,13 +14,29 @@ enum WorkoutAPIError: LocalizedError {
             return "Session expired. Please sign in again."
         case .invalidResponse:
             return "The API returned an invalid response."
-        case let .server(code, message, requestID):
+        case let .server(code, message, requestID, _):
             if let requestID, !requestID.isEmpty {
                 return "API \(code): \(message) (Request ID: \(requestID))"
             }
             return "API \(code): \(message)"
         }
     }
+
+    var conflict: WorkoutAPIConflict? {
+        if case let .server(_, _, _, conflict) = self { return conflict }
+        return nil
+    }
+
+    var requestID: String? {
+        if case let .server(_, _, requestID, _) = self { return requestID }
+        return nil
+    }
+}
+
+struct WorkoutAPIConflict {
+    var expectedRevision: Int?
+    var actualRevision: Int?
+    var remoteData: Data?
 }
 
 private struct APIErrorResponse: Decodable {
@@ -36,12 +52,32 @@ struct WorkoutAPI {
     private let encoder = JSONEncoder()
 
     func initData() async throws -> ([Exercise], [WorkoutTemplate], [WorkoutLog], [TrainingProgram], WorkoutSettings) {
-        async let exercises: [Exercise] = request("GET", path: "/exercises")
-        async let templates: [WorkoutTemplate] = request("GET", path: "/templates")
-        async let logs: [WorkoutLog] = request("GET", path: "/logs")
-        async let programs: [TrainingProgram] = request("GET", path: "/programs")
-        async let settings: WorkoutSettings = request("GET", path: "/settings")
+        async let exercises = fetchExercises()
+        async let templates = fetchTemplates()
+        async let logs = fetchLogs()
+        async let programs = fetchPrograms()
+        async let settings = fetchSettings()
         return try await (exercises, templates.sortedByName(), logs, programs.sortedForDisplay(), settings)
+    }
+
+    func fetchExercises() async throws -> [Exercise] {
+        try await request("GET", path: "/exercises")
+    }
+
+    func fetchTemplates() async throws -> [WorkoutTemplate] {
+        try await request("GET", path: "/templates")
+    }
+
+    func fetchLogs() async throws -> [WorkoutLog] {
+        try await request("GET", path: "/logs")
+    }
+
+    func fetchPrograms() async throws -> [TrainingProgram] {
+        try await request("GET", path: "/programs")
+    }
+
+    func fetchSettings() async throws -> WorkoutSettings {
+        try await request("GET", path: "/settings")
     }
 
     func saveSettings(_ settings: WorkoutSettings) async throws -> WorkoutSettings {
@@ -136,7 +172,7 @@ struct WorkoutAPI {
             let decodedError = try? decoder.decode(APIErrorResponse.self, from: data)
             let message = decodedError?.error ?? String(data: data, encoding: .utf8) ?? ""
             let requestID = decodedError?.requestId ?? http.value(forHTTPHeaderField: "X-Request-Id")
-            throw WorkoutAPIError.server(http.statusCode, message, requestID: requestID)
+            throw WorkoutAPIError.server(http.statusCode, message, requestID: requestID, conflict: decodeConflict(from: data))
         }
         return data
     }
@@ -147,6 +183,24 @@ struct WorkoutAPI {
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return data }
         object["expectedRevision"] = revision
         return try JSONSerialization.data(withJSONObject: object)
+    }
+
+    private func decodeConflict(from data: Data) -> WorkoutAPIConflict? {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let conflict = object["conflict"] as? [String: Any]
+        else {
+            return nil
+        }
+        var remoteData: Data?
+        if let remote = conflict["remote"], !(remote is NSNull), JSONSerialization.isValidJSONObject(remote) {
+            remoteData = try? JSONSerialization.data(withJSONObject: remote)
+        }
+        return WorkoutAPIConflict(
+            expectedRevision: conflict["expectedRevision"] as? Int,
+            actualRevision: conflict["actualRevision"] as? Int,
+            remoteData: remoteData
+        )
     }
 }
 

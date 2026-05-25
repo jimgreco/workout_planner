@@ -395,6 +395,7 @@ export function validateImport(body) {
     'data',
   );
 
+  const exportedAt = isoDateTimeValue(data.exportedAt, 'exportedAt');
   const exercises = importArray(data.exercises, 'exercises', 1000)
     .map((exercise, index) => {
       assertObject(exercise, `exercises[${index}]`);
@@ -419,7 +420,7 @@ export function validateImport(body) {
       return validateProgram(program, program.id);
     });
 
-  return { mode, exercises, templates, logs, programs, settings };
+  return { mode, exportedAt, exercises, templates, logs, programs, settings };
 }
 
 export function validateAuthBody(body, provider) {

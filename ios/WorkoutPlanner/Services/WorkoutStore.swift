@@ -12,6 +12,8 @@ final class WorkoutStore: ObservableObject {
     @Published var pendingTemplate: WorkoutTemplate?
     @Published var editingLog: WorkoutLog?
     @Published var pendingSyncCount = 0
+    @Published var pendingConflictCount = 0
+    @Published var syncConflicts: [SyncConflictItem] = []
     @Published var isSyncingPending = false
     @Published var syncIssueMessage: String?
     @Published var lastSyncAttemptAt: Date?
@@ -27,7 +29,9 @@ final class WorkoutStore: ObservableObject {
 
     init(auth: AuthManager) {
         self.auth = auth
+        syncConflicts = PendingSyncConflictQueue.all
         pendingSyncCount = PendingWorkoutLogQueue.count + PendingResourceQueue.count
+        pendingConflictCount = syncConflicts.count
     }
 
     var usesLocalData: Bool {
@@ -36,6 +40,9 @@ final class WorkoutStore: ObservableObject {
 
     var syncStatusText: String {
         if usesLocalData { return "Local demo data" }
+        if pendingConflictCount > 0 {
+            return "\(pendingConflictCount) sync \(pendingConflictCount == 1 ? "conflict" : "conflicts")"
+        }
         if pendingSyncCount > 0 {
             if isSyncingPending { return "Syncing \(pendingSyncCount) pending" }
             return "\(pendingSyncCount) pending \(pendingSyncCount == 1 ? "change" : "changes")"
@@ -46,6 +53,9 @@ final class WorkoutStore: ObservableObject {
     var syncDetailText: String? {
         if let syncIssueMessage {
             return syncIssueMessage
+        }
+        if pendingConflictCount > 0 {
+            return "Review sync conflicts before Forge retries those changes."
         }
         if pendingSyncCount > 0 {
             let retryText = lastSyncAttemptAt.map { "Last retry \(Self.syncAttemptFormatter.string(from: $0))" } ?? "Will retry automatically"
@@ -65,6 +75,7 @@ final class WorkoutStore: ObservableObject {
         errorMessage = nil
         PendingWorkoutLogQueue.clear()
         PendingResourceQueue.clear()
+        PendingSyncConflictQueue.clear()
         refreshPendingSyncCount()
         stopPendingSyncRetryLoop()
     }
@@ -88,14 +99,7 @@ final class WorkoutStore: ObservableObject {
         }
 
         do {
-            let loaded = try await api.initData()
-            exercises = mergePendingExercises(loaded.0).sortedByName()
-            templates = mergePendingTemplates(loaded.1).sortedByName()
-            logs = mergePendingLogs(loaded.2)
-            programs = mergePendingPrograms(loaded.3).sortedForDisplay()
-            settings = loaded.4
-            refreshPendingSyncCount()
-            await flushPendingChanges(using: api)
+            try await loadCloudData(using: api)
         } catch WorkoutAPIError.unauthorized {
             auth.signOut()
             errorMessage = WorkoutAPIError.unauthorized.localizedDescription
@@ -122,11 +126,17 @@ final class WorkoutStore: ObservableObject {
             do {
                 saved = try await api.saveExercise(exercise)
                 PendingResourceQueue.remove(.exercises, id: exercise.id)
+                PendingSyncConflictQueue.remove(.exercises, id: exercise.id)
             } catch {
-                guard isNetworkAvailabilityError(error) else { throw error }
-                PendingResourceQueue.upsertExercise(exercise)
+                if rememberConflict(resource: .exercises, operation: .put, itemId: exercise.id, local: .exercise(exercise), error: error) {
+                    PendingResourceQueue.upsertExercise(exercise)
+                    saved = exercise
+                } else {
+                    guard isNetworkAvailabilityError(error) else { throw error }
+                    PendingResourceQueue.upsertExercise(exercise)
+                    saved = exercise
+                }
                 refreshPendingSyncCount()
-                saved = exercise
             }
         }
         upsert(saved, in: &exercises)
@@ -158,11 +168,17 @@ final class WorkoutStore: ObservableObject {
             do {
                 saved = try await api.saveTemplate(template)
                 PendingResourceQueue.remove(.templates, id: template.id)
+                PendingSyncConflictQueue.remove(.templates, id: template.id)
             } catch {
-                guard isNetworkAvailabilityError(error) else { throw error }
-                PendingResourceQueue.upsertTemplate(template)
+                if rememberConflict(resource: .templates, operation: .put, itemId: template.id, local: .template(template), error: error) {
+                    PendingResourceQueue.upsertTemplate(template)
+                    saved = template
+                } else {
+                    guard isNetworkAvailabilityError(error) else { throw error }
+                    PendingResourceQueue.upsertTemplate(template)
+                    saved = template
+                }
                 refreshPendingSyncCount()
-                saved = template
             }
         }
         upsert(saved, in: &templates)
@@ -194,11 +210,17 @@ final class WorkoutStore: ObservableObject {
             do {
                 saved = try await api.saveProgram(program)
                 PendingResourceQueue.remove(.programs, id: program.id)
+                PendingSyncConflictQueue.remove(.programs, id: program.id)
             } catch {
-                guard isNetworkAvailabilityError(error) else { throw error }
-                PendingResourceQueue.upsertProgram(program)
+                if rememberConflict(resource: .programs, operation: .put, itemId: program.id, local: .program(program), error: error) {
+                    PendingResourceQueue.upsertProgram(program)
+                    saved = program
+                } else {
+                    guard isNetworkAvailabilityError(error) else { throw error }
+                    PendingResourceQueue.upsertProgram(program)
+                    saved = program
+                }
                 refreshPendingSyncCount()
-                saved = program
             }
         }
         upsert(saved, in: &programs)
@@ -231,11 +253,17 @@ final class WorkoutStore: ObservableObject {
             do {
                 saved = try await api.saveLog(log)
                 PendingWorkoutLogQueue.remove(log.id)
+                PendingSyncConflictQueue.remove(.logs, id: log.id)
             } catch {
-                guard isNetworkAvailabilityError(error) else { throw error }
-                PendingWorkoutLogQueue.upsert(log)
+                if rememberConflict(resource: .logs, operation: .put, itemId: log.id, local: .log(log), error: error) {
+                    PendingWorkoutLogQueue.upsert(log)
+                    saved = log
+                } else {
+                    guard isNetworkAvailabilityError(error) else { throw error }
+                    PendingWorkoutLogQueue.upsert(log)
+                    saved = log
+                }
                 refreshPendingSyncCount()
-                saved = log
             }
         }
         upsert(saved, in: &logs)
@@ -275,11 +303,56 @@ final class WorkoutStore: ObservableObject {
         await flushPendingChanges(using: api)
     }
 
+    func resolveSyncConflict(_ conflict: SyncConflictItem, keeping resolution: SyncConflictResolution) async {
+        guard !usesLocalData else { return }
+        guard let api else {
+            errorMessage = "API configuration is missing. Install a build configured for Forge production."
+            return
+        }
+
+        do {
+            switch resolution {
+            case .remote:
+                applyRemoteConflictValue(conflict)
+            case .local:
+                try await saveLocalConflictValue(conflict, using: api)
+            }
+            removePendingChange(for: conflict)
+            PendingSyncConflictQueue.remove(conflict.resource, id: conflict.itemId)
+            refreshPendingSyncCount()
+        } catch WorkoutAPIError.unauthorized {
+            auth.signOut()
+            errorMessage = WorkoutAPIError.unauthorized.localizedDescription
+        } catch {
+            syncIssueMessage = "Could not resolve sync conflict: \(error.localizedDescription)"
+            errorMessage = syncIssueMessage
+            refreshPendingSyncCount()
+        }
+    }
+
     func appBecameActive() {
         refreshPendingSyncCount()
-        guard pendingSyncCount > 0 else { return }
+        guard pendingSyncCount > 0, pendingConflictCount == 0 else { return }
         startPendingSyncRetryLoop()
         Task { await syncPendingChanges() }
+    }
+
+    func appMovedToBackground() {
+        scheduleBackgroundSyncIfNeeded()
+    }
+
+    func scheduleBackgroundSyncIfNeeded() {
+        BackgroundSyncScheduler.scheduleIfNeeded(
+            pendingSyncCount: pendingSyncCount,
+            pendingConflictCount: pendingConflictCount
+        )
+    }
+
+    func performBackgroundSync() async -> Bool {
+        guard pendingSyncCount > 0, pendingConflictCount == 0 else { return true }
+        await syncPendingChanges()
+        scheduleBackgroundSyncIfNeeded()
+        return pendingConflictCount == 0 && syncIssueMessage == nil
     }
 
     func submitFeedback(_ message: String) async throws {
@@ -348,7 +421,7 @@ final class WorkoutStore: ObservableObject {
         let incomingLogs = payload.logs ?? []
         let incomingPrograms = payload.programs ?? []
         if mode == .emptyOnly && (!exercises.isEmpty || !templates.isEmpty || !logs.isEmpty || !programs.isEmpty) {
-            throw WorkoutAPIError.server(409, "Import can only restore into an empty account.", requestID: nil)
+            throw WorkoutAPIError.server(409, "Import can only restore into an empty account.", requestID: nil, conflict: nil)
         }
 
         if mode == .emptyOnly {
@@ -531,8 +604,14 @@ final class WorkoutStore: ObservableObject {
     }
 
     private func refreshPendingSyncCount() {
+        syncConflicts = PendingSyncConflictQueue.all
         pendingSyncCount = PendingWorkoutLogQueue.count + PendingResourceQueue.count
+        pendingConflictCount = syncConflicts.count
         if usesLocalData {
+            stopPendingSyncRetryLoop()
+            return
+        }
+        if pendingConflictCount > 0 {
             stopPendingSyncRetryLoop()
             return
         }
@@ -558,6 +637,211 @@ final class WorkoutStore: ObservableObject {
     private func stopPendingSyncRetryLoop() {
         pendingRetryTask?.cancel()
         pendingRetryTask = nil
+    }
+
+    private func loadCloudData(using api: WorkoutAPI) async throws {
+        var loadedSections = 0
+        var failures: [String] = []
+        var firstError: Error?
+
+        do {
+            exercises = mergePendingExercises(try await api.fetchExercises()).sortedByName()
+            loadedSections += 1
+        } catch {
+            try recordLoadFailure(error, label: "exercise library", failures: &failures, firstError: &firstError)
+        }
+
+        do {
+            templates = mergePendingTemplates(try await api.fetchTemplates()).sortedByName()
+            loadedSections += 1
+        } catch {
+            try recordLoadFailure(error, label: "routines", failures: &failures, firstError: &firstError)
+        }
+
+        do {
+            logs = mergePendingLogs(try await api.fetchLogs())
+            loadedSections += 1
+        } catch {
+            try recordLoadFailure(error, label: "workout history", failures: &failures, firstError: &firstError)
+        }
+
+        do {
+            programs = mergePendingPrograms(try await api.fetchPrograms()).sortedForDisplay()
+            loadedSections += 1
+        } catch {
+            try recordLoadFailure(error, label: "programs", failures: &failures, firstError: &firstError)
+        }
+
+        do {
+            settings = try await api.fetchSettings()
+            loadedSections += 1
+        } catch {
+            try recordLoadFailure(error, label: "settings", failures: &failures, firstError: &firstError)
+        }
+
+        guard loadedSections > 0 else {
+            throw firstError ?? WorkoutAPIError.invalidResponse
+        }
+
+        if failures.isEmpty {
+            errorMessage = nil
+        } else {
+            errorMessage = "Some data could not load: \(failures.joined(separator: ", ")). Pull to retry."
+        }
+        refreshPendingSyncCount()
+        await flushPendingChanges(using: api)
+    }
+
+    private func recordLoadFailure(
+        _ error: Error,
+        label: String,
+        failures: inout [String],
+        firstError: inout Error?
+    ) throws {
+        if case WorkoutAPIError.unauthorized = error {
+            throw error
+        }
+        if firstError == nil {
+            firstError = error
+        }
+        failures.append("\(label) (\(error.localizedDescription))")
+    }
+
+    private func rememberConflict(_ change: PendingResourceChange, error: Error) -> Bool {
+        let local: SyncConflictValue?
+        switch change.resource {
+        case .exercises:
+            local = change.exercise.map { .exercise($0) }
+        case .templates:
+            local = change.template.map { .template($0) }
+        case .programs:
+            local = change.program.map { .program($0) }
+        }
+        return rememberConflict(
+            resource: change.resource.conflictResource,
+            operation: change.operation.conflictOperation,
+            itemId: change.id,
+            local: local,
+            error: error
+        )
+    }
+
+    private func rememberConflict(_ change: PendingWorkoutLogChange, error: Error) -> Bool {
+        rememberConflict(
+            resource: .logs,
+            operation: change.operation.conflictOperation,
+            itemId: change.id,
+            local: change.log.map { .log($0) },
+            error: error
+        )
+    }
+
+    private func rememberConflict(
+        resource: SyncConflictResource,
+        operation: SyncConflictOperation,
+        itemId: String,
+        local: SyncConflictValue?,
+        error: Error
+    ) -> Bool {
+        guard let apiError = error as? WorkoutAPIError, let conflict = apiError.conflict else { return false }
+        let item = SyncConflictItem(
+            resource: resource,
+            operation: operation,
+            itemId: itemId,
+            local: local,
+            remote: remoteConflictValue(resource: resource, data: conflict.remoteData),
+            expectedRevision: conflict.expectedRevision,
+            actualRevision: conflict.actualRevision,
+            requestId: apiError.requestID,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        PendingSyncConflictQueue.upsert(item)
+        syncIssueMessage = "\(resource.label) changed in the cloud. Review sync conflicts."
+        return true
+    }
+
+    private func remoteConflictValue(resource: SyncConflictResource, data: Data?) -> SyncConflictValue? {
+        guard let data else { return nil }
+        let decoder = JSONDecoder()
+        switch resource {
+        case .exercises:
+            return (try? decoder.decode(Exercise.self, from: data)).map { .exercise($0) }
+        case .templates:
+            return (try? decoder.decode(WorkoutTemplate.self, from: data)).map { .template($0) }
+        case .logs:
+            return (try? decoder.decode(WorkoutLog.self, from: data)).map { .log($0) }
+        case .programs:
+            return (try? decoder.decode(TrainingProgram.self, from: data)).map { .program($0) }
+        }
+    }
+
+    private func saveLocalConflictValue(_ conflict: SyncConflictItem, using api: WorkoutAPI) async throws {
+        let expectedRevision = conflict.remote?.revision ?? conflict.actualRevision
+        switch conflict.resource {
+        case .exercises:
+            guard var exercise = conflict.local?.exercise else { return }
+            exercise.revision = expectedRevision
+            let saved = try await api.saveExercise(exercise)
+            upsert(saved, in: &exercises)
+            exercises = exercises.sortedByName()
+        case .templates:
+            guard var template = conflict.local?.template else { return }
+            template.revision = expectedRevision
+            let saved = try await api.saveTemplate(template)
+            upsert(saved, in: &templates)
+            templates = templates.sortedByName()
+        case .logs:
+            guard var log = conflict.local?.log else { return }
+            log.revision = expectedRevision
+            let saved = try await api.saveLog(log)
+            upsert(saved, in: &logs)
+        case .programs:
+            guard var program = conflict.local?.program else { return }
+            program.revision = expectedRevision
+            let saved = try await api.saveProgram(program)
+            upsert(saved, in: &programs)
+            programs = programs.sortedForDisplay()
+        }
+    }
+
+    private func applyRemoteConflictValue(_ conflict: SyncConflictItem) {
+        switch conflict.resource {
+        case .exercises:
+            if let exercise = conflict.remote?.exercise {
+                upsert(exercise, in: &exercises)
+                exercises = exercises.sortedByName()
+            } else {
+                exercises.removeAll { $0.id == conflict.itemId }
+            }
+        case .templates:
+            if let template = conflict.remote?.template {
+                upsert(template, in: &templates)
+                templates = templates.sortedByName()
+            } else {
+                templates.removeAll { $0.id == conflict.itemId }
+            }
+        case .logs:
+            if let log = conflict.remote?.log {
+                upsert(log, in: &logs)
+            } else {
+                logs.removeAll { $0.id == conflict.itemId }
+            }
+        case .programs:
+            if let program = conflict.remote?.program {
+                upsert(program, in: &programs)
+                programs = programs.sortedForDisplay()
+            } else {
+                programs.removeAll { $0.id == conflict.itemId }
+            }
+        }
+    }
+
+    private func removePendingChange(for conflict: SyncConflictItem) {
+        if conflict.resource == .logs {
+            PendingWorkoutLogQueue.remove(conflict.itemId)
+        } else if let resource = PendingResourceKind(conflict.resource) {
+            PendingResourceQueue.remove(resource, id: conflict.itemId)
+        }
     }
 
     private func mergePendingExercises(_ cloudExercises: [Exercise]) -> [Exercise] {
@@ -630,6 +914,7 @@ final class WorkoutStore: ObservableObject {
                     guard let exercise = change.exercise else { break }
                     let saved = try await api.saveExercise(exercise)
                     upsert(saved, in: &exercises)
+                    PendingSyncConflictQueue.remove(.exercises, id: change.id)
                 case (.templates, .delete):
                     try await api.deleteTemplate(change.id)
                     templates.removeAll { $0.id == change.id }
@@ -637,6 +922,7 @@ final class WorkoutStore: ObservableObject {
                     guard let template = change.template else { break }
                     let saved = try await api.saveTemplate(template)
                     upsert(saved, in: &templates)
+                    PendingSyncConflictQueue.remove(.templates, id: change.id)
                 case (.programs, .delete):
                     try await api.deleteProgram(change.id)
                     programs.removeAll { $0.id == change.id }
@@ -644,6 +930,7 @@ final class WorkoutStore: ObservableObject {
                     guard let program = change.program else { break }
                     let saved = try await api.saveProgram(program)
                     upsert(saved, in: &programs)
+                    PendingSyncConflictQueue.remove(.programs, id: change.id)
                 }
                 PendingResourceQueue.remove(change.resource, id: change.id)
             } catch WorkoutAPIError.unauthorized {
@@ -651,7 +938,9 @@ final class WorkoutStore: ObservableObject {
                 errorMessage = WorkoutAPIError.unauthorized.localizedDescription
                 break
             } catch {
-                if !isNetworkAvailabilityError(error) {
+                if rememberConflict(change, error: error) {
+                    syncIssueMessage = "A pending library change changed in the cloud. Review sync conflicts."
+                } else if !isNetworkAvailabilityError(error) {
                     syncIssueMessage = "A pending library change could not sync: \(error.localizedDescription)"
                     errorMessage = syncIssueMessage
                 }
@@ -679,6 +968,7 @@ final class WorkoutStore: ObservableObject {
                 } else if let log = change.log {
                     let saved = try await api.saveLog(log)
                     upsert(saved, in: &logs)
+                    PendingSyncConflictQueue.remove(.logs, id: change.id)
                 }
                 PendingWorkoutLogQueue.remove(change.id)
             } catch WorkoutAPIError.unauthorized {
@@ -686,7 +976,9 @@ final class WorkoutStore: ObservableObject {
                 errorMessage = WorkoutAPIError.unauthorized.localizedDescription
                 break
             } catch {
-                if !isNetworkAvailabilityError(error) {
+                if rememberConflict(change, error: error) {
+                    syncIssueMessage = "A pending workout changed in the cloud. Review sync conflicts."
+                } else if !isNetworkAvailabilityError(error) {
                     syncIssueMessage = "A pending workout could not sync: \(error.localizedDescription)"
                     errorMessage = syncIssueMessage
                 }
@@ -710,11 +1002,39 @@ private enum PendingResourceKind: String, Codable {
     case exercises
     case templates
     case programs
+
+    init?(_ conflictResource: SyncConflictResource) {
+        switch conflictResource {
+        case .exercises:
+            self = .exercises
+        case .templates:
+            self = .templates
+        case .programs:
+            self = .programs
+        case .logs:
+            return nil
+        }
+    }
+
+    var conflictResource: SyncConflictResource {
+        switch self {
+        case .exercises: return .exercises
+        case .templates: return .templates
+        case .programs: return .programs
+        }
+    }
 }
 
 private enum PendingResourceOperation: String, Codable {
     case put
     case delete
+
+    var conflictOperation: SyncConflictOperation {
+        switch self {
+        case .put: return .put
+        case .delete: return .delete
+        }
+    }
 }
 
 private struct PendingResourceChange: Codable, Identifiable {
@@ -827,6 +1147,44 @@ private enum PendingWorkoutLogQueue {
             return
         }
         if let data = try? JSONEncoder().encode(changes) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
+private enum PendingSyncConflictQueue {
+    private static let key = "forge.pendingConflicts.v1"
+
+    static var all: [SyncConflictItem] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return ((try? JSONDecoder().decode([SyncConflictItem].self, from: data)) ?? [])
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    static var count: Int {
+        all.count
+    }
+
+    static func upsert(_ conflict: SyncConflictItem) {
+        var conflicts = all.filter { !($0.resource == conflict.resource && $0.itemId == conflict.itemId) }
+        conflicts.append(conflict)
+        save(conflicts)
+    }
+
+    static func remove(_ resource: SyncConflictResource, id: String) {
+        save(all.filter { !($0.resource == resource && $0.itemId == id) })
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    private static func save(_ conflicts: [SyncConflictItem]) {
+        guard !conflicts.isEmpty else {
+            clear()
+            return
+        }
+        if let data = try? JSONEncoder().encode(conflicts) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }

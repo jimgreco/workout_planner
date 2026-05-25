@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 enum AppPage: String, CaseIterable, Identifiable, Hashable {
@@ -39,6 +40,7 @@ struct AppShell: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var store: WorkoutStore
     @State private var page: AppPage = .log
+    @State private var showingSyncConflicts = false
 
     var body: some View {
         tabShell
@@ -58,6 +60,10 @@ struct AppShell: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(store.errorMessage ?? "")
+            }
+            .sheet(isPresented: $showingSyncConflicts) {
+                SyncConflictReviewSheet()
+                    .environmentObject(store)
             }
     }
 
@@ -127,6 +133,10 @@ struct AppShell: View {
             ExercisesView()
         case .settings:
             SettingsPage {
+                page = .log
+            } onReviewConflicts: {
+                showingSyncConflicts = true
+            } onSignOut: {
                 signOut()
             }
         }
@@ -142,6 +152,8 @@ struct AppShell: View {
 private struct SettingsPage: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var store: WorkoutStore
+    let onDone: () -> Void
+    let onReviewConflicts: () -> Void
     let onSignOut: () -> Void
     @State private var showingFeedback = false
     @State private var showingAppleLink = false
@@ -153,102 +165,187 @@ private struct SettingsPage: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Account") {
-                    if let user = auth.user {
-                        LabeledContent("Name", value: user.name)
-                        if !user.email.isEmpty {
-                            LabeledContent("Email", value: user.email)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 26) {
+                    AccountProfileCard(user: auth.user, isDemoMode: auth.isDemoMode)
+
+                    AccountSettingsSection(title: "Sync") {
+                        AccountSettingsCard {
+                            VStack(spacing: 0) {
+                                HStack(spacing: 14) {
+                                    Text("Status")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundStyle(Theme.text)
+
+                                    Spacer()
+
+                                    AccountSyncStatusBadge(
+                                        title: syncStatusTitle,
+                                        systemImage: syncStatusIcon,
+                                        tint: syncStatusTint
+                                    )
+                                }
+                                .frame(minHeight: 50)
+
+                                if let detail = store.syncDetailText {
+                                    AccountSettingsDivider()
+
+                                    Text(detail)
+                                        .font(.footnote)
+                                        .foregroundStyle(store.syncIssueMessage == nil ? Theme.muted : Theme.danger)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, 12)
+                                }
+
+                                AccountSettingsDivider()
+
+                                Button {
+                                    Task { await syncNow() }
+                                } label: {
+                                    Text(store.isSyncingPending ? "Syncing..." : "Sync Now")
+                                        .font(.system(size: 17, weight: .medium))
+                                        .foregroundStyle(syncButtonDisabled ? Theme.muted : Color.blue)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 50)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(syncButtonDisabled)
+
+                                if store.pendingConflictCount > 0 {
+                                    AccountSettingsDivider()
+
+                                    Button(action: onReviewConflicts) {
+                                        AccountSettingsActionRow(
+                                            title: "Review Sync Conflicts",
+                                            systemImage: "exclamationmark.triangle.fill",
+                                            tint: Theme.warning
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(accountBusy)
+                                }
+                            }
                         }
                     }
-                    if auth.isDemoMode {
-                        LabeledContent("Mode", value: "Demo")
-                    }
-                }
 
-                Section("Data & Support") {
-                    Button {
-                        Task { await exportAccountData() }
-                    } label: {
-                        Label("Export Data", systemImage: "square.and.arrow.down")
-                    }
-                    .disabled(accountBusy)
+                    AccountSettingsSection(title: "Data & Support") {
+                        AccountSettingsCard {
+                            VStack(spacing: 0) {
+                                Button {
+                                    Task { await exportAccountData() }
+                                } label: {
+                                    AccountSettingsActionRow(title: "Export Data", systemImage: "square.and.arrow.down")
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(accountBusy)
 
-                    Button {
-                        showingImportPicker = true
-                    } label: {
-                        Label("Import Data", systemImage: "square.and.arrow.up")
-                    }
-                    .disabled(accountBusy)
+                                AccountSettingsDivider()
 
-                    Button {
-                        showingFeedback = true
-                    } label: {
-                        Label("Send Feedback", systemImage: "message")
-                    }
-                    .disabled(accountBusy)
+                                Button {
+                                    showingImportPicker = true
+                                } label: {
+                                    AccountSettingsActionRow(title: "Import Data", systemImage: "square.and.arrow.up")
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(accountBusy)
 
-                    if !auth.isDemoMode {
-                        Button {
-                            showingAppleLink = true
-                        } label: {
-                            Label("Link Apple ID", systemImage: "apple.logo")
+                                AccountSettingsDivider()
+
+                                Button {
+                                    showingFeedback = true
+                                } label: {
+                                    AccountSettingsActionRow(title: "Send Feedback", systemImage: "message")
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(accountBusy)
+
+                                if !auth.isDemoMode {
+                                    AccountSettingsDivider()
+
+                                    Button {
+                                        showingAppleLink = true
+                                    } label: {
+                                        AccountSettingsActionRow(title: "Link Apple ID", systemImage: "apple.logo")
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(accountBusy)
+                                }
+                            }
                         }
-                        .disabled(accountBusy)
                     }
 
-                    Button(role: .destructive) {
-                        confirmingDelete = true
-                    } label: {
-                        Label("Delete Account", systemImage: "exclamationmark.triangle")
-                    }
-                    .disabled(accountBusy)
-                }
+                    AccountSettingsSection(title: "Privacy") {
+                        AccountSettingsCard {
+                            VStack(spacing: 0) {
+                                Link(destination: SupportLinks.support) {
+                                    AccountSettingsActionRow(title: "Support", systemImage: "questionmark.circle")
+                                }
+                                .buttonStyle(.plain)
 
-                Section("Privacy & Support") {
-                    Link(destination: SupportLinks.support) {
-                        Label("Support", systemImage: "questionmark.circle")
-                    }
+                                AccountSettingsDivider()
 
-                    Link(destination: SupportLinks.privacy) {
-                        Label("Privacy Policy", systemImage: "hand.raised")
-                    }
-
-                    LabeledContent("Sync", value: store.syncStatusText)
-                    if let detail = store.syncDetailText {
-                        Text(detail)
-                            .font(.footnote)
-                            .foregroundStyle(store.syncIssueMessage == nil ? Theme.muted : Theme.danger)
-                    }
-
-                    if store.pendingSyncCount > 0 {
-                        Button {
-                            Task { await store.syncPendingChanges() }
-                        } label: {
-                            Label(store.isSyncingPending ? "Syncing Pending Changes" : "Sync Pending Changes", systemImage: "arrow.triangle.2.circlepath")
+                                Link(destination: SupportLinks.privacy) {
+                                    AccountSettingsActionRow(title: "Privacy Policy", systemImage: "hand.raised")
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .disabled(accountBusy || store.isSyncingPending)
                     }
-                }
 
-                Section("App") {
-                    LabeledContent("Build", value: AppConfiguration.buildLabel)
-                }
+                    AccountSettingsCard {
+                        VStack(spacing: 0) {
+                            Button(role: .destructive) {
+                                confirmingDelete = true
+                            } label: {
+                                Text("Delete Account")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundStyle(Theme.danger)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(accountBusy)
 
-                Section("Beta") {
-                    Text("Use TestFlight feedback or Send Feedback for issues. Export data before broad test runs.")
-                        .font(.footnote)
+                            AccountSettingsDivider()
+
+                            Button(role: .destructive, action: onSignOut) {
+                                Text("Sign Out")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundStyle(Theme.danger)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(accountBusy)
+                        }
+                    }
+
+                    Text("Version \(AppConfiguration.appVersion) (\(AppConfiguration.buildNumber)) - \(AppConfiguration.gitCommitHash)")
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.muted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 18)
                 }
-
-                Section {
-                    Button(role: .destructive, action: onSignOut) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                .padding(.horizontal, 24)
+                .padding(.top, 30)
+                .padding(.bottom, 44)
+            }
+            .background(AccountSettingsStyle.background.ignoresSafeArea())
+            .navigationTitle("Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(action: onDone) {
+                        Text("Done")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                            .padding(.horizontal, 18)
+                            .frame(height: 38)
+                            .toolbarGlass(in: Capsule(), tint: AccountSettingsStyle.cardBackground.opacity(0.75))
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
         }
         .sheet(isPresented: $showingFeedback) {
             FeedbackSheet(isSending: $accountBusy) { message in
@@ -317,6 +414,46 @@ private struct SettingsPage: View {
         }
     }
 
+    private var syncButtonDisabled: Bool {
+        accountBusy || store.isSyncingPending || store.usesLocalData || store.pendingConflictCount > 0
+    }
+
+    private var syncStatusTitle: String {
+        if store.syncIssueMessage != nil { return "Issue" }
+        if store.pendingConflictCount > 0 { return "Conflict" }
+        if store.usesLocalData { return "Local" }
+        if store.isSyncingPending { return "Syncing" }
+        if store.pendingSyncCount > 0 { return "Pending" }
+        return "Connected"
+    }
+
+    private var syncStatusIcon: String {
+        if store.syncIssueMessage != nil { return "exclamationmark.circle.fill" }
+        if store.pendingConflictCount > 0 { return "exclamationmark.triangle.fill" }
+        if store.usesLocalData { return "internaldrive.fill" }
+        if store.isSyncingPending { return "arrow.triangle.2.circlepath.circle.fill" }
+        if store.pendingSyncCount > 0 { return "clock.fill" }
+        return "checkmark.circle.fill"
+    }
+
+    private var syncStatusTint: Color {
+        if store.syncIssueMessage != nil { return Theme.danger }
+        if store.pendingConflictCount > 0 { return Theme.warning }
+        if store.usesLocalData { return Theme.muted }
+        if store.pendingSyncCount > 0 || store.isSyncingPending { return Theme.warning }
+        return Color(red: 0.2, green: 0.78, blue: 0.35)
+    }
+
+    @MainActor
+    private func syncNow() async {
+        accountBusy = true
+        defer { accountBusy = false }
+        await store.syncPendingChanges()
+        if store.syncIssueMessage == nil {
+            await store.loadData()
+        }
+    }
+
     @MainActor
     private func exportAccountData() async {
         accountBusy = true
@@ -352,6 +489,346 @@ private struct SettingsPage: View {
         } catch {
             store.errorMessage = error.localizedDescription
         }
+    }
+}
+
+private enum AccountSettingsStyle {
+    static let background = Color(uiColor: .systemGroupedBackground)
+    static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
+    static let divider = Color(uiColor: .separator).opacity(0.35)
+    static let sectionTitle = Color(uiColor: .secondaryLabel)
+    static let cardRadius: CGFloat = 28
+}
+
+private struct AccountProfileCard: View {
+    let user: UserProfile?
+    let isDemoMode: Bool
+
+    private var displayName: String {
+        let trimmed = user?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Forge Account" : trimmed
+    }
+
+    private var email: String {
+        user?.email.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    var body: some View {
+        AccountSettingsCard {
+            HStack(spacing: 16) {
+                AccountAvatar(user: user)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(displayName)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+
+                        if isDemoMode {
+                            Text("Demo")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Theme.muted)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Theme.surface2)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    if email.isEmpty {
+                        Text("Signed in")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                    } else {
+                        Text(email)
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+        }
+    }
+}
+
+private struct AccountAvatar: View {
+    let user: UserProfile?
+
+    private var imageURL: URL? {
+        guard let raw = user?.picture?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        return URL(string: raw)
+    }
+
+    private var initials: String {
+        let source = [user?.name, user?.email]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "F"
+        let parts = source.split(separator: " ")
+        let letters = parts.prefix(2).compactMap(\.first).map(String.init).joined()
+        return (letters.isEmpty ? String(source.prefix(1)) : letters).uppercased()
+    }
+
+    var body: some View {
+        Group {
+            if let imageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .tint(Theme.muted)
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        fallback
+                    @unknown default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: 64, height: 64)
+        .background(Theme.surface2)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.border.opacity(0.5), lineWidth: 1))
+    }
+
+    private var fallback: some View {
+        ZStack {
+            Theme.surface2
+            Text(initials)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Theme.text)
+        }
+    }
+}
+
+private struct AccountSettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(AccountSettingsStyle.sectionTitle)
+                .padding(.leading, 22)
+
+            content
+        }
+    }
+}
+
+private struct AccountSettingsCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AccountSettingsStyle.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AccountSettingsStyle.cardRadius, style: .continuous))
+    }
+}
+
+private struct AccountSettingsActionRow: View {
+    let title: String
+    let systemImage: String
+    var tint: Color = Color.blue
+    var showsChevron = true
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(tint)
+                .frame(width: 30)
+
+            Text(title)
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Spacer()
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.muted.opacity(0.45))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct AccountSyncStatusBadge: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 27, weight: .semibold))
+            Text(title)
+                .font(.system(size: 18, weight: .medium))
+        }
+        .foregroundStyle(tint)
+        .lineLimit(1)
+        .minimumScaleFactor(0.82)
+    }
+}
+
+private struct AccountSettingsDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(AccountSettingsStyle.divider)
+            .frame(height: 1 / UIScreen.main.scale)
+    }
+}
+
+private struct SyncConflictReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: WorkoutStore
+    @State private var resolvingID: String?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if store.syncConflicts.isEmpty {
+                    ContentUnavailableView("No Sync Conflicts", systemImage: "checkmark.icloud.fill")
+                } else {
+                    List {
+                        ForEach(store.syncConflicts) { conflict in
+                            Section {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    HStack(spacing: 8) {
+                                        Label(conflict.resource.label, systemImage: "arrow.triangle.2.circlepath")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(Theme.muted)
+                                        Spacer()
+                                        if let requestId = conflict.requestId, !requestId.isEmpty {
+                                            Text("Request \(requestId)")
+                                                .font(.caption2.monospaced())
+                                                .foregroundStyle(Theme.muted)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    ViewThatFits(in: .horizontal) {
+                                        HStack(alignment: .top, spacing: 12) {
+                                            SyncConflictValueColumn(title: "This iPhone", value: conflict.local)
+                                            SyncConflictValueColumn(title: "Cloud", value: conflict.remote)
+                                        }
+                                        VStack(alignment: .leading, spacing: 12) {
+                                            SyncConflictValueColumn(title: "This iPhone", value: conflict.local)
+                                            SyncConflictValueColumn(title: "Cloud", value: conflict.remote)
+                                        }
+                                    }
+
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            resolve(conflict, keeping: .remote)
+                                        } label: {
+                                            Text("Keep Cloud")
+                                                .frame(maxWidth: .infinity)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .disabled(resolvingID != nil)
+
+                                        Button {
+                                            resolve(conflict, keeping: .local)
+                                        } label: {
+                                            Text(resolvingID == conflict.id ? "Saving..." : "Keep This iPhone")
+                                                .frame(maxWidth: .infinity)
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(resolvingID != nil || conflict.local == nil)
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                            } footer: {
+                                if let expected = conflict.expectedRevision, let actual = conflict.actualRevision {
+                                    Text("This iPhone expected revision \(expected); cloud is revision \(actual).")
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Sync Conflicts")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func resolve(_ conflict: SyncConflictItem, keeping resolution: SyncConflictResolution) {
+        resolvingID = conflict.id
+        Task {
+            await store.resolveSyncConflict(conflict, keeping: resolution)
+            resolvingID = nil
+            if store.syncConflicts.isEmpty {
+                dismiss()
+            }
+        }
+    }
+}
+
+private struct SyncConflictValueColumn: View {
+    let title: String
+    let value: SyncConflictValue?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+            Text(value?.title ?? "Deleted item")
+                .font(.headline)
+                .foregroundStyle(Theme.text)
+                .lineLimit(2)
+            Text(value?.subtitle ?? "No saved copy")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .lineLimit(2)
+            Text(revisionText)
+                .font(.caption)
+                .foregroundStyle(Theme.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Theme.surface2)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var revisionText: String {
+        guard let value else { return "No revision" }
+        let revision = value.revision.map { "r\($0)" } ?? "no revision"
+        if let updatedAt = value.updatedAt, !updatedAt.isEmpty {
+            return "\(revision) - \(updatedAt)"
+        }
+        return revision
     }
 }
 

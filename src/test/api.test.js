@@ -291,6 +291,35 @@ describe('logs', () => {
     expect(pendingLogSaveCount()).toBe(1);
   });
 
+  it('restores a queued active workout after a browser module restart', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    await saveLog({ ...LOG, status: 'active', exerciseItems: [{ exerciseId: 'ex-1', sets: [{ reps: '8', weight: '135' }] }] });
+    expect(pendingLogSaveCount()).toBe(1);
+
+    vi.resetModules();
+    const freshApi = await import('../api.js');
+    try {
+      mockFetch({
+        'GET /exercises': () => ({ body: [] }),
+        'GET /templates': () => ({ body: [] }),
+        'GET /logs':      () => ({ body: [] }),
+        'GET /programs':  () => ({ body: [] }),
+        'GET /settings':  () => ({ body: { defaultSets: 4, defaultReps: 8 } }),
+      });
+
+      await freshApi.initData();
+      expect(freshApi.getLogs()).toHaveLength(1);
+      expect(freshApi.getLogs()[0]).toMatchObject({ id: 'log-1', status: 'active', pendingSync: true });
+      expect(freshApi.pendingLogSaveCount()).toBe(1);
+    } finally {
+      freshApi.resetData();
+      resetData();
+    }
+  });
+
   it('queues log deletes when the network is unavailable and flushes them later', async () => {
     mockFetch({
       'GET /exercises': () => ({ body: [] }),

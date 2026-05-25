@@ -28,6 +28,11 @@
 - Web has a first-run start sheet and throttled client-error feedback reports for beta triage.
 - Web and iOS now have a server-backed program layer with weekday routine scheduling and next-workout starts.
 - Conflict responses now include the cloud copy, web can resolve side-by-side sync conflicts, iOS retries pending sync automatically while active, and active-workout offline recovery is covered by regression tests.
+- Successful imports now write compact audit records with source counts, result counts, skipped/renamed samples, and Request IDs for support investigation.
+- The support admin viewer now supports feedback pagination, CSV export, and read-only account drilldown for exercises, routines, recent logs, and recent imports.
+- Active-workout offline recovery now has browser-restart coverage that reloads the API module from persisted pending storage.
+- iOS can review side-by-side sync conflicts and choose either the cloud copy or this iPhone's pending copy.
+- iOS registers a background app refresh task to retry pending offline changes after the app moves to the background.
 
 ### Churn Progress
 
@@ -42,6 +47,11 @@
 - 2026-05-25: Added exercise-level rest timer targets with web and iOS completion alerts.
 - 2026-05-25: Documented the backup/export compatibility contract.
 - 2026-05-25: Completed explicit set-complete controls for live workouts on web and iOS.
+- 2026-05-25: Added import-result audit records and surfaced recent import history in support account drilldown.
+- 2026-05-25: Added support admin feedback pagination, CSV export, and account drilldown lists.
+- 2026-05-25: Added browser-restart test coverage for queued active workout recovery.
+- 2026-05-25: Added native iOS sync-conflict review and resolution.
+- 2026-05-25: Added iOS background app refresh registration for pending sync retries.
 
 ### Live Workout Execution
 
@@ -53,20 +63,16 @@ No open items in this bucket.
 
 ### Import And Restore
 
-- Add an import-result history or audit trail if support needs to investigate restores.
+No open items in this bucket.
 
 ### Offline And Conflict Handling
 
-- Add native side-by-side conflict choices on iOS if tester traffic shows multi-device edits are common.
-- Consider true iOS background task registration if automatic in-app retry is not enough.
-- Expand active-workout recovery tests to browser-level restart coverage once the local dev auth path has stable fixtures.
+No open items in this bucket.
 
 ### Support And Admin
 
 - Add direct CloudWatch or EC2 log search integration for Request IDs.
 - Add richer tester cohort/status tracking once tester metadata exists.
-- Add pagination and CSV export to the support admin viewer.
-- Add read-only account drilldown for individual exercises, templates, and recent logs.
 
 ### Beta And App Store Polish
 

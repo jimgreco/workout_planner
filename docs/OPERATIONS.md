@@ -135,11 +135,24 @@ When a tester reports "it won't load":
 6. Ask them to send feedback from the account menu if they can open the app.
 7. For iOS, ask for the version/build shown in the account menu.
 
+Offline writes for workout logs, exercise/routine/program updates, and deletes
+queue locally on web and iOS when the network is unavailable. They retry when
+connectivity returns, when iOS becomes active, and through the iOS pending-sync
+background refresh task. If the backend reports that a queued item changed in
+the cloud first, web and iOS both surface side-by-side conflict choices.
+
 Recent in-app feedback is available through the secret-protected support route:
 
 ```bash
 curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
   "https://workout-planner.jim-greco.com/api/admin/feedback?limit=25"
+```
+
+Feedback supports cursor paging and CSV export:
+
+```bash
+curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
+  "https://workout-planner.jim-greco.com/api/admin/feedback?limit=100&format=csv"
 ```
 
 The same support tools are available in the browser at:
@@ -151,6 +164,14 @@ https://workout-planner.jim-greco.com/admin.html
 The support response intentionally returns a short `userHash` instead of raw
 provider IDs or email addresses. Use the hash only to group related feedback
 while triaging an issue.
+
+Account lookup can include read-only drilldown details for exercises, routines,
+recent logs, and recent import audits:
+
+```bash
+curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
+  "https://workout-planner.jim-greco.com/api/admin/accounts?email=tester@example.com&detail=1"
+```
 
 Do not ask testers for provider tokens, app session tokens, or screenshots that
 show private workout notes unless they volunteer them.

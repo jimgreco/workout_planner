@@ -72,6 +72,7 @@ const SK_PREFIX = {
 };
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
+const ADMIN_SCAN_LIMIT = 1000;
 const IS_LOCAL = process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test';
 const DEV_BYPASS_TOKEN = 'dev-bypass-token';
 const DEV_USER_SUB = 'dev-user-local';
@@ -123,6 +124,19 @@ function response(statusCode, body, headers = {}) {
       ...headers,
     },
     body: JSON.stringify(body),
+  };
+}
+
+function textResponse(statusCode, body, headers = {}) {
+  return {
+    statusCode,
+    headers: {
+      ...securityHeaders(),
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...headers,
+    },
+    body,
   };
 }
 
@@ -413,6 +427,27 @@ function collectionItems(items, prefix) {
   return items.filter((item) => item.SK.startsWith(`${prefix}#`));
 }
 
+function accountResourceCounts(items) {
+  return {
+    exercises: collectionItems(items, 'EXERCISE').length,
+    templates: collectionItems(items, 'TEMPLATE').length,
+    logs: collectionItems(items, 'LOG').length,
+    programs: collectionItems(items, 'PROGRAM').length,
+    feedback: collectionItems(items, 'FEEDBACK').length,
+    imports: collectionItems(items, 'IMPORT').length,
+  };
+}
+
+function importSourceCounts(imported) {
+  return {
+    exercises: imported.exercises.length,
+    templates: imported.templates.length,
+    logs: imported.logs.length,
+    programs: imported.programs.length,
+    settings: Boolean(imported.settings),
+  };
+}
+
 function userDataItemCount(items) {
   return collectionItems(items, 'EXERCISE').length
     + collectionItems(items, 'TEMPLATE').length
@@ -513,7 +548,40 @@ async function writeImportedCollection(PK, prefix, items) {
   }
 }
 
-async function importPayload(PK, body) {
+function collectionLengths(collections) {
+  return Object.fromEntries(Object.entries(collections)
+    .map(([key, value]) => [key, Array.isArray(value) ? value.length : 0]));
+}
+
+function collectionSamples(collections, limit = 25) {
+  return Object.fromEntries(Object.entries(collections)
+    .map(([key, value]) => [key, Array.isArray(value) ? value.slice(0, limit) : []]));
+}
+
+async function writeImportAudit(PK, imported, existingItems, result, requestId) {
+  const createdAt = new Date().toISOString();
+  const id = randomUUID();
+  const item = {
+    PK,
+    SK: `IMPORT#${createdAt}#${id}`,
+    id,
+    createdAt,
+    mode: imported.mode,
+    requestId,
+    sourceExportedAt: imported.exportedAt,
+    source: importSourceCounts(imported),
+    before: accountResourceCounts(existingItems),
+    imported: result.imported,
+    renamedCounts: collectionLengths(result.renamed),
+    skippedCounts: collectionLengths(result.skipped),
+    renamedSamples: collectionSamples(result.renamed),
+    skippedSamples: collectionSamples(result.skipped),
+  };
+  await db.send(new PutCommand({ TableName: TABLE, Item: item }));
+  return { id, createdAt };
+}
+
+async function importPayload(PK, body, requestId) {
   const imported = validateImport(body);
   const existingItems = await queryAllUserItems(PK);
   if (imported.mode === 'emptyOnly' && userDataItemCount(existingItems) > 0) {
@@ -539,7 +607,7 @@ async function importPayload(PK, body) {
   await writeImportedCollection(PK, 'LOG', safe.logs);
   await writeImportedCollection(PK, 'PROGRAM', safe.programs);
 
-  return {
+  const result = {
     imported: {
       exercises: safe.exercises.length,
       templates: safe.templates.length,
@@ -550,6 +618,8 @@ async function importPayload(PK, body) {
     renamed: safe.renamed,
     skipped: safe.skipped,
   };
+  const audit = await writeImportAudit(PK, imported, existingItems, result, requestId);
+  return { ...result, audit };
 }
 
 function decodeCursor(cursor) {
@@ -588,13 +658,20 @@ function parseOptionalLogQuery(params) {
   };
 }
 
-function parseAdminLimit(params) {
-  const raw = params.get('limit') ?? '50';
+function parseAdminLimit(params, fallback = '50') {
+  const raw = params.get('limit') ?? fallback;
   const limit = Number(raw);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new ValidationError('limit must be an integer between 1 and 100');
   }
   return limit;
+}
+
+function parseAdminPage(params, fallback = '50') {
+  return {
+    limit: parseAdminLimit(params, fallback),
+    offset: decodeCursor(params.get('cursor')),
+  };
 }
 
 function filteredLogPage(items, query) {
@@ -663,6 +740,59 @@ function supportFeedbackItem(item) {
   };
 }
 
+function revisionFields(item) {
+  const fields = {};
+  if (item.updatedAt) fields.updatedAt = item.updatedAt;
+  if (Number.isInteger(item.revision)) fields.revision = item.revision;
+  return fields;
+}
+
+function supportExerciseItem(item) {
+  return {
+    id: item.id,
+    name: item.name ?? '',
+    muscleGroup: item.muscleGroup ?? 'Other',
+    ...revisionFields(item),
+  };
+}
+
+function supportTemplateItem(item) {
+  return {
+    id: item.id,
+    name: item.name ?? '',
+    exerciseCount: Array.isArray(item.exerciseItems) ? item.exerciseItems.length : 0,
+    ...revisionFields(item),
+  };
+}
+
+function supportLogItem(item) {
+  return {
+    id: item.id,
+    name: item.name ?? '',
+    date: item.date,
+    status: item.status ?? 'active',
+    exerciseCount: Array.isArray(item.exerciseItems) ? item.exerciseItems.length : 0,
+    ...revisionFields(item),
+  };
+}
+
+function supportImportItem(item) {
+  return {
+    id: item.id,
+    createdAt: item.createdAt,
+    mode: item.mode,
+    requestId: item.requestId,
+    sourceExportedAt: item.sourceExportedAt,
+    source: item.source,
+    before: item.before,
+    imported: item.imported,
+    renamedCounts: item.renamedCounts,
+    skippedCounts: item.skippedCounts,
+    renamedSamples: item.renamedSamples,
+    skippedSamples: item.skippedSamples,
+  };
+}
+
 function userSummary(accountSub, email, items) {
   const counts = {
     exercises: 0,
@@ -670,11 +800,13 @@ function userSummary(accountSub, email, items) {
     logs: 0,
     programs: 0,
     feedback: 0,
+    imports: 0,
   };
   const feedbackBuilds = new Map();
   let lastWorkoutDate;
   let activeWorkoutCount = 0;
   let latestFeedbackAt;
+  let latestImportAt;
   let deletedAt;
 
   for (const item of items) {
@@ -691,6 +823,9 @@ function userSummary(accountSub, email, items) {
       if (item.createdAt && (!latestFeedbackAt || item.createdAt > latestFeedbackAt)) latestFeedbackAt = item.createdAt;
       const build = item.build || 'unknown';
       feedbackBuilds.set(build, (feedbackBuilds.get(build) ?? 0) + 1);
+    } else if (item.SK.startsWith('IMPORT#')) {
+      counts.imports += 1;
+      if (item.createdAt && (!latestImportAt || item.createdAt > latestImportAt)) latestImportAt = item.createdAt;
     }
   }
 
@@ -701,6 +836,7 @@ function userSummary(accountSub, email, items) {
     activeWorkoutCount,
     lastWorkoutDate,
     latestFeedbackAt,
+    latestImportAt,
     deletedAt,
     feedbackBuilds: [...feedbackBuilds.entries()]
       .map(([build, count]) => ({ build, count }))
@@ -708,7 +844,32 @@ function userSummary(accountSub, email, items) {
   };
 }
 
-function feedbackOverview(items) {
+function accountDetail(items) {
+  return {
+    exercises: collectionItems(items, 'EXERCISE')
+      .map(supportExerciseItem)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .slice(0, 200),
+    templates: collectionItems(items, 'TEMPLATE')
+      .map(supportTemplateItem)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .slice(0, 200),
+    recentLogs: collectionItems(items, 'LOG')
+      .map(supportLogItem)
+      .sort((a, b) => (
+        String(b.date ?? '').localeCompare(String(a.date ?? ''))
+        || String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? ''))
+        || String(b.id ?? '').localeCompare(String(a.id ?? ''))
+      ))
+      .slice(0, 25),
+    recentImports: collectionItems(items, 'IMPORT')
+      .map(supportImportItem)
+      .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+      .slice(0, 10),
+  };
+}
+
+function feedbackOverview(items, scanned = items.length) {
   const builds = new Map();
   const users = new Set();
   for (const item of items) {
@@ -718,7 +879,7 @@ function feedbackOverview(items) {
   return {
     service: BUILD_INFO,
     feedback: {
-      scanned: items.length,
+      scanned,
       uniqueUsers: users.size,
       recent: items.slice(0, 8),
       builds: [...builds.entries()]
@@ -728,7 +889,7 @@ function feedbackOverview(items) {
   };
 }
 
-async function scanFeedback(limit) {
+async function scanFeedbackItems() {
   const items = [];
   let ExclusiveStartKey;
   do {
@@ -737,20 +898,46 @@ async function scanFeedback(limit) {
       FilterExpression: 'begins_with(#sk, :prefix)',
       ExpressionAttributeNames: { '#sk': 'SK' },
       ExpressionAttributeValues: { ':prefix': 'FEEDBACK#' },
-      Limit: Math.max(limit, 25),
+      Limit: 100,
       ExclusiveStartKey,
     }));
     items.push(...(result.Items ?? []));
     ExclusiveStartKey = result.LastEvaluatedKey;
-  } while (ExclusiveStartKey && items.length < limit);
+  } while (ExclusiveStartKey && items.length < ADMIN_SCAN_LIMIT);
 
-  return items
-    .map(supportFeedbackItem)
-    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
-    .slice(0, limit);
+  return items.slice(0, ADMIN_SCAN_LIMIT);
 }
 
-async function lookupAccountByEmail(email) {
+async function scanFeedbackPage({ limit, offset }) {
+  const items = (await scanFeedbackItems())
+    .map(supportFeedbackItem)
+    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  const page = items.slice(offset, offset + limit);
+  const nextOffset = offset + page.length;
+  return {
+    items: page,
+    nextCursor: nextOffset < items.length ? encodeCursor(nextOffset) : undefined,
+    total: items.length,
+    scanned: items.length,
+    capped: items.length >= ADMIN_SCAN_LIMIT,
+  };
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function feedbackCsv(items) {
+  const rows = [
+    ['createdAt', 'userHash', 'build', 'message'],
+    ...items.map((item) => [item.createdAt, item.userHash, item.build, item.message]),
+  ];
+  return `${rows.map((row) => row.map(csvCell).join(',')).join('\n')}\n`;
+}
+
+async function lookupAccountByEmail(email, { detail = false } = {}) {
   const normalized = normalizeEmail(email);
   if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     throw new ValidationError('email is required');
@@ -761,34 +948,45 @@ async function lookupAccountByEmail(email) {
   }));
   const accountSub = alias.Item?.accountSub;
   if (!accountSub) return { found: false, email: normalized };
+  const items = await queryAllUserItems(`USER#${accountSub}`);
+  const account = userSummary(accountSub, normalized, items);
+  if (detail) account.detail = accountDetail(items);
   return {
     found: true,
-    account: userSummary(accountSub, normalized, await queryAllUserItems(`USER#${accountSub}`)),
+    account,
   };
 }
 
 async function handleAdminRoute(method, resource, event, params) {
   if (!hasAdminSupportAccess(event)) return err(401, 'Unauthorized');
   if (resource === 'feedback' && method === 'GET') {
-    const limit = parseAdminLimit(params);
-    return ok({ items: await scanFeedback(limit) });
+    const page = await scanFeedbackPage(parseAdminPage(params));
+    if (params.get('format') === 'csv') {
+      return textResponse(200, feedbackCsv(page.items), {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="forge-feedback.csv"',
+      });
+    }
+    return ok(page);
   }
   if (resource === 'overview' && method === 'GET') {
-    return ok(feedbackOverview(await scanFeedback(parseAdminLimit(params))));
+    const page = await scanFeedbackPage(parseAdminPage(params, '100'));
+    return ok(feedbackOverview(page.items, page.scanned));
   }
   if (resource === 'accounts' && method === 'GET') {
-    return ok(await lookupAccountByEmail(params.get('email')));
+    const detail = params.get('detail') === '1' || params.get('detail') === 'true';
+    return ok(await lookupAccountByEmail(params.get('email'), { detail }));
   }
   return err(404, 'Not found');
 }
 
-async function handleAuthenticatedRoute(method, resource, id, event, PK, params) {
+async function handleAuthenticatedRoute(method, resource, id, event, PK, params, requestId) {
   if (resource === 'export' && method === 'GET' && !id) {
     return ok(exportPayload(await queryAllUserItems(PK)));
   }
 
   if (resource === 'import' && method === 'POST' && !id) {
-    return ok(await importPayload(PK, parseJsonBody(event)));
+    return ok(await importPayload(PK, parseJsonBody(event), requestId));
   }
 
   if (resource === 'account' && method === 'DELETE' && !id) {
@@ -931,7 +1129,7 @@ export const handler = async (event) => {
     }
 
     userId = await verifyRequestUser(event);
-    return finish(await handleAuthenticatedRoute(method, resource, id, event, `USER#${userId}`, params));
+    return finish(await handleAuthenticatedRoute(method, resource, id, event, `USER#${userId}`, params, requestId));
   } catch (error) {
     if (error instanceof ValidationError) {
       return finish(err(error.cause === 'conflict' ? 409 : 400, error.message, error.details));

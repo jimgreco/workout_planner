@@ -13,6 +13,7 @@ same API contract, and the backend remains the source of truth for validation.
   - Requires an app session bearer token.
   - Accepts `{ "mode": "merge" | "emptyOnly", "data": <export payload> }`.
   - Defaults to `merge` in clients when no mode is supplied.
+  - Returns imported/skipped/renamed counts plus a compact `audit` reference.
 
 ## Export Payload
 
@@ -109,3 +110,11 @@ numbers surviving a restore.
 
 When adding a new persisted field, update this contract, backend validation,
 web models, iOS models, and import tests together.
+
+## Support Audit
+
+Every successful import writes an `IMPORT#...` audit item in the destination
+account. Audit rows are not included in exports. They store the import mode,
+Request ID, source export timestamp, source counts, pre-import account counts,
+imported counts, and capped skipped/renamed samples so support can investigate
+restores without replaying the original file.

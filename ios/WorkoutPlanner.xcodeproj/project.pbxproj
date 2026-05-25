@@ -10,13 +10,14 @@
 		108D39EFE2EE6918050ABC39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6759C3FE872C9C1B43FE2730 /* Assets.xcassets */; };
 		10E743FD0086F7851DDFCB11 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B44FF900173E65DE904D15 /* AppConfiguration.swift */; };
 		215161C2D9263BED21BD18A0 /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12690F5DD8E5A6B297F818D6 /* AppShell.swift */; };
+		265DF46D3AC5DF335F648830 /* ProgressDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FABA1A63EC4F5BB3B738CF39 /* ProgressDashboardView.swift */; };
 		3E79CE606D0BC85DE03C59EB /* ExercisesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F54A167D8F8581486896918 /* ExercisesView.swift */; };
 		3F9BE2534DFD4FFB9E89DCBE /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9090D7530C1B80562460CA21 /* HistoryView.swift */; };
 		401014297E2EC1474CD3D39D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F13786080129C6FFDB10193 /* Models.swift */; };
+		4EEB16123CB2E17664198311 /* BackgroundSyncScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63D5F0DAF22CA0626781191C /* BackgroundSyncScheduler.swift */; };
 		51ACD6C797DDB5856CF9A6F1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1341172DB60F64CACFF1541B /* Theme.swift */; };
 		7DB646D11BE39432E3B397AB /* WorkoutBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73DAB42644CF286C828DBBED /* WorkoutBuilderView.swift */; };
 		8091CB96AA6549F3F1685618 /* WorkoutAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41E53431E39ABB263340DC9F /* WorkoutAPI.swift */; };
-		A1B2C3D4E5F60718293A4B5C /* ProgressDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* ProgressDashboardView.swift */; };
 		B59BD03FCCCD86BB227CAFB5 /* WorkoutLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102BF7B6B07BF0E681541F1F /* WorkoutLogView.swift */; };
 		C5FAACF8FEE6078F033BDCAE /* WorkoutPlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F519A2A4AE6C7599F7903F81 /* WorkoutPlannerApp.swift */; };
 		D497EAF303962422D0D5EF00 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8049C0DB886AB1D317CFBEF5 /* GoogleSignIn */; };
@@ -34,18 +35,19 @@
 		389D15400DA2BBF487EFB590 /* TemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesView.swift; sourceTree = "<group>"; };
 		3F54A167D8F8581486896918 /* ExercisesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisesView.swift; sourceTree = "<group>"; };
 		41E53431E39ABB263340DC9F /* WorkoutAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAPI.swift; sourceTree = "<group>"; };
+		63D5F0DAF22CA0626781191C /* BackgroundSyncScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSyncScheduler.swift; sourceTree = "<group>"; };
 		6759C3FE872C9C1B43FE2730 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6F13786080129C6FFDB10193 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		73DAB42644CF286C828DBBED /* WorkoutBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutBuilderView.swift; sourceTree = "<group>"; };
 		9090D7530C1B80562460CA21 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		911A106284273F5CD5715364 /* WorkoutPlanner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WorkoutPlanner.entitlements; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4B5D /* ProgressDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressDashboardView.swift; sourceTree = "<group>"; };
 		B857653A9AE72757672627E2 /* WorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutStore.swift; sourceTree = "<group>"; };
 		BBD079724F83D7D12FE56695 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		D0A44983BBF723130727FCD8 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		DFF0E9338D749A93899EA724 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		EA2799E7E3AAE7DF75BA12E4 /* Forge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Forge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EA2799E7E3AAE7DF75BA12E4 /* WorkoutPlanner.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WorkoutPlanner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F519A2A4AE6C7599F7903F81 /* WorkoutPlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlannerApp.swift; sourceTree = "<group>"; };
+		FABA1A63EC4F5BB3B738CF39 /* ProgressDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressDashboardView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,7 +65,7 @@
 		0FCC13F507D7B33BD635E7A1 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				EA2799E7E3AAE7DF75BA12E4 /* Forge.app */,
+				EA2799E7E3AAE7DF75BA12E4 /* WorkoutPlanner.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -73,6 +75,7 @@
 			children = (
 				26B44FF900173E65DE904D15 /* AppConfiguration.swift */,
 				BBD079724F83D7D12FE56695 /* AuthManager.swift */,
+				63D5F0DAF22CA0626781191C /* BackgroundSyncScheduler.swift */,
 				41E53431E39ABB263340DC9F /* WorkoutAPI.swift */,
 				B857653A9AE72757672627E2 /* WorkoutStore.swift */,
 			);
@@ -117,7 +120,7 @@
 				3F54A167D8F8581486896918 /* ExercisesView.swift */,
 				9090D7530C1B80562460CA21 /* HistoryView.swift */,
 				D0A44983BBF723130727FCD8 /* LoginView.swift */,
-				A1B2C3D4E5F60718293A4B5D /* ProgressDashboardView.swift */,
+				FABA1A63EC4F5BB3B738CF39 /* ProgressDashboardView.swift */,
 				389D15400DA2BBF487EFB590 /* TemplatesView.swift */,
 				73DAB42644CF286C828DBBED /* WorkoutBuilderView.swift */,
 				102BF7B6B07BF0E681541F1F /* WorkoutLogView.swift */,
@@ -145,7 +148,7 @@
 				8049C0DB886AB1D317CFBEF5 /* GoogleSignIn */,
 			);
 			productName = WorkoutPlanner;
-			productReference = EA2799E7E3AAE7DF75BA12E4 /* Forge.app */;
+			productReference = EA2799E7E3AAE7DF75BA12E4 /* WorkoutPlanner.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -156,6 +159,8 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = 9AD11FA3F947560F40FD8340 /* Build configuration list for PBXProject "WorkoutPlanner" */;
 			developmentRegion = en;
@@ -198,11 +203,12 @@
 				10E743FD0086F7851DDFCB11 /* AppConfiguration.swift in Sources */,
 				215161C2D9263BED21BD18A0 /* AppShell.swift in Sources */,
 				F6C5506F9219FDA833670678 /* AuthManager.swift in Sources */,
+				4EEB16123CB2E17664198311 /* BackgroundSyncScheduler.swift in Sources */,
 				3E79CE606D0BC85DE03C59EB /* ExercisesView.swift in Sources */,
 				3F9BE2534DFD4FFB9E89DCBE /* HistoryView.swift in Sources */,
 				E1FA00B8488DF8645595E943 /* LoginView.swift in Sources */,
 				401014297E2EC1474CD3D39D /* Models.swift in Sources */,
-				A1B2C3D4E5F60718293A4B5C /* ProgressDashboardView.swift in Sources */,
+				265DF46D3AC5DF335F648830 /* ProgressDashboardView.swift in Sources */,
 				EB9ACB6EBB6C971302BC8EF2 /* TemplatesView.swift in Sources */,
 				51ACD6C797DDB5856CF9A6F1 /* Theme.swift in Sources */,
 				8091CB96AA6549F3F1685618 /* WorkoutAPI.swift in Sources */,
@@ -287,7 +293,6 @@
 				CODE_SIGN_ENTITLEMENTS = WorkoutPlanner/WorkoutPlanner.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = V6JPQCD336;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				INFOPLIST_FILE = WorkoutPlanner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -312,7 +317,6 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = V6JPQCD336;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				INFOPLIST_FILE = WorkoutPlanner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

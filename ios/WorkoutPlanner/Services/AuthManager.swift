@@ -266,22 +266,28 @@ final class AuthManager: ObservableObject {
     @discardableResult
     private func ensureGoogleSession(for gidUser: GIDGoogleUser) async throws -> UserProfile? {
         if AppConfiguration.apiBaseURL == nil { return nil }
-        if AppSessionStore.validToken() != nil { return nil }
-        let refreshed: GIDGoogleUser = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
-            gidUser.refreshTokensIfNeeded { user, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let user {
-                    continuation.resume(returning: user)
-                } else {
-                    continuation.resume(throwing: WorkoutAPIError.unauthorized)
+        do {
+            let refreshed: GIDGoogleUser = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
+                gidUser.refreshTokensIfNeeded { user, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else if let user {
+                        continuation.resume(returning: user)
+                    } else {
+                        continuation.resume(throwing: WorkoutAPIError.unauthorized)
+                    }
                 }
             }
+            guard let token = refreshed.idToken?.tokenString else {
+                throw WorkoutAPIError.unauthorized
+            }
+            return try await exchangeGoogleSession(idToken: token).user
+        } catch {
+            if AppSessionStore.validToken() != nil {
+                return nil
+            }
+            throw error
         }
-        guard let token = refreshed.idToken?.tokenString else {
-            throw WorkoutAPIError.unauthorized
-        }
-        return try await exchangeGoogleSession(idToken: token).user
     }
 
     @discardableResult
@@ -329,7 +335,7 @@ final class AuthManager: ObservableObject {
             let decodedError = try? JSONDecoder().decode(AuthErrorResponse.self, from: data)
             let message = decodedError?.error ?? String(data: data, encoding: .utf8) ?? ""
             let requestID = decodedError?.requestId ?? http.value(forHTTPHeaderField: "X-Request-Id")
-            throw WorkoutAPIError.server(http.statusCode, message, requestID: requestID)
+            throw WorkoutAPIError.server(http.statusCode, message, requestID: requestID, conflict: nil)
         }
         return try JSONDecoder().decode(AuthSessionResponse.self, from: data)
     }

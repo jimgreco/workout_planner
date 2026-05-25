@@ -61,6 +61,10 @@
         background: transparent;
         border-color: var(--border);
       }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
       .grid {
         display: grid;
         gap: 14px;
@@ -93,6 +97,41 @@
       .feedback-list {
         display: grid;
         gap: 10px;
+      }
+      .section-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .table-scroll {
+        overflow-x: auto;
+        margin-top: 10px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        border-bottom: 1px solid var(--border);
+        padding: 8px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0;
+      }
+      td {
+        white-space: nowrap;
       }
       .card h3 {
         margin-bottom: 6px;
@@ -181,7 +220,13 @@
     </section>
 
     <section>
-      <h2>Recent Feedback</h2>
+      <div class="section-title-row">
+        <h2>Recent Feedback</h2>
+        <div class="actions">
+          <button type="button" class="secondary" id="export-feedback">Export CSV</button>
+          <button type="button" class="secondary" id="load-more-feedback" disabled>Load More</button>
+        </div>
+      </div>
       <div id="feedback" class="feedback-list"></div>
     </section>
 
@@ -192,6 +237,9 @@
       const overviewEl = document.querySelector('#overview');
       const feedbackEl = document.querySelector('#feedback');
       const accountResultEl = document.querySelector('#account-result');
+      const loadMoreFeedbackButton = document.querySelector('#load-more-feedback');
+      let feedbackCursor = null;
+      let feedbackItems = [];
 
       secretInput.value = sessionStorage.getItem('forgeAdminSecret') || '';
 
@@ -240,6 +288,7 @@
             </div>
           </article>
         `).join('') || '<p class="muted">No feedback found.</p>';
+        loadMoreFeedbackButton.disabled = !feedbackCursor;
       }
 
       function renderAccount(result) {
@@ -248,15 +297,65 @@
           return;
         }
         const account = result.account;
+        const detail = account.detail || {};
         accountResultEl.innerHTML = `
           <div class="grid cols" style="margin-top: 14px">
             ${metric('User hash', escapeHtml(account.userHash), escapeHtml(account.email))}
             ${metric('Logs', account.counts.logs, `${account.activeWorkoutCount} active/planning`)}
             ${metric('Exercises', account.counts.exercises, `${account.counts.templates} templates`)}
             ${metric('Feedback', account.counts.feedback, account.latestFeedbackAt || 'none')}
+            ${metric('Imports', account.counts.imports || 0, account.latestImportAt || 'none')}
           </div>
           <p class="muted">Last workout date: ${escapeHtml(account.lastWorkoutDate || 'none')}</p>
+          ${renderTable('Exercises', ['Name', 'Group', 'Updated'], (detail.exercises || []).map((item) => [
+            item.name,
+            item.muscleGroup,
+            item.updatedAt || ''
+          ]))}
+          ${renderTable('Routines', ['Name', 'Exercises', 'Updated'], (detail.templates || []).map((item) => [
+            item.name,
+            item.exerciseCount,
+            item.updatedAt || ''
+          ]))}
+          ${renderTable('Recent Logs', ['Date', 'Name', 'Status', 'Exercises'], (detail.recentLogs || []).map((item) => [
+            item.date || '',
+            item.name || '',
+            item.status || '',
+            item.exerciseCount
+          ]))}
+          ${renderTable('Recent Imports', ['Created', 'Mode', 'Imported', 'Request'], (detail.recentImports || []).map((item) => [
+            item.createdAt || '',
+            item.mode || '',
+            importSummary(item.imported),
+            item.requestId || ''
+          ]))}
         `;
+      }
+
+      function renderTable(title, headers, rows) {
+        if (!rows.length) return '';
+        return `
+          <div class="panel">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="table-scroll">
+              <table>
+                <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+                <tbody>
+                  ${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell ?? '')}</td>`).join('')}</tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      function importSummary(imported = {}) {
+        return [
+          `${imported.exercises || 0} ex`,
+          `${imported.templates || 0} routines`,
+          `${imported.logs || 0} logs`,
+          `${imported.programs || 0} programs`,
+        ].join(', ');
       }
 
       function escapeHtml(value) {
@@ -279,9 +378,50 @@
             adminFetch('/admin/overview?limit=100'),
             adminFetch('/admin/feedback?limit=50'),
           ]);
+          feedbackItems = feedback.items || [];
+          feedbackCursor = feedback.nextCursor || null;
           renderOverview(overview);
-          renderFeedback(feedback.items);
+          renderFeedback(feedbackItems);
           setStatus('Loaded.');
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function loadMoreFeedback() {
+        if (!feedbackCursor) return;
+        try {
+          const feedback = await adminFetch(`/admin/feedback?limit=50&cursor=${encodeURIComponent(feedbackCursor)}`);
+          feedbackItems = [...feedbackItems, ...(feedback.items || [])];
+          feedbackCursor = feedback.nextCursor || null;
+          renderFeedback(feedbackItems);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function exportFeedbackCsv() {
+        if (!secret()) {
+          setStatus('Enter the admin support secret.', true);
+          return;
+        }
+        try {
+          const response = await fetch(`${API_BASE}/admin/feedback?format=csv&limit=100`, {
+            headers: { 'X-Admin-Support-Secret': secret() },
+          });
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || `API ${response.status}`);
+          }
+          const blob = await response.blob();
+          const href = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = href;
+          link.download = `forge-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(href);
         } catch (error) {
           setStatus(error.message, true);
         }
@@ -294,11 +434,13 @@
       });
 
       document.querySelector('#refresh').addEventListener('click', refresh);
+      loadMoreFeedbackButton.addEventListener('click', loadMoreFeedback);
+      document.querySelector('#export-feedback').addEventListener('click', exportFeedbackCsv);
 
       document.querySelector('#lookup').addEventListener('click', async () => {
         try {
           const email = encodeURIComponent(document.querySelector('#email').value.trim());
-          renderAccount(await adminFetch(`/admin/accounts?email=${email}`));
+          renderAccount(await adminFetch(`/admin/accounts?email=${email}&detail=1`));
         } catch (error) {
           accountResultEl.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
         }

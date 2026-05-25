@@ -254,6 +254,96 @@ struct WorkoutSettings: Codable, Equatable {
     static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8)
 }
 
+enum SyncConflictResource: String, Codable, CaseIterable {
+    case exercises
+    case templates
+    case logs
+    case programs
+
+    var label: String {
+        switch self {
+        case .exercises: return "Exercise"
+        case .templates: return "Routine"
+        case .logs: return "Workout"
+        case .programs: return "Program"
+        }
+    }
+}
+
+enum SyncConflictOperation: String, Codable {
+    case put
+    case delete
+}
+
+enum SyncConflictResolution {
+    case local
+    case remote
+}
+
+struct SyncConflictValue: Codable, Equatable {
+    var exercise: Exercise? = nil
+    var template: WorkoutTemplate? = nil
+    var log: WorkoutLog? = nil
+    var program: TrainingProgram? = nil
+
+    var title: String {
+        if let exercise { return exercise.name }
+        if let template { return template.name }
+        if let log { return log.name.isEmpty ? "Workout \(log.date)" : log.name }
+        if let program { return program.name }
+        return "Deleted item"
+    }
+
+    var subtitle: String {
+        if let exercise { return exercise.muscleGroup }
+        if let template { return "\(template.exerciseItems.count) exercises" }
+        if let log { return "\(log.date) - \(log.status ?? "active")" }
+        if let program {
+            let active = program.active == true ? "active" : "inactive"
+            return "\(program.schedule.count) scheduled - \(active)"
+        }
+        return "No cloud copy"
+    }
+
+    var revision: Int? {
+        exercise?.revision ?? template?.revision ?? log?.revision ?? program?.revision
+    }
+
+    var updatedAt: String? {
+        exercise?.updatedAt ?? template?.updatedAt ?? log?.updatedAt ?? program?.updatedAt
+    }
+
+    static func exercise(_ exercise: Exercise) -> SyncConflictValue {
+        SyncConflictValue(exercise: exercise)
+    }
+
+    static func template(_ template: WorkoutTemplate) -> SyncConflictValue {
+        SyncConflictValue(template: template)
+    }
+
+    static func log(_ log: WorkoutLog) -> SyncConflictValue {
+        SyncConflictValue(log: log)
+    }
+
+    static func program(_ program: TrainingProgram) -> SyncConflictValue {
+        SyncConflictValue(program: program)
+    }
+}
+
+struct SyncConflictItem: Codable, Identifiable, Equatable {
+    var resource: SyncConflictResource
+    var operation: SyncConflictOperation
+    var itemId: String
+    var local: SyncConflictValue?
+    var remote: SyncConflictValue?
+    var expectedRevision: Int?
+    var actualRevision: Int?
+    var requestId: String?
+    var createdAt: String
+
+    var id: String { "\(resource.rawValue):\(itemId)" }
+}
+
 enum ForgeImportMode: String, Codable, CaseIterable, Identifiable {
     case merge
     case emptyOnly
