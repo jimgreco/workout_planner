@@ -4,6 +4,7 @@
 
 ### Recently Added
 
+- Web and iOS show a simple 45 lb barbell plate breakdown for standard weighted sets.
 - Web and iOS can assign routine/log exercises to simple superset groups A-D.
 - Web and iOS can label individual sets as working, warmup, drop, or failure sets.
 - Web and iOS can track optional per-set RPE and RIR while logging workouts.
@@ -26,6 +27,7 @@
 
 ### Churn Progress
 
+- 2026-05-25: Added client-side plate calculator hints for standard weighted sets.
 - 2026-05-25: Added optional superset grouping for paired exercises in routines and workout logs.
 - 2026-05-25: Added warmup, working, drop, and failure labels for individual logged sets.
 - 2026-05-25: Added optional per-set RPE/RIR effort tracking to live workout logging.
@@ -35,7 +37,7 @@
 
 ### Live Workout Execution
 
-- Add a plate calculator for weighted lifts.
+No open items in this bucket.
 
 ### Programming And Planning
 

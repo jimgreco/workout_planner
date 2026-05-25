@@ -41,6 +41,9 @@ const SUPERSET_OPTIONS = [
   { value: 'D', label: 'Superset D' },
 ];
 
+const BAR_WEIGHT = 45;
+const STANDARD_PLATES = [45, 35, 25, 10, 5, 2.5];
+
 function formatRestDuration(sec) {
   if (sec < 0) sec = 0;
   const m = Math.floor(sec / 60);
@@ -55,6 +58,35 @@ function restTargetLabel(seconds) {
 
 function supersetLabel(group) {
   return group ? `Superset ${group}` : 'No pairing';
+}
+
+function formatPlate(plate) {
+  return Number.isInteger(plate) ? String(plate) : plate.toFixed(1);
+}
+
+function plateBreakdownLabel(weight, weightType) {
+  if (weightType && weightType !== 'weight') return '';
+  const target = Number.parseFloat(weight);
+  if (!Number.isFinite(target) || target < BAR_WEIGHT) return '';
+  let remaining = (target - BAR_WEIGHT) / 2;
+  if (remaining <= 0.01) return 'Bar only';
+
+  const plates = [];
+  for (const plate of STANDARD_PLATES) {
+    while (remaining + 0.01 >= plate) {
+      plates.push(plate);
+      remaining = Math.round((remaining - plate) * 10) / 10;
+    }
+  }
+  if (remaining > 0.01) return '';
+
+  const counts = new Map();
+  for (const plate of plates) {
+    counts.set(plate, (counts.get(plate) || 0) + 1);
+  }
+  return `${Array.from(counts.entries())
+    .map(([plate, count]) => `${formatPlate(plate)}${count > 1 ? ` x${count}` : ''}`)
+    .join(' + ')} / side`;
 }
 
 function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
@@ -336,16 +368,26 @@ export default function WorkoutBuilder({
                     {hasWeightColumn && (
                       <td>
                         {item.weightType !== 'none' && !planningMode && (
-                          <input
-                            type="number"
-                            min="0"
-                            step="2.5"
-                            placeholder={set.placeholderWeight || "—"}
-                            value={set.weight}
-                            onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
-                            disabled={readOnly}
-                            aria-label={`Weight for set ${si + 1} of ${ex.name}`}
-                          />
+                          <div className="weight-cell">
+                            <input
+                              type="number"
+                              min="0"
+                              step="2.5"
+                              placeholder={set.placeholderWeight || "—"}
+                              value={set.weight}
+                              onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                              disabled={readOnly}
+                              aria-label={`Weight for set ${si + 1} of ${ex.name}`}
+                            />
+                            {plateBreakdownLabel(set.weight, item.weightType) && (
+                              <span
+                                className="plate-hint"
+                                aria-label={`Plate calculator for set ${si + 1} of ${ex.name}`}
+                              >
+                                {plateBreakdownLabel(set.weight, item.weightType)}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                     )}

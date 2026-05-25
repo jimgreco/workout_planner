@@ -125,6 +125,13 @@ describe('WorkoutBuilder', () => {
       expect(screen.getByDisplayValue('50')).toBeInTheDocument();
     });
 
+    it('shows a barbell plate breakdown for standard weighted sets', () => {
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '135' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
+
+      expect(screen.getByLabelText(/plate calculator for set 1 of bench press/i)).toHaveTextContent('45 / side');
+    });
+
     it('hides weight input when type is none', () => {
       const items = [{ exerciseId: 'ex3', weightType: 'none', sets: [{ reps: '20', weight: '' }] }];
       const { container } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
