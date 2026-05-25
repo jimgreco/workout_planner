@@ -45,12 +45,14 @@ test('validates nested workout log limits and statuses', () => {
       exerciseId: 'ex-1',
       weightType: 'double',
       restTargetSeconds: 90,
+      supersetGroup: 'A',
       sets: [{ reps: '', weight: '', placeholderReps: '8', rpe: '8.5', rir: '2', setType: 'warmup' }],
     }],
   }, 'log-1');
 
   assert.equal(log.status, 'planning');
   assert.equal(log.exerciseItems[0].restTargetSeconds, 90);
+  assert.equal(log.exerciseItems[0].supersetGroup, 'A');
   assert.equal(log.exerciseItems[0].sets[0].placeholderReps, '8');
   assert.equal(log.exerciseItems[0].sets[0].rpe, '8.5');
   assert.equal(log.exerciseItems[0].sets[0].rir, '2');

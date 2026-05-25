@@ -485,7 +485,7 @@ export default function Templates({
                 if (!ex) return null;
                 return (
                   <span key={item.exerciseId} className="badge">
-                    {ex.name} • {item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'}
+                    {item.supersetGroup ? `SS ${item.supersetGroup} · ` : ''}{ex.name} • {item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'}
                   </span>
                 );
               })}

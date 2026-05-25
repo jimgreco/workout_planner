@@ -569,7 +569,8 @@ private struct TemplateCard: View {
                 FlowLayout(spacing: 6) {
                     let itemBadges = template.exerciseItems.compactMap { item -> String? in
                         guard let exercise = exercises.first(where: { $0.id == item.exerciseId }) else { return nil }
-                        return "\(exercise.name) • \(item.sets.count) \(item.sets.count == 1 ? "set" : "sets")"
+                        let prefix = item.supersetGroup?.isEmpty == false ? "SS \(item.supersetGroup!) · " : ""
+                        return "\(prefix)\(exercise.name) • \(item.sets.count) \(item.sets.count == 1 ? "set" : "sets")"
                     }
 
                     if itemBadges.isEmpty {

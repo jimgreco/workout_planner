@@ -67,6 +67,9 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
                   {isPB && <Star size={12} fill="var(--accent)" color="var(--accent)" style={{ marginRight: 6 }} />}
                   {ex.name}
                   <span className="badge" style={{ marginLeft: 8 }}>{ex.muscleGroup}</span>
+                  {item.supersetGroup && (
+                    <span className="badge" style={{ marginLeft: 6 }}>SS {item.supersetGroup}</span>
+                  )}
                 </div>
                 <div className="history-sets">
                   {item.sets.map((s, si) => (

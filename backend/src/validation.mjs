@@ -16,6 +16,7 @@ const MUSCLE_GROUPS = new Set([
 ]);
 const WEIGHT_TYPES = new Set(['weight', 'double', 'none']);
 const SET_TYPES = new Set(['warmup', 'working', 'drop', 'failure']);
+const SUPERSET_GROUPS = new Set(['A', 'B', 'C', 'D']);
 const LOG_STATUSES = new Set(['planning', 'active', 'finished']);
 
 function fail(message) {
@@ -158,7 +159,7 @@ function workoutSet(value, index) {
 
 function exerciseItem(value, index) {
   assertObject(value, `exerciseItems[${index}]`);
-  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds']), `exerciseItems[${index}]`);
+  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup']), `exerciseItems[${index}]`);
   const exerciseId = validateId(value.exerciseId, `exerciseItems[${index}].exerciseId`);
   const weightType = stringValue(value.weightType, `exerciseItems[${index}].weightType`, { max: 16 }) ?? 'weight';
   if (!WEIGHT_TYPES.has(weightType)) fail(`exerciseItems[${index}].weightType is invalid`);
@@ -172,6 +173,11 @@ function exerciseItem(value, index) {
   };
   const restTargetSeconds = optionalIntValue(value.restTargetSeconds, `exerciseItems[${index}].restTargetSeconds`, 0, 3600);
   if (restTargetSeconds > 0) item.restTargetSeconds = restTargetSeconds;
+  const supersetGroup = stringValue(value.supersetGroup, `exerciseItems[${index}].supersetGroup`, { max: 8 });
+  if (supersetGroup) {
+    if (!SUPERSET_GROUPS.has(supersetGroup)) fail(`exerciseItems[${index}].supersetGroup is invalid`);
+    item.supersetGroup = supersetGroup;
+  }
   return item;
 }
 

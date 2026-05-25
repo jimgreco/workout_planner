@@ -24,6 +24,14 @@ private let setTypeOptions: [(label: String, value: String)] = [
     ("Failure", "failure"),
 ]
 
+private let supersetOptions: [(label: String, value: String?)] = [
+    ("No pairing", nil),
+    ("Superset A", "A"),
+    ("Superset B", "B"),
+    ("Superset C", "C"),
+    ("Superset D", "D"),
+]
+
 struct WorkoutBuilderView: View {
     let exercises: [Exercise]
     @Binding var items: [ExerciseItem]
@@ -205,6 +213,25 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.accent)
             }
 
+            if !readOnly {
+                Menu {
+                    ForEach(supersetOptions, id: \.label) { option in
+                        Button(option.label) {
+                            item.supersetGroup = option.value
+                            onChanged?()
+                        }
+                    }
+                } label: {
+                    Label("Pair \(supersetLabel(item.supersetGroup))", systemImage: "link")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+            } else if item.supersetGroup?.isEmpty == false {
+                Label(supersetLabel(item.supersetGroup), systemImage: "link")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.success)
+            }
+
             setHeader
 
             ForEach(item.sets.indices, id: \.self) { setIndex in
@@ -225,10 +252,16 @@ private struct ExerciseSetsCard: View {
         .background(Theme.background)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .stroke(isActiveExercise ? Theme.accent : Theme.border, lineWidth: isActiveExercise ? 2 : 1)
+                .stroke(cardStrokeColor, lineWidth: isActiveExercise ? 2 : 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .shadow(color: .black.opacity(isActiveExercise ? 0.12 : 0.06), radius: isActiveExercise ? 10 : 4, x: 0, y: 2)
+    }
+
+    private var cardStrokeColor: Color {
+        if isActiveExercise { return Theme.accent }
+        if item.supersetGroup?.isEmpty == false { return Theme.success.opacity(0.55) }
+        return Theme.border
     }
 
     private var setHeader: some View {

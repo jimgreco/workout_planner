@@ -98,6 +98,7 @@ export default function WorkoutLog({
         exerciseId: item.exerciseId,
         weightType: item.weightType || (lastItem?.weightType) || 'weight',
         restTargetSeconds: item.restTargetSeconds,
+        supersetGroup: item.supersetGroup,
         sets: item.sets.map((s, si) => {
           const targetReps = s.reps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {

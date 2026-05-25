@@ -4,6 +4,7 @@
 
 ### Recently Added
 
+- Web and iOS can assign routine/log exercises to simple superset groups A-D.
 - Web and iOS can label individual sets as working, warmup, drop, or failure sets.
 - Web and iOS can track optional per-set RPE and RIR while logging workouts.
 - Web and iOS can set exercise-level rest targets, show countdown/overdue rest timers, and alert when a target is reached.
@@ -25,6 +26,7 @@
 
 ### Churn Progress
 
+- 2026-05-25: Added optional superset grouping for paired exercises in routines and workout logs.
 - 2026-05-25: Added warmup, working, drop, and failure labels for individual logged sets.
 - 2026-05-25: Added optional per-set RPE/RIR effort tracking to live workout logging.
 - 2026-05-25: Added exercise-level rest timer targets with web and iOS completion alerts.
@@ -33,7 +35,6 @@
 
 ### Live Workout Execution
 
-- Support supersets and paired exercises.
 - Add a plate calculator for weighted lifts.
 
 ### Programming And Planning

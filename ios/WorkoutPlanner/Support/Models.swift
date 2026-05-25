@@ -79,12 +79,14 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var exerciseId: String
     var weightType: String?
     var restTargetSeconds: Int?
+    var supersetGroup: String?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, sets: [WorkoutSet]) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, sets: [WorkoutSet]) {
         self.exerciseId = exerciseId
         self.weightType = weightType
         self.restTargetSeconds = restTargetSeconds
+        self.supersetGroup = supersetGroup
         self.sets = sets
     }
 }
@@ -363,6 +365,11 @@ func setTypeLabel(_ type: String?) -> String {
     case "failure": return "Failure"
     default: return "Working"
     }
+}
+
+func supersetLabel(_ group: String?) -> String {
+    guard let group, !group.isEmpty else { return "None" }
+    return "Superset \(group)"
 }
 
 func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {

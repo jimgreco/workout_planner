@@ -33,6 +33,14 @@ const SET_TYPE_OPTIONS = [
   { value: 'failure', label: 'Failure' },
 ];
 
+const SUPERSET_OPTIONS = [
+  { value: '', label: 'No pairing' },
+  { value: 'A', label: 'Superset A' },
+  { value: 'B', label: 'Superset B' },
+  { value: 'C', label: 'Superset C' },
+  { value: 'D', label: 'Superset D' },
+];
+
 function formatRestDuration(sec) {
   if (sec < 0) sec = 0;
   const m = Math.floor(sec / 60);
@@ -43,6 +51,10 @@ function formatRestDuration(sec) {
 function restTargetLabel(seconds) {
   const option = REST_TARGET_OPTIONS.find((item) => item.value === seconds);
   return option?.label ?? formatRestDuration(seconds);
+}
+
+function supersetLabel(group) {
+  return group ? `Superset ${group}` : 'No pairing';
 }
 
 function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
@@ -140,6 +152,19 @@ export default function WorkoutBuilder({
     onChange(copy);
   }
 
+  function updateSupersetGroup(itemIdx, value) {
+    const copy = items.map((item, i) => {
+      if (i !== itemIdx) return item;
+      if (!value) {
+        const withoutGroup = { ...item };
+        delete withoutGroup.supersetGroup;
+        return withoutGroup;
+      }
+      return { ...item, supersetGroup: value };
+    });
+    onChange(copy);
+  }
+
   function addSet(itemIdx) {
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
@@ -205,14 +230,31 @@ export default function WorkoutBuilder({
           + (!readOnly && !planningMode ? 1 : 0)
           + (!readOnly ? 1 : 0);
         return (
-          <div key={item.exerciseId} className={`sets-block ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
+          <div key={item.exerciseId} className={`sets-block ${item.supersetGroup ? 'superset-member' : ''} ${activeExerciseIdx === idx ? "active-exercise" : ""}`}>
             <div className="sets-block-header">
               <div className="sets-block-info">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div className="exercise-meta">
                   <span className="exercise-name">{ex.name}</span>
                   <span className="badge">{ex.muscleGroup}</span>
                   {ex.personalBest?.weight && (
                     <span className="pb-label">• PB: {ex.personalBest.weight} lbs</span>
+                  )}
+                  {!readOnly && (
+                    <label className="superset-control">
+                      <span>Pair</span>
+                      <select
+                        aria-label={`Superset group for ${ex.name}`}
+                        value={item.supersetGroup || ''}
+                        onChange={(e) => updateSupersetGroup(idx, e.target.value)}
+                      >
+                        {SUPERSET_OPTIONS.map((option) => (
+                          <option key={option.value || 'none'} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {readOnly && item.supersetGroup && (
+                    <span className="superset-chip">{supersetLabel(item.supersetGroup)}</span>
                   )}
                   {!readOnly && (
                     <label className="rest-target-control">

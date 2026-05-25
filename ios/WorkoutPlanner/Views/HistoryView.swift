@@ -204,6 +204,9 @@ private struct HistoryItemView: View {
                                         .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(Theme.text)
                                     Badge(text: exercise.muscleGroup)
+                                    if let group = item.supersetGroup, !group.isEmpty {
+                                        Badge(text: "SS \(group)")
+                                    }
                                 }
 
                                 FlowLayout(spacing: 6) {

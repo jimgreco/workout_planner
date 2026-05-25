@@ -168,6 +168,17 @@ describe('WorkoutBuilder', () => {
       expect(onChange.mock.calls[0][0][0].restTargetSeconds).toBe(90);
     });
 
+    it('assigns an exercise to a superset group', () => {
+      const onChange = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+
+      fireEvent.change(screen.getByLabelText(/superset group for bench press/i), { target: { value: 'A' } });
+
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(onChange.mock.calls[0][0][0].supersetGroup).toBe('A');
+    });
+
     it('tracks type, RPE, and RIR for a set while logging', () => {
       const onChange = vi.fn();
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];

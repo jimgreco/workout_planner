@@ -400,6 +400,7 @@ struct WorkoutLogView: View {
             exerciseId: item.exerciseId,
             weightType: item.weightType ?? last?.weightType ?? "weight",
             restTargetSeconds: item.restTargetSeconds,
+            supersetGroup: item.supersetGroup,
             sets: sets
         )
     }
