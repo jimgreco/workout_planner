@@ -56,10 +56,12 @@ export default function WorkoutLog({
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [finishModal, setFinishModal]       = useState(null); // null | { pbExercises }
+  const [restAlert, setRestAlert] = useState(null);
   const [elapsed, setElapsed]       = useState('');
   const isEditing = useRef(false);
 
   const saveTimer = useRef(null);
+  const restAlertTimer = useRef(null);
   const isActive = !!workoutId;
   const isPlanningMode = !!workoutId && !startTime && !isEditing.current;
 
@@ -95,6 +97,7 @@ export default function WorkoutLog({
       return {
         exerciseId: item.exerciseId,
         weightType: item.weightType || (lastItem?.weightType) || 'weight',
+        restTargetSeconds: item.restTargetSeconds,
         sets: item.sets.map((s, si) => {
           const targetReps = s.reps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
@@ -118,6 +121,8 @@ export default function WorkoutLog({
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);
   }, [startTime]);
+
+  useEffect(() => () => clearTimeout(restAlertTimer.current), []);
 
   // ── Auto-save on changes (debounced) ─────────────────────────────────────
   const autoSave = useCallback(async (id, data) => {
@@ -239,6 +244,21 @@ export default function WorkoutLog({
     scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
   }
 
+  function handleRestTargetReached(exIdx, setIdx) {
+    const item = items[exIdx];
+    if (!item?.restTargetSeconds) return;
+    const exercise = exercises.find((ex) => ex.id === item.exerciseId);
+    setRestAlert({
+      id: `${Date.now()}-${exIdx}-${setIdx}`,
+      message: `${exercise?.name || 'Exercise'} set ${setIdx + 1} rest target reached.`,
+    });
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(160);
+    }
+    clearTimeout(restAlertTimer.current);
+    restAlertTimer.current = setTimeout(() => setRestAlert(null), 5000);
+  }
+
   function handleFieldChange(field, value) {
     if (field === 'name') setName(value);
     else if (field === 'date') setDate(value);
@@ -266,6 +286,7 @@ export default function WorkoutLog({
         return {
           exerciseId: item.exerciseId,
           weightType: item.weightType || lastItem?.weightType || 'weight',
+          restTargetSeconds: item.restTargetSeconds,
           sets: item.sets.map((s, si) => {
             const targetReps = s.reps || String(settings.defaultReps);
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
@@ -383,6 +404,8 @@ export default function WorkoutLog({
     setItems([]);
     setStartTime(null);
     setElapsed('');
+    setRestAlert(null);
+    clearTimeout(restAlertTimer.current);
     isEditing.current = false;
   }
 
@@ -440,6 +463,13 @@ export default function WorkoutLog({
           </div>
         )}
       </header>
+
+      {restAlert && (
+        <div className="rest-alert" role="status" aria-live="polite">
+          <Clock size={16} />
+          <span>{restAlert.message}</span>
+        </div>
+      )}
 
       {showStartWorkout && (
         <div className="workout-sticky-action">
@@ -506,6 +536,7 @@ export default function WorkoutLog({
         activeExerciseIdx={activeExerciseIdx}
         activeSetIdx={activeSetIdx}
         onSetCompleted={handleSetCompleted}
+        onRestTargetReached={handleRestTargetReached}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
         planningMode={isPlanningMode}

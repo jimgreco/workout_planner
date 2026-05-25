@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import WorkoutBuilder from '../components/WorkoutBuilder';
 
 const exercises = [
@@ -114,8 +114,7 @@ describe('WorkoutBuilder', () => {
       // Header should say Weight
       expect(screen.getByRole('columnheader', { name: 'Weight' })).toBeInTheDocument();
       // Selector should have Weight selected
-      const weightSelectors = screen.getAllByRole('combobox');
-      expect(weightSelectors[0]).toHaveValue('weight');
+      expect(screen.getByLabelText(/weight type for bench press/i)).toHaveValue('weight');
     });
 
     it('shows "Weight (2x)" when type is double', () => {
@@ -158,13 +157,36 @@ describe('WorkoutBuilder', () => {
       expect(onSetCompleted).not.toHaveBeenCalled();
     });
 
+    it('updates the exercise rest target', () => {
+      const onChange = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+
+      fireEvent.change(screen.getByLabelText(/rest target for bench press/i), { target: { value: '90' } });
+
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(onChange.mock.calls[0][0][0].restTargetSeconds).toBe(90);
+    });
+
+    it('calls onRestTargetReached when active rest passes its target', async () => {
+      const onRestTargetReached = vi.fn();
+      const items = [{
+        exerciseId: 'ex1',
+        weightType: 'weight',
+        restTargetSeconds: 30,
+        sets: [{ reps: '10', weight: '100', restStartTime: Date.now() - 31_000 }],
+      }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} onRestTargetReached={onRestTargetReached} />);
+
+      await waitFor(() => expect(onRestTargetReached).toHaveBeenCalledWith(0, 0));
+    });
+
     it('changes weightType when selector is changed', () => {
       const onChange = vi.fn();
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
       render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
       
-      const weightSelectors = screen.getAllByRole('combobox');
-      fireEvent.change(weightSelectors[0], { target: { value: 'double' } });
+      fireEvent.change(screen.getByLabelText(/weight type for bench press/i), { target: { value: 'double' } });
       
       expect(onChange).toHaveBeenCalledOnce();
       const updated = onChange.mock.calls[0][0];

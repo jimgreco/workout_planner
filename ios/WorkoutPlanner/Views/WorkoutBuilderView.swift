@@ -5,6 +5,16 @@ enum WorkoutBuilderFocusedField: Hashable {
     case weight(itemIndex: Int, setIndex: Int)
 }
 
+private let restTargetOptions: [(label: String, seconds: Int?)] = [
+    ("No target", nil),
+    ("0:30", 30),
+    ("1:00", 60),
+    ("1:30", 90),
+    ("2:00", 120),
+    ("3:00", 180),
+    ("5:00", 300),
+]
+
 struct WorkoutBuilderView: View {
     let exercises: [Exercise]
     @Binding var items: [ExerciseItem]
@@ -167,6 +177,25 @@ private struct ExerciseSetsCard: View {
                 .pickerStyle(.segmented)
             }
 
+            if !readOnly {
+                Menu {
+                    ForEach(restTargetOptions, id: \.label) { option in
+                        Button(option.label) {
+                            item.restTargetSeconds = option.seconds
+                            onChanged?()
+                        }
+                    }
+                } label: {
+                    Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+            } else if item.restTargetSeconds ?? 0 > 0 {
+                Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+            }
+
             setHeader
 
             ForEach(item.sets.indices, id: \.self) { setIndex in
@@ -265,7 +294,7 @@ private struct ExerciseSetsCard: View {
                 }
             }
 
-            RestTimerText(set: item.sets[setIndex])
+            RestTimerText(set: item.sets[setIndex], targetSeconds: item.restTargetSeconds)
                 .frame(width: 58, alignment: .trailing)
 
             if !readOnly && !planningMode {
@@ -355,12 +384,24 @@ private struct SetCompleteButton: View {
 
 private struct RestTimerText: View {
     let set: WorkoutSet
+    var targetSeconds: Int?
 
     var body: some View {
         TimelineView(.periodic(from: Date(), by: 1)) { _ in
-            Text(restTimeText(startTime: set.restStartTime, duration: set.restDuration))
+            Text(restTimeText(startTime: set.restStartTime, duration: set.restDuration, targetSeconds: targetSeconds))
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundStyle((set.restStartTime != nil || set.restDuration != nil) ? Theme.success : Theme.muted.opacity(0))
+                .foregroundStyle(foregroundStyle)
         }
+    }
+
+    private var foregroundStyle: Color {
+        guard set.restStartTime != nil || set.restDuration != nil else { return Theme.muted.opacity(0) }
+        guard set.restDuration == nil,
+              let targetSeconds,
+              targetSeconds > 0,
+              let startTime = set.restStartTime
+        else { return Theme.success }
+        let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+        return elapsed >= targetSeconds ? Theme.danger : Theme.accent
     }
 }

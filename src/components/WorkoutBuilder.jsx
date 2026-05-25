@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus } from 'lucide-react';
 
 /**
@@ -16,29 +16,66 @@ import { ArrowUp, ArrowDown, Check, X, Plus } from 'lucide-react';
  *   defaultReps      — default rep value for new sets (default 8)
  */
 
-function RestTimer({ startTime, duration }) {
-  const [now, setNow] = useState(0);
+const REST_TARGET_OPTIONS = [
+  { value: 0, label: 'No target' },
+  { value: 30, label: '0:30' },
+  { value: 60, label: '1:00' },
+  { value: 90, label: '1:30' },
+  { value: 120, label: '2:00' },
+  { value: 180, label: '3:00' },
+  { value: 300, label: '5:00' },
+];
+
+function formatRestDuration(sec) {
+  if (sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function restTargetLabel(seconds) {
+  const option = REST_TARGET_OPTIONS.find((item) => item.value === seconds);
+  return option?.label ?? formatRestDuration(seconds);
+}
+
+function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
+  const [now, setNow] = useState(() => Date.now());
+  const alertedRef = useRef(false);
+  const hasDuration = duration !== undefined && duration !== null;
+
   useEffect(() => {
-    if (!startTime || duration) return;
+    alertedRef.current = false;
+    if (!startTime || hasDuration) return undefined;
     const timeout = setTimeout(() => setNow(Date.now()), 0);
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       clearTimeout(timeout);
       clearInterval(id);
     };
-  }, [startTime, duration]);
+  }, [startTime, hasDuration, targetSeconds]);
 
-  const format = (sec) => {
-    if (sec < 0) sec = 0;
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
+  const elapsed = startTime ? Math.max(0, Math.floor((now - startTime) / 1000)) : 0;
+  const hasTarget = Number.isInteger(targetSeconds) && targetSeconds > 0;
+  const overTarget = hasTarget && !hasDuration && startTime && elapsed >= targetSeconds;
 
-  if (duration) return <span className="rest-time">{format(duration)}</span>;
+  useEffect(() => {
+    if (!overTarget || alertedRef.current) return;
+    alertedRef.current = true;
+    onTargetReached?.();
+  }, [overTarget, onTargetReached]);
+
+  if (hasDuration) return <span className="rest-time">{formatRestDuration(duration)}</span>;
   if (startTime) {
-    const elapsed = now ? Math.floor((now - startTime) / 1000) : 0;
-    return <span className="rest-time live">{format(elapsed)}</span>;
+    if (hasTarget) {
+      const remaining = targetSeconds - elapsed;
+      const text = remaining >= 0 ? formatRestDuration(remaining) : `+${formatRestDuration(Math.abs(remaining))}`;
+      return (
+        <span className={`rest-time live ${remaining < 0 ? 'over-target' : 'target-countdown'}`}>
+          {text}
+        </span>
+      );
+    }
+    return <span className="rest-time live">{formatRestDuration(elapsed)}</span>;
   }
   return <span className="rest-time" style={{ opacity: 0 }}>00:00</span>;
 }
@@ -54,6 +91,7 @@ export default function WorkoutBuilder({
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetCompleted,
+  onRestTargetReached,
   planningMode = false,
 }) {
   function exById(id) {
@@ -78,6 +116,20 @@ export default function WorkoutBuilder({
     const copy = items.map((item, i) =>
       i === itemIdx ? { ...item, weightType } : item
     );
+    onChange(copy);
+  }
+
+  function updateRestTarget(itemIdx, value) {
+    const seconds = Number(value);
+    const copy = items.map((item, i) => {
+      if (i !== itemIdx) return item;
+      if (!Number.isInteger(seconds) || seconds <= 0) {
+        const withoutTarget = { ...item };
+        delete withoutTarget.restTargetSeconds;
+        return withoutTarget;
+      }
+      return { ...item, restTargetSeconds: seconds };
+    });
     onChange(copy);
   }
 
@@ -150,6 +202,23 @@ export default function WorkoutBuilder({
                   {ex.personalBest?.weight && (
                     <span className="pb-label">• PB: {ex.personalBest.weight} lbs</span>
                   )}
+                  {!readOnly && (
+                    <label className="rest-target-control">
+                      <span>Rest</span>
+                      <select
+                        aria-label={`Rest target for ${ex.name}`}
+                        value={item.restTargetSeconds || 0}
+                        onChange={(e) => updateRestTarget(idx, e.target.value)}
+                      >
+                        {REST_TARGET_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {readOnly && item.restTargetSeconds > 0 && (
+                    <span className="rest-target-chip">Rest {restTargetLabel(item.restTargetSeconds)}</span>
+                  )}
                 </div>
               </div>
               {!readOnly && (
@@ -176,6 +245,7 @@ export default function WorkoutBuilder({
                       {!readOnly ? (
                         <select
                           value={item.weightType || 'weight'}
+                          aria-label={`Weight type for ${ex.name}`}
                           onChange={(e) => updateWeightType(idx, e.target.value)}
                           style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0 16px 0 0', appearance: 'auto' }}
                         >
@@ -224,7 +294,12 @@ export default function WorkoutBuilder({
                       </td>
                     )}
                     <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
-                      <RestTimer startTime={set.restStartTime} duration={set.restDuration} />
+                      <RestTimer
+                        startTime={set.restStartTime}
+                        duration={set.restDuration}
+                        targetSeconds={item.restTargetSeconds}
+                        onTargetReached={() => onRestTargetReached?.(idx, si)}
+                      />
                     </td>
                     {!readOnly && !planningMode && (
                       <td style={{ textAlign: 'center' }}>

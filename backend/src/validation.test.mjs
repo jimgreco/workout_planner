@@ -44,11 +44,13 @@ test('validates nested workout log limits and statuses', () => {
     exerciseItems: [{
       exerciseId: 'ex-1',
       weightType: 'double',
+      restTargetSeconds: 90,
       sets: [{ reps: '', weight: '', placeholderReps: '8' }],
     }],
   }, 'log-1');
 
   assert.equal(log.status, 'planning');
+  assert.equal(log.exerciseItems[0].restTargetSeconds, 90);
   assert.equal(log.exerciseItems[0].sets[0].placeholderReps, '8');
   assert.throws(
     () => validateLog({ ...log, status: 'deleted' }, 'log-1'),

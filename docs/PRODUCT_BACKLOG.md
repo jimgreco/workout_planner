@@ -4,6 +4,7 @@
 
 ### Recently Added
 
+- Web and iOS can set exercise-level rest targets, show countdown/overdue rest timers, and alert when a target is reached.
 - The export/import compatibility contract is documented for support, testing, and future schema changes.
 - Web and iOS now expose explicit set-complete controls in the workout builder, so rest tracking starts from a deliberate tap instead of hidden field-blur behavior.
 - Client writes now send backend revisions to prevent silent overwrites.
@@ -22,13 +23,12 @@
 
 ### Churn Progress
 
+- 2026-05-25: Added exercise-level rest timer targets with web and iOS completion alerts.
 - 2026-05-25: Documented the backup/export compatibility contract.
 - 2026-05-25: Completed explicit set-complete controls for live workouts on web and iOS.
-- 2026-05-25: Next live-workout target is rest-timer goals with completion alerts.
 
 ### Live Workout Execution
 
-- Add target rest timers with completion alerts.
 - Track RPE/RIR per set.
 - Support warmup, working, drop, and failure set labels.
 - Support supersets and paired exercises.

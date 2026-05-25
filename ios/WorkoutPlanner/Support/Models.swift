@@ -69,11 +69,13 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var id: String { exerciseId }
     var exerciseId: String
     var weightType: String?
+    var restTargetSeconds: Int?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", sets: [WorkoutSet]) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, sets: [WorkoutSet]) {
         self.exerciseId = exerciseId
         self.weightType = weightType
+        self.restTargetSeconds = restTargetSeconds
         self.sets = sets
     }
 }
@@ -332,7 +334,20 @@ func formatDuration(startTime: String?, endTime: String? = nil) -> String {
     return remaining > 0 ? "\(hours)h \(remaining)m" : "\(hours)h"
 }
 
-func restTimeText(startTime: Double?, duration: Int?) -> String {
+func restDurationText(_ seconds: Int) -> String {
+    let safeSeconds = max(0, seconds)
+    return String(format: "%02d:%02d", safeSeconds / 60, safeSeconds % 60)
+}
+
+func restTargetLabel(_ seconds: Int?) -> String {
+    guard let seconds, seconds > 0 else { return "None" }
+    if seconds < 60 { return "\(seconds)s" }
+    let minutes = seconds / 60
+    let remaining = seconds % 60
+    return remaining == 0 ? "\(minutes)m" : "\(minutes):\(String(format: "%02d", remaining))"
+}
+
+func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {
     let seconds: Int
     if let duration {
         seconds = duration
@@ -341,5 +356,12 @@ func restTimeText(startTime: Double?, duration: Int?) -> String {
     } else {
         seconds = 0
     }
-    return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    if duration == nil, startTime != nil, let targetSeconds, targetSeconds > 0 {
+        let remaining = targetSeconds - seconds
+        if remaining >= 0 {
+            return restDurationText(remaining)
+        }
+        return "+\(restDurationText(abs(remaining)))"
+    }
+    return restDurationText(seconds)
 }

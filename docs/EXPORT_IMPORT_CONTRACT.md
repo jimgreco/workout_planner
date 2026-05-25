@@ -60,6 +60,8 @@ Import limits are intentionally larger than normal app use:
 - Up to 100 programs.
 - Up to 80 exercises per template/log.
 - Up to 50 sets per exercise item.
+- Rest targets are stored as optional `restTargetSeconds` values on exercise
+  items and must be between 0 and 3,600 seconds.
 - Up to 70 schedule entries per program.
 
 ## Import Modes

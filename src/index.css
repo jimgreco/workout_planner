@@ -1776,6 +1776,41 @@ input:focus, select:focus, textarea:focus {
   color: var(--success);
   font-variant-numeric: tabular-nums;
 }
+.rest-time.target-countdown {
+  color: var(--accent);
+}
+.rest-time.over-target {
+  color: var(--danger);
+}
+.rest-target-control,
+.rest-target-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.rest-target-control select {
+  width: auto;
+  min-width: 74px;
+  height: 24px;
+  padding: 0 18px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rest-target-chip {
+  color: var(--accent);
+}
 .set-complete-btn {
   display: inline-flex;
   align-items: center;
@@ -1805,6 +1840,19 @@ input:focus, select:focus, textarea:focus {
 }
 .set-complete-btn.completed:disabled {
   opacity: 1;
+}
+.rest-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 /* ── History List ───────────────────────────────────────── */

@@ -20,6 +20,8 @@ struct WorkoutLogView: View {
     @State private var isSaving = false
     @State private var showDiscardConfirm = false
     @State private var finishSummary: FinishSummary?
+    @State private var restAlert: RestTargetAlert?
+    @State private var restAlertTask: Task<Void, Never>?
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
@@ -35,6 +37,9 @@ struct WorkoutLogView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if isActive {
                         activeHeader
+                    }
+                    if let restAlert {
+                        RestTargetBanner(message: restAlert.message)
                     }
 
                     workoutFields
@@ -94,6 +99,9 @@ struct WorkoutLogView: View {
             guard let log else { return }
             load(log: log, editing: true)
             store.editingLog = nil
+        }
+        .onDisappear {
+            restAlertTask?.cancel()
         }
         .alert(isEditing ? "Cancel Editing?" : "Discard Workout?", isPresented: $showDiscardConfirm) {
             Button(isEditing ? "Keep Editing" : "Keep Going", role: .cancel) {}
@@ -388,7 +396,12 @@ struct WorkoutLogView: View {
             }
             return WorkoutSet(reps: "", weight: "", placeholderReps: targetReps, placeholderWeight: "")
         }
-        return ExerciseItem(exerciseId: item.exerciseId, weightType: item.weightType ?? last?.weightType ?? "weight", sets: sets)
+        return ExerciseItem(
+            exerciseId: item.exerciseId,
+            weightType: item.weightType ?? last?.weightType ?? "weight",
+            restTargetSeconds: item.restTargetSeconds,
+            sets: sets
+        )
     }
 
     private func lastFinishedItem(for exerciseId: String) -> ExerciseItem? {
@@ -433,10 +446,46 @@ struct WorkoutLogView: View {
             activeExerciseIndex = nextExercise
             activeSetIndex = nextSet
         }
+        scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: now)
         scheduleSave()
     }
 
+    private func scheduleRestAlert(exerciseIndex: Int, setIndex: Int, startTime: Double) {
+        restAlertTask?.cancel()
+        guard items.indices.contains(exerciseIndex),
+              items[exerciseIndex].sets.indices.contains(setIndex),
+              let targetSeconds = items[exerciseIndex].restTargetSeconds,
+              targetSeconds > 0
+        else { return }
+
+        let exerciseName = store.exercise(id: items[exerciseIndex].exerciseId)?.name ?? "Exercise"
+        restAlertTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(targetSeconds) * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard items.indices.contains(exerciseIndex),
+                      items[exerciseIndex].sets.indices.contains(setIndex),
+                      items[exerciseIndex].sets[setIndex].restStartTime == startTime,
+                      items[exerciseIndex].sets[setIndex].restDuration == nil
+                else { return }
+
+                let alert = RestTargetAlert(message: "\(exerciseName) set \(setIndex + 1) rest target reached.")
+                restAlert = alert
+                Task {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    await MainActor.run {
+                        if restAlert?.id == alert.id {
+                            restAlert = nil
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func resetWorkout() {
+        restAlertTask?.cancel()
+        restAlert = nil
         workoutId = nil
         name = ""
         date = Date()
@@ -459,6 +508,29 @@ struct FinishSummary: Identifiable {
     let exerciseCount: Int
     let setCount: Int
     let pbExercises: [String]
+}
+
+struct RestTargetAlert: Identifiable {
+    let id = UUID()
+    let message: String
+}
+
+private struct RestTargetBanner: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "timer")
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(Theme.text)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.accent.opacity(0.09))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.accent.opacity(0.32), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
 }
 
 private struct WorkoutCompleteSheet: View {

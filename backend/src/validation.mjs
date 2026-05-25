@@ -66,6 +66,11 @@ function intValue(value, label, min, max) {
   return value;
 }
 
+function optionalIntValue(value, label, min, max) {
+  if (value === undefined || value === null) return undefined;
+  return intValue(value, label, min, max);
+}
+
 function optionalNumber(value, label, min, max) {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
@@ -143,18 +148,21 @@ function workoutSet(value, index) {
 
 function exerciseItem(value, index) {
   assertObject(value, `exerciseItems[${index}]`);
-  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets']), `exerciseItems[${index}]`);
+  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds']), `exerciseItems[${index}]`);
   const exerciseId = validateId(value.exerciseId, `exerciseItems[${index}].exerciseId`);
   const weightType = stringValue(value.weightType, `exerciseItems[${index}].weightType`, { max: 16 }) ?? 'weight';
   if (!WEIGHT_TYPES.has(weightType)) fail(`exerciseItems[${index}].weightType is invalid`);
   if (!Array.isArray(value.sets) || value.sets.length > 50) {
     fail(`exerciseItems[${index}].sets must contain at most 50 sets`);
   }
-  return {
+  const item = {
     exerciseId,
     weightType,
     sets: value.sets.map(workoutSet),
   };
+  const restTargetSeconds = optionalIntValue(value.restTargetSeconds, `exerciseItems[${index}].restTargetSeconds`, 0, 3600);
+  if (restTargetSeconds > 0) item.restTargetSeconds = restTargetSeconds;
+  return item;
 }
 
 function exerciseItems(value, label) {
