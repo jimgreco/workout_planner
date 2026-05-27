@@ -3,6 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   verify:
@@ -178,12 +179,52 @@ jobs:
           export WORKOUT_GOOGLE_CLIENT_IDS
           export WORKOUT_APPLE_CLIENT_IDS
 
+          upsert_deploy_env() {
+            local key="$1"
+            local value="$2"
+            local tmp
+            tmp="$(mktemp)"
+            if [ -f .env ]; then
+              grep -v -E "^${key}=" .env > "$tmp" || true
+            fi
+            printf '%s=%s\n' "$key" "$value" >> "$tmp"
+            mv "$tmp" .env
+            chmod 600 .env
+          }
+
+          upsert_deploy_env WORKOUT_APP_SESSION_SECRET "$APP_SESSION_SECRET"
+          upsert_deploy_env WORKOUT_LOCAL_AUTH_BYPASS "$LOCAL_AUTH_BYPASS"
+          upsert_deploy_env WORKOUT_ALLOWED_ORIGINS "$ALLOWED_ORIGINS"
+          upsert_deploy_env WORKOUT_APP_VERSION "$APP_VERSION"
+          upsert_deploy_env WORKOUT_GIT_COMMIT "$SHORT_SHA"
+          upsert_deploy_env WORKOUT_BUILD_TIME "$BUILD_TIME"
+          upsert_deploy_env WORKOUT_GOOGLE_CLIENT_ID "$WORKOUT_GOOGLE_CLIENT_ID"
+          upsert_deploy_env WORKOUT_GOOGLE_CLIENT_IDS "$WORKOUT_GOOGLE_CLIENT_IDS"
+          upsert_deploy_env WORKOUT_APPLE_CLIENT_IDS "$WORKOUT_APPLE_CLIENT_IDS"
+
+          cat > docker-compose.override.yml <<'COMPOSE_PERSISTENT_OVERRIDE'
+          services:
+            workout_api:
+              environment:
+                NODE_ENV: production
+                APP_SESSION_SECRET: ${WORKOUT_APP_SESSION_SECRET}
+                ALLOWED_ORIGINS: ${WORKOUT_ALLOWED_ORIGINS}
+                LOCAL_AUTH_BYPASS: ${WORKOUT_LOCAL_AUTH_BYPASS:-false}
+                APP_VERSION: ${WORKOUT_APP_VERSION:-1.0.0}
+                GIT_COMMIT: ${WORKOUT_GIT_COMMIT:-local}
+                BUILD_TIME: ${WORKOUT_BUILD_TIME:-local}
+                GOOGLE_CLIENT_ID: ${WORKOUT_GOOGLE_CLIENT_ID}
+                GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
+                APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
+          COMPOSE_PERSISTENT_OVERRIDE
+
           OVERRIDE_FILE="$(mktemp)"
           trap 'rm -f "$OVERRIDE_FILE"' EXIT
           cat > "$OVERRIDE_FILE" <<'COMPOSE_OVERRIDE'
           services:
             workout_api:
               environment:
+                NODE_ENV: production
                 APP_SESSION_SECRET: ${APP_SESSION_SECRET}
                 ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
                 LOCAL_AUTH_BYPASS: ${LOCAL_AUTH_BYPASS}
@@ -204,6 +245,23 @@ jobs:
             --build-arg BUILD_TIME="$BUILD_TIME" \
             workout workout_api
           docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" up -d --force-recreate workout workout_api
+          docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" exec -T workout_api node - <<'NODE'
+          const checks = [
+            ['APP_SESSION_SECRET', 32],
+            ['GOOGLE_CLIENT_IDS', 1],
+            ['APPLE_CLIENT_IDS', 1],
+          ];
+          for (const [key, minLength] of checks) {
+            const value = process.env[key] || '';
+            if (value.length < minLength) {
+              throw new Error(`${key} is not configured in the workout_api container`);
+            }
+          }
+          if (process.env.LOCAL_AUTH_BYPASS !== 'false') {
+            throw new Error('LOCAL_AUTH_BYPASS must be false in production');
+          }
+          console.log('workout_api runtime config verified');
+          NODE
           docker system prune -f
           REMOTE_DEPLOY
 
