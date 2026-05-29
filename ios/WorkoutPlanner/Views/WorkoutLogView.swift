@@ -196,7 +196,7 @@ struct WorkoutLogView: View {
             focusedField: $focusedBuilderField,
             onSetCompleted: markSetCompleted,
             onEndRest: endRest,
-            onChanged: scheduleSave
+            onChanged: liveCardChanged
         )
     }
 
@@ -277,6 +277,11 @@ struct WorkoutLogView: View {
         } else {
             scheduleSave()
         }
+    }
+
+    private func liveCardChanged() {
+        scheduleSave()
+        rescheduleRestAlertIfNeeded()
     }
 
     private func scheduleSave() {
@@ -651,9 +656,11 @@ struct WorkoutLogView: View {
               targetSeconds > 0
         else { return }
 
+        let elapsedSeconds = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+        let waitSeconds = max(0, targetSeconds - elapsedSeconds)
         let exerciseName = store.exercise(id: items[exerciseIndex].exerciseId)?.name ?? "Exercise"
         restAlertTask = Task {
-            try? await Task.sleep(nanoseconds: UInt64(targetSeconds) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(waitSeconds) * 1_000_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard items.indices.contains(exerciseIndex),
@@ -674,6 +681,13 @@ struct WorkoutLogView: View {
                 }
             }
         }
+    }
+
+    private func rescheduleRestAlertIfNeeded() {
+        guard let context = liveRestingContext,
+              let startTime = context.set.restStartTime
+        else { return }
+        scheduleRestAlert(exerciseIndex: context.exerciseIndex, setIndex: context.setIndex, startTime: startTime)
     }
 
     private func resetWorkout() {
@@ -741,6 +755,23 @@ private let liveSetTypeOptions: [(label: String, value: String)] = [
     ("Warmup", "warmup"),
     ("Drop", "drop"),
     ("Failure", "failure"),
+]
+
+private let liveWeightTypeOptions: [(label: String, value: String)] = [
+    ("Weight", "weight"),
+    ("2x weight", "double"),
+    ("Bar + 2x", "bar_double"),
+    ("No weight", "none"),
+]
+
+private let liveRestTargetOptions: [(label: String, seconds: Int?)] = [
+    ("No target", nil),
+    ("0:30", 30),
+    ("1:00", 60),
+    ("1:30", 90),
+    ("2:00", 120),
+    ("3:00", 180),
+    ("5:00", 300),
 ]
 
 private struct WorkoutLiveActivityCard: View {
@@ -912,15 +943,7 @@ private struct WorkoutLiveActivityCard: View {
 
             Spacer()
 
-            if let targetSeconds = context.item.restTargetSeconds, targetSeconds > 0 {
-                Text(restTargetLabel(targetSeconds))
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(Theme.text)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Theme.background.opacity(0.72))
-                    .clipShape(Capsule())
-            }
+            restTargetMenu(context)
 
             Button {
                 onEndRest(context.exerciseIndex, context.setIndex)
@@ -962,54 +985,86 @@ private struct WorkoutLiveActivityCard: View {
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
 
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("\(context.setIndex + 1)/\(context.item.sets.count)")
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Theme.accent)
+                        .monospacedDigit()
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Theme.accent.opacity(0.11))
+                        .clipShape(Capsule())
+                        .accessibilityLabel("Set \(context.setIndex + 1) of \(context.item.sets.count)")
+
                     Text(context.exercise.name)
                         .font(.system(size: 22, weight: .heavy))
                         .foregroundStyle(Theme.text)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.82)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+                        .layoutPriority(1)
 
-                    Badge(text: context.exercise.muscleGroup)
+                    if !context.exercise.muscleGroup.isEmpty {
+                        Badge(text: context.exercise.muscleGroup)
+                    }
+
+                    Spacer(minLength: 4)
+
+                    restTargetMenu(context)
                 }
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
-                WorkoutLiveMetric(title: "Set", value: "\(context.setIndex + 1) / \(context.item.sets.count)")
-                WorkoutLiveInput(
-                    title: "Reps",
-                    text: stringBinding(set, \.reps),
-                    placeholder: repsLabel(for: context.set) ?? "0",
-                    keyboard: .numberPad
-                )
-                .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
-
-                if context.item.weightType != "none" {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     WorkoutLiveInput(
-                        title: "Weight",
-                        text: stringBinding(set, \.weight),
-                        placeholder: weightPlaceholder(for: context) ?? "0",
-                        keyboard: .decimalPad
+                        title: "Reps",
+                        text: stringBinding(set, \.reps),
+                        placeholder: repsLabel(for: context.set) ?? "0",
+                        keyboard: .numberPad
                     )
-                    .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    .frame(width: 82)
+
+                    if context.item.weightType != "none" {
+                        WorkoutLiveInput(
+                            title: "Weight",
+                            text: stringBinding(set, \.weight),
+                            placeholder: weightPlaceholder(for: context) ?? "0",
+                            keyboard: .decimalPad
+                        )
+                        .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                        .frame(width: 96)
+                    }
+
+                    weightTypeMenu(context)
+                        .frame(width: 104)
+
+                    Spacer(minLength: 0)
                 }
 
-                setTypeMenu(set: set)
+                HStack(alignment: .top, spacing: 8) {
+                    setTypeMenu(set: set)
+                        .frame(width: 120)
 
-                WorkoutLiveInput(
-                    title: "RPE",
-                    text: stringBinding(set, \.rpe),
-                    placeholder: "-",
-                    keyboard: .decimalPad
-                )
-                .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    WorkoutLiveInput(
+                        title: "RPE",
+                        text: stringBinding(set, \.rpe),
+                        placeholder: "-",
+                        keyboard: .decimalPad
+                    )
+                    .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    .frame(width: 72)
 
-                WorkoutLiveInput(
-                    title: "RIR",
-                    text: stringBinding(set, \.rir),
-                    placeholder: "-",
-                    keyboard: .decimalPad
-                )
-                .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    WorkoutLiveInput(
+                        title: "RIR",
+                        text: stringBinding(set, \.rir),
+                        placeholder: "-",
+                        keyboard: .decimalPad
+                    )
+                    .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    .frame(width: 72)
+
+                    Spacer(minLength: 0)
+                }
             }
 
             if let personalBest = personalBestLabel(context.exercise.personalBest) {
@@ -1075,9 +1130,56 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
         } label: {
-            WorkoutLiveMetric(title: "Type", value: setTypeLabel(set.wrappedValue.setType))
+            WorkoutLiveMenuMetric(title: "Set Type", value: setTypeLabel(set.wrappedValue.setType))
         }
         .buttonStyle(.plain)
+    }
+
+    private func weightTypeMenu(_ context: WorkoutLiveSetContext) -> some View {
+        Menu {
+            ForEach(liveWeightTypeOptions, id: \.value) { option in
+                Button(option.label) {
+                    guard items.indices.contains(context.exerciseIndex) else { return }
+                    items[context.exerciseIndex].weightType = option.value
+                    onChanged()
+                }
+            }
+        } label: {
+            WorkoutLiveMenuMetric(title: "Load", value: weightTypeLabel(context.item.weightType))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func restTargetMenu(_ context: WorkoutLiveSetContext) -> some View {
+        Menu {
+            ForEach(liveRestTargetOptions, id: \.label) { option in
+                Button(option.label) {
+                    guard items.indices.contains(context.exerciseIndex) else { return }
+                    items[context.exerciseIndex].restTargetSeconds = option.seconds
+                    onChanged()
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "timer")
+                    .font(.system(size: 11, weight: .bold))
+                Text(restTargetLabel(context.item.restTargetSeconds))
+                    .font(.system(size: 12, weight: .heavy))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .heavy))
+                    .foregroundStyle(Theme.muted.opacity(0.72))
+            }
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 9)
+            .frame(height: 30)
+            .background(Theme.background.opacity(0.72))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Rest target")
     }
 
     private func context(exerciseIndex: Int, setIndex: Int) -> WorkoutLiveSetContext? {
@@ -1129,6 +1231,15 @@ private struct WorkoutLiveActivityCard: View {
         return effort.isEmpty ? nil : effort
     }
 
+    private func weightTypeLabel(_ type: String?) -> String {
+        switch type {
+        case "double": return "2x weight"
+        case "bar_double": return "Bar + 2x"
+        case "none": return "No weight"
+        default: return "Weight"
+        }
+    }
+
     private func restTint(for context: WorkoutLiveSetContext) -> Color {
         guard let targetSeconds = context.item.restTargetSeconds,
               targetSeconds > 0,
@@ -1173,7 +1284,7 @@ private struct WorkoutLiveSetContext {
     let setIndex: Int
 }
 
-private struct WorkoutLiveMetric: View {
+private struct WorkoutLiveMenuMetric: View {
     let title: String
     let value: String
 
@@ -1184,11 +1295,17 @@ private struct WorkoutLiveMetric: View {
                 .foregroundStyle(Theme.muted)
                 .textCase(.uppercase)
 
-            Text(value)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(Theme.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
+            HStack(spacing: 5) {
+                Text(value)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(Theme.muted.opacity(0.72))
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
