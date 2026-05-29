@@ -1,5 +1,8 @@
 import SwiftUI
 
+private let workoutAutosaveDelayNanoseconds: UInt64 = 800_000_000
+private let workoutLiveActivityUpdateDelayNanoseconds: UInt64 = 250_000_000
+
 struct WorkoutLogView: View {
     @EnvironmentObject private var store: WorkoutStore
 
@@ -22,6 +25,10 @@ struct WorkoutLogView: View {
     @State private var finishSummary: FinishSummary?
     @State private var restAlert: RestTargetAlert?
     @State private var restAlertTask: Task<Void, Never>?
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saveGeneration = 0
+    @State private var liveActivityUpdateTask: Task<Void, Never>?
+    @State private var liveActivityUpdateGeneration = 0
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
@@ -109,11 +116,12 @@ struct WorkoutLogView: View {
         }
         .onDisappear {
             restAlertTask?.cancel()
-            updateExternalLiveActivity()
+            flushScheduledSave()
+            updateExternalLiveActivityNow()
         }
         .onChange(of: workoutId) { _, _ in updateExternalLiveActivity() }
-        .onChange(of: name) { _, _ in updateExternalLiveActivity() }
-        .onChange(of: items) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: name) { _, _ in scheduleExternalLiveActivityUpdate() }
+        .onChange(of: items) { _, _ in scheduleExternalLiveActivityUpdate() }
         .onChange(of: startTime) { _, _ in updateExternalLiveActivity() }
         .onChange(of: activeExerciseIndex) { _, _ in updateExternalLiveActivity() }
         .onChange(of: activeSetIndex) { _, _ in updateExternalLiveActivity() }
@@ -273,7 +281,7 @@ struct WorkoutLogView: View {
     private func builderChanged() {
         if workoutId == nil, !items.isEmpty {
             workoutId = UUID().uuidString
-            Task { await persist(status: "planning") }
+            saveNow(status: "planning")
         } else {
             scheduleSave()
         }
@@ -285,16 +293,28 @@ struct WorkoutLogView: View {
     }
 
     private func scheduleSave() {
-        guard workoutId != nil else { return }
-        Task { await persist(status: currentStatus()) }
+        guard let log = logSnapshot(status: currentStatus()) else { return }
+        saveTask?.cancel()
+        saveGeneration += 1
+        let generation = saveGeneration
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: workoutAutosaveDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            await persist(log)
+            await MainActor.run {
+                if saveGeneration == generation {
+                    saveTask = nil
+                }
+            }
+        }
     }
 
     private func startWorkout() {
         guard workoutId != nil else { return }
         promotePlanningRepsToPlaceholders()
         startTime = ISO8601DateFormatter().string(from: Date())
-        updateExternalLiveActivity()
-        Task { await persist(status: "active") }
+        updateExternalLiveActivityNow()
+        saveNow(status: "active")
     }
 
     private func resetPersonalBest(_ exercise: Exercise) {
@@ -312,6 +332,7 @@ struct WorkoutLogView: View {
 
     private func finishWorkout() async {
         guard let workoutId, !isSaving else { return }
+        cancelScheduledSave()
         isSaving = true
         defer { isSaving = false }
 
@@ -368,6 +389,7 @@ struct WorkoutLogView: View {
 
     private func discardWorkout() async {
         guard let id = workoutId else { return }
+        cancelScheduledSave()
         isSaving = true
         defer { isSaving = false }
 
@@ -382,18 +404,38 @@ struct WorkoutLogView: View {
         }
     }
 
-    private func persist(status: String) async {
-        guard let workoutId else { return }
+    private func saveNow(status: String) {
+        cancelScheduledSave()
+        guard let log = logSnapshot(status: status) else { return }
+        Task { await persist(log) }
+    }
+
+    private func flushScheduledSave() {
+        guard saveTask != nil else { return }
+        saveNow(status: currentStatus())
+    }
+
+    private func cancelScheduledSave() {
+        saveGeneration += 1
+        saveTask?.cancel()
+        saveTask = nil
+    }
+
+    private func logSnapshot(status: String) -> WorkoutLog? {
+        guard let workoutId else { return nil }
+        return WorkoutLog(
+            id: workoutId,
+            name: name,
+            date: DateHelpers.dayString(from: date),
+            notes: notes,
+            exerciseItems: items,
+            startTime: startTime,
+            status: status
+        )
+    }
+
+    private func persist(_ log: WorkoutLog) async {
         do {
-            let log = WorkoutLog(
-                id: workoutId,
-                name: name,
-                date: DateHelpers.dayString(from: date),
-                notes: notes,
-                exerciseItems: items,
-                startTime: startTime,
-                status: status
-            )
             try await store.saveLog(log)
         } catch {
             store.errorMessage = error.localizedDescription
@@ -441,7 +483,7 @@ struct WorkoutLogView: View {
                 workoutId = UUID().uuidString
             }
         }
-        Task { await persist(status: "planning") }
+        saveNow(status: "planning")
     }
 
     private func prepopulated(_ item: ExerciseItem) -> ExerciseItem {
@@ -511,7 +553,8 @@ struct WorkoutLogView: View {
             activeSetIndex = nextSet
         }
         scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: now)
-        scheduleSave()
+        updateExternalLiveActivityNow()
+        saveNow(status: currentStatus())
     }
 
     private func endRest(exerciseIndex: Int, setIndex: Int) {
@@ -526,7 +569,31 @@ struct WorkoutLogView: View {
         items[exerciseIndex].sets[setIndex].restStartTime = nil
         restAlertTask?.cancel()
         restAlert = nil
-        scheduleSave()
+        updateExternalLiveActivityNow()
+        saveNow(status: currentStatus())
+    }
+
+    private func scheduleExternalLiveActivityUpdate() {
+        liveActivityUpdateTask?.cancel()
+        liveActivityUpdateGeneration += 1
+        let generation = liveActivityUpdateGeneration
+        liveActivityUpdateTask = Task {
+            try? await Task.sleep(nanoseconds: workoutLiveActivityUpdateDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                updateExternalLiveActivity()
+                if liveActivityUpdateGeneration == generation {
+                    liveActivityUpdateTask = nil
+                }
+            }
+        }
+    }
+
+    private func updateExternalLiveActivityNow() {
+        liveActivityUpdateGeneration += 1
+        liveActivityUpdateTask?.cancel()
+        liveActivityUpdateTask = nil
+        updateExternalLiveActivity()
     }
 
     private func updateExternalLiveActivity() {
@@ -692,6 +759,10 @@ struct WorkoutLogView: View {
 
     private func resetWorkout() {
         restAlertTask?.cancel()
+        cancelScheduledSave()
+        liveActivityUpdateGeneration += 1
+        liveActivityUpdateTask?.cancel()
+        liveActivityUpdateTask = nil
         restAlert = nil
         WorkoutLiveActivityController.shared.end(workoutID: workoutId)
         workoutId = nil
