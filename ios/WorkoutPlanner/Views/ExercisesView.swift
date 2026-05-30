@@ -43,6 +43,8 @@ struct ExercisesView: View {
                     }
                 }
                 .padding(16)
+                .padding(.bottom, 96)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .navigationTitle("Exercise Library")
             .navigationBarTitleDisplayMode(.large)
@@ -118,6 +120,7 @@ private struct ExerciseSearchBar: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
+        .frame(maxWidth: .infinity)
         .background {
             Capsule()
                 .fill(Theme.surface.opacity(isFocused ? 0.92 : 0.76))
@@ -155,39 +158,34 @@ private struct ExerciseRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Text(exercise.name)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Theme.text)
                     .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
 
+                actionButtons
+            }
+
+            ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
-                    Badge(text: exercise.muscleGroup)
-                    if let best = personalBestLabel(exercise.personalBest) {
-                        Button(action: onPB) {
-                            Badge(text: best, icon: "star.fill", accent: true)
-                        }
+                    badges
+                    exerciseNotes(lineLimit: 1)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        badges
                     }
-                    if let notes = exercise.notes, !notes.isEmpty {
-                        Text(notes)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.muted)
-                            .lineLimit(1)
-                    }
+                    exerciseNotes(lineLimit: 2)
                 }
             }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                IconCircleButton(systemName: "chart.bar", action: onDetail)
-                IconCircleButton(systemName: "star", tint: exercise.personalBest == nil ? Theme.text : Theme.accent, action: onPB)
-                IconCircleButton(systemName: "pencil", action: onEdit)
-                IconCircleButton(systemName: "trash", tint: Theme.danger, action: onDelete)
-            }
         }
-        .padding(16)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.background)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
@@ -195,6 +193,37 @@ private struct ExerciseRow: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 6) {
+            IconCircleButton(systemName: "chart.bar", action: onDetail)
+            IconCircleButton(systemName: "star", tint: exercise.personalBest == nil ? Theme.text : Theme.accent, action: onPB)
+            IconCircleButton(systemName: "pencil", action: onEdit)
+            IconCircleButton(systemName: "trash", tint: Theme.danger, action: onDelete)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private var badges: some View {
+        Badge(text: exercise.muscleGroup)
+        if let best = personalBestLabel(exercise.personalBest) {
+            Button(action: onPB) {
+                Badge(text: best, icon: "star.fill", accent: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func exerciseNotes(lineLimit: Int) -> some View {
+        if let notes = exercise.notes, !notes.isEmpty {
+            Text(notes)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.muted)
+                .lineLimit(lineLimit)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

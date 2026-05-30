@@ -48,9 +48,9 @@ import { personalBestLabel } from './progress.js';
 
 const PAGES = [
   { id: 'log',       label: 'Workout',          icon: Dumbbell },
+  { id: 'templates', label: 'Program',          icon: ClipboardList },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
-  { id: 'templates', label: 'Program',          icon: ClipboardList },
   { id: 'exercises', label: 'Exercise Library', icon: BicepsFlexed },
 ];
 const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';

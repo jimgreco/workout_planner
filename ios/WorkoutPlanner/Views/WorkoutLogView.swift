@@ -1049,7 +1049,9 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func currentSetSection(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, isUpNext: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let showsWeight = context.item.weightType != "none"
+
+        return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(isCompleted(context.set) ? "Selected set" : isUpNext ? "Up next" : "Current set")
                     .font(.system(size: 12, weight: .heavy))
@@ -1085,7 +1087,7 @@ private struct WorkoutLiveActivityCard: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 8) {
+                LazyVGrid(columns: liveFieldColumns(count: showsWeight ? 3 : 2), alignment: .leading, spacing: 8) {
                     WorkoutLiveInput(
                         title: "Reps",
                         text: stringBinding(set, \.reps),
@@ -1093,9 +1095,8 @@ private struct WorkoutLiveActivityCard: View {
                         keyboard: .numberPad
                     )
                     .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
-                    .frame(width: 82)
 
-                    if context.item.weightType != "none" {
+                    if showsWeight {
                         WorkoutLiveInput(
                             title: "Weight",
                             text: stringBinding(set, \.weight),
@@ -1103,18 +1104,14 @@ private struct WorkoutLiveActivityCard: View {
                             keyboard: .decimalPad
                         )
                         .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
-                        .frame(width: 96)
                     }
 
                     weightTypeMenu(context)
-                        .frame(width: 104)
-
-                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity)
 
-                HStack(alignment: .top, spacing: 8) {
+                LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: 8) {
                     setTypeMenu(set: set)
-                        .frame(width: 120)
 
                     WorkoutLiveInput(
                         title: "RPE",
@@ -1123,7 +1120,6 @@ private struct WorkoutLiveActivityCard: View {
                         keyboard: .decimalPad
                     )
                     .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
-                    .frame(width: 72)
 
                     WorkoutLiveInput(
                         title: "RIR",
@@ -1132,10 +1128,8 @@ private struct WorkoutLiveActivityCard: View {
                         keyboard: .decimalPad
                     )
                     .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
-                    .frame(width: 72)
-
-                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity)
             }
 
             if let personalBest = personalBestLabel(context.exercise.personalBest) {
@@ -1190,6 +1184,13 @@ private struct WorkoutLiveActivityCard: View {
                 .disabled(isCompleted(context.set))
             }
         }
+    }
+
+    private func liveFieldColumns(count: Int) -> [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .top),
+            count: max(1, count)
+        )
     }
 
     private func setTypeMenu(set: Binding<WorkoutSet>) -> some View {
@@ -1380,7 +1381,7 @@ private struct WorkoutLiveMenuMetric: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .background(Theme.background.opacity(0.68))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
@@ -1409,7 +1410,7 @@ private struct WorkoutLiveInput: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .background(Theme.background.opacity(0.68))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }

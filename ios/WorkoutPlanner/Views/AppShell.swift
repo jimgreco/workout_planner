@@ -5,9 +5,9 @@ import UniformTypeIdentifiers
 
 enum AppPage: String, CaseIterable, Identifiable, Hashable {
     case log
+    case templates
     case progress
     case history
-    case templates
     case exercises
     case settings
 
@@ -83,16 +83,16 @@ struct AppShell: View {
                 tabContent(for: .log)
             }
 
+            Tab(AppPage.templates.label, systemImage: AppPage.templates.symbol, value: AppPage.templates) {
+                tabContent(for: .templates)
+            }
+
             Tab(AppPage.progress.label, systemImage: AppPage.progress.symbol, value: AppPage.progress) {
                 tabContent(for: .progress)
             }
 
             Tab(AppPage.history.label, systemImage: AppPage.history.symbol, value: AppPage.history) {
                 tabContent(for: .history)
-            }
-
-            Tab(AppPage.templates.label, systemImage: AppPage.templates.symbol, value: AppPage.templates) {
-                tabContent(for: .templates)
             }
 
             Tab(AppPage.exercises.label, systemImage: AppPage.exercises.symbol, value: AppPage.exercises) {

@@ -82,6 +82,7 @@ struct TemplatesView: View {
                     }
                 }
                 .padding(16)
+                .padding(.bottom, 96)
             }
             .navigationTitle("Program")
             .navigationBarTitleDisplayMode(.large)
@@ -550,59 +551,13 @@ private struct ProgramSummaryCard: View {
                 }
 
                 if let program {
-                    HStack(spacing: 12) {
-                        Image(systemName: "target")
-                            .foregroundStyle(Theme.accent)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Next")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Theme.muted)
-                                .textCase(.uppercase)
-                            Text(nextWorkout.map { workout in
-                                let progress = workout.total > 1 ? " (\(workout.position) of \(workout.total))" : ""
-                                return "\(ProgramPlanner.displayDate(workout.date)) - \(workout.template.name)\(progress)"
-                            } ?? "No scheduled workout")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Theme.text)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                        Spacer()
-                        HStack(spacing: 8) {
-                            Button {
-                                if let workout = nextWorkout {
-                                    onSkip(workout)
-                                }
-                            } label: {
-                                Label("Skip", systemImage: "forward.end.fill")
-                                    .lineLimit(1)
-                            }
-                            .buttonStyle(SecondaryButtonStyle(compact: true))
-                            .disabled(nextWorkout == nil)
+                    ProgramNextWorkoutPanel(
+                        nextWorkout: nextWorkout,
+                        onStart: onStart,
+                        onSkip: onSkip
+                    )
 
-                            Button {
-                                if let template = nextWorkout?.template {
-                                    onStart(template)
-                                }
-                            } label: {
-                                Label("Start", systemImage: "play.fill")
-                                    .lineLimit(1)
-                            }
-                            .buttonStyle(PrimaryButtonStyle(compact: true))
-                            .disabled(nextWorkout == nil)
-                        }
-                    }
-                    .padding(12)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(week) { day in
-                                ProgramDayChip(day: day)
-                            }
-                        }
-                    }
+                    ProgramWeekGrid(week: week)
 
                     if adherence.scheduled > 0 {
                         ProgramAdherenceRow(summary: adherence)
@@ -635,6 +590,89 @@ private struct ProgramSummaryCard: View {
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted)
                 }
+            }
+        }
+    }
+}
+
+private struct ProgramNextWorkoutPanel: View {
+    let nextWorkout: NextProgramWorkout?
+    let onStart: (WorkoutTemplate) -> Void
+    let onSkip: (NextProgramWorkout) -> Void
+
+    private var title: String {
+        guard let nextWorkout else { return "No scheduled workout" }
+        let progress = nextWorkout.total > 1 ? " (\(nextWorkout.position) of \(nextWorkout.total))" : ""
+        return "\(ProgramPlanner.displayDate(nextWorkout.date)) - \(nextWorkout.template.name)\(progress)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "target")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Next")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.muted)
+                        .textCase(.uppercase)
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    if let nextWorkout {
+                        onSkip(nextWorkout)
+                    }
+                } label: {
+                    Label("Skip", systemImage: "forward.end.fill")
+                        .frame(maxWidth: .infinity)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(nextWorkout == nil)
+
+                Button {
+                    if let template = nextWorkout?.template {
+                        onStart(template)
+                    }
+                } label: {
+                    Label("Start", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(PrimaryButtonStyle(compact: true))
+                .disabled(nextWorkout == nil)
+            }
+        }
+        .padding(12)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private struct ProgramWeekGrid: View {
+    let week: [PlannedProgramDay]
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 92), spacing: 8, alignment: .top)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(week) { day in
+                ProgramDayChip(day: day)
             }
         }
     }
@@ -714,17 +752,20 @@ private struct ProgramDayChip: View {
                 if day.templates.isEmpty {
                     Text("Rest")
                         .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
                 } else {
                     Text(day.templates[0].name)
                         .foregroundStyle(Theme.text)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
                     if day.templates.count > 1 {
                         Text("+\(day.templates.count - 1) more")
                             .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
                     }
                 }
             }
             .font(.system(size: 12, weight: .semibold))
-            .lineLimit(1)
 
             if day.templates.count > 1 || day.skippedCount > 0 {
                 let handledCount = day.completedCount + day.skippedCount
@@ -735,7 +776,7 @@ private struct ProgramDayChip: View {
                     .minimumScaleFactor(0.8)
             }
         }
-        .frame(width: 96, height: 74, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .padding(8)
         .background(backgroundColor)
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(borderColor, lineWidth: 1))
