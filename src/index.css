@@ -171,15 +171,10 @@ html, body, #root {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 8px;
   position: sticky;
   top: 0;
   z-index: 100;
-}
-
-.mobile-nav-left {
-  display: flex;
-  align-items: center;
-  width: 40px;
 }
 
 .mobile-nav-center {

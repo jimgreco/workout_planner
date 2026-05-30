@@ -523,10 +523,6 @@ export default function App() {
     <div className="app">
       {/* Integrated Top Navigation (Mobile) */}
       <header className="mobile-nav">
-        <div className="mobile-nav-left">
-          <Logo variant="mark" className="app-logo-mark" title="Forge" />
-        </div>
-        
         <nav className="mobile-nav-center">
           {PAGES.map((p) => (
             <button
