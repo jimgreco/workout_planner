@@ -364,8 +364,7 @@ private struct ExerciseSetsCard: View {
                     focusedField: $focusedField,
                     isActive: active,
                     isDisabled: readOnly,
-                    placeholderRole: .reps,
-                    preservesRepsContext: planningMode
+                    placeholderRole: .reps
                 )
 
                 if showsWeightColumn {
@@ -566,7 +565,6 @@ private struct SetNumericField: View {
     let isActive: Bool
     let isDisabled: Bool
     var placeholderRole: SetNumericFieldPlaceholderRole = .plain
-    var preservesRepsContext = false
 
     var body: some View {
         ZStack {
@@ -612,15 +610,7 @@ private struct SetNumericField: View {
         else { return nil }
 
         let enteredGoal = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !enteredGoal.isEmpty else {
-            if preservesRepsContext, placeholderValue.last != nil, focusedField == focus {
-                return RepsFieldPlaceholder(last: placeholderValue.last, goal: nil)
-            }
-            return placeholderValue
-        }
-
-        guard preservesRepsContext, placeholderValue.last != nil else { return nil }
-        return RepsFieldPlaceholder(last: placeholderValue.last, goal: enteredGoal)
+        return enteredGoal.isEmpty ? placeholderValue : nil
     }
 }
 
