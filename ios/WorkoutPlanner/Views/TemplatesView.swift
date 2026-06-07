@@ -147,7 +147,9 @@ struct TemplatesView: View {
                         try await store.deleteTemplate(target.id)
                         deleteTarget = nil
                     } catch {
-                        store.errorMessage = error.localizedDescription
+                        if !isCancellationError(error) {
+                            store.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
@@ -166,7 +168,9 @@ struct TemplatesView: View {
                         try await store.deleteProgram(target.id)
                         deleteProgramTarget = nil
                     } catch {
-                        store.errorMessage = error.localizedDescription
+                        if !isCancellationError(error) {
+                            store.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
@@ -184,7 +188,9 @@ struct TemplatesView: View {
                 try await store.saveTemplate(template)
             }
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -201,7 +207,9 @@ struct TemplatesView: View {
                 status: "skipped"
             ))
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -946,7 +954,9 @@ private struct TemplateFormSheet: View {
             try await store.saveTemplate(form)
             dismiss()
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -1271,7 +1281,9 @@ private struct ProgramFormSheet: View {
             try await store.saveProgram(cleaned)
             dismiss()
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -1369,7 +1381,9 @@ private struct TemplateSettingsSheet: View {
                 saved = false
             }
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }

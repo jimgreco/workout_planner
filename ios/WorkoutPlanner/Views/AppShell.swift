@@ -404,7 +404,9 @@ private struct SettingsPage: View {
                         try await store.deleteAccount()
                         onSignOut()
                     } catch {
-                        store.errorMessage = error.localizedDescription
+                        if !isCancellationError(error) {
+                            store.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
@@ -468,7 +470,9 @@ private struct SettingsPage: View {
             try data.write(to: url, options: .atomic)
             exportFile = ExportFile(url: url)
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -490,7 +494,9 @@ private struct SettingsPage: View {
                 defaultMode: preview.targetIsEmpty ? .emptyOnly : .merge
             )
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -938,7 +944,9 @@ private struct ImportPreviewSheet: View {
                                 _ = try await onImport(mode)
                                 dismiss()
                             } catch {
-                                errorMessage = error.localizedDescription
+                                if !isCancellationError(error) {
+                                    errorMessage = error.localizedDescription
+                                }
                             }
                         }
                     }
@@ -1002,7 +1010,9 @@ private struct FeedbackSheet: View {
                                 try await onSubmit(message.trimmingCharacters(in: .whitespacesAndNewlines))
                                 dismiss()
                             } catch {
-                                errorMessage = error.localizedDescription
+                                if !isCancellationError(error) {
+                                    errorMessage = error.localizedDescription
+                                }
                             }
                         }
                     }

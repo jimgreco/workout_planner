@@ -46,6 +46,7 @@ struct WorkoutBuilderView: View {
     var onSetCompleted: ((Int, Int) -> Void)?
     var onResetPersonalBest: ((Exercise) -> Void)?
     var onChanged: (() -> Void)?
+    var onTextChanged: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -68,7 +69,8 @@ struct WorkoutBuilderView: View {
                         onRemove: { removeExercise(index) },
                         onSetCompleted: onSetCompleted,
                         onResetPersonalBest: onResetPersonalBest,
-                        onChanged: onChanged
+                        onChanged: onChanged,
+                        onTextChanged: onTextChanged
                     )
                 }
             }
@@ -153,6 +155,7 @@ private struct ExerciseSetsCard: View {
     let onSetCompleted: ((Int, Int) -> Void)?
     let onResetPersonalBest: ((Exercise) -> Void)?
     let onChanged: (() -> Void)?
+    let onTextChanged: (() -> Void)?
 
     private let setColumnWidth: CGFloat = 28
     private let restColumnWidth: CGFloat = 54
@@ -353,7 +356,7 @@ private struct ExerciseSetsCard: View {
                         get: { item.sets[setIndex].reps ?? "" },
                         set: { value in
                             item.sets[setIndex].reps = value
-                            onChanged?()
+                            onTextChanged?()
                         }
                     ),
                     keyboard: .numberPad,
@@ -372,7 +375,7 @@ private struct ExerciseSetsCard: View {
                             get: { item.sets[setIndex].weight ?? "" },
                             set: { value in
                                 item.sets[setIndex].weight = value
-                                onChanged?()
+                                onTextChanged?()
                             }
                         ),
                         keyboard: .decimalPad,
@@ -448,7 +451,7 @@ private struct ExerciseSetsCard: View {
                         label: "RPE",
                         value: Binding(
                             get: { item.sets[setIndex].rpe ?? "" },
-                            set: { item.sets[setIndex].rpe = $0; onChanged?() }
+                            set: { item.sets[setIndex].rpe = $0; onTextChanged?() }
                         ),
                         focus: .rpe(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .decimalPad
@@ -457,7 +460,7 @@ private struct ExerciseSetsCard: View {
                         label: "RIR",
                         value: Binding(
                             get: { item.sets[setIndex].rir ?? "" },
-                            set: { item.sets[setIndex].rir = $0; onChanged?() }
+                            set: { item.sets[setIndex].rir = $0; onTextChanged?() }
                         ),
                         focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .numberPad

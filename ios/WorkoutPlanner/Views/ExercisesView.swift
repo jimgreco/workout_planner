@@ -78,7 +78,9 @@ struct ExercisesView: View {
                         try await store.deleteExercise(target.id)
                         deleteTarget = nil
                     } catch {
-                        store.errorMessage = error.localizedDescription
+                        if !isCancellationError(error) {
+                            store.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
@@ -427,7 +429,9 @@ private struct ExerciseFormSheet: View {
             try await store.saveExercise(form)
             dismiss()
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -497,7 +501,9 @@ private struct PersonalBestSheet: View {
             try await store.saveExercise(exercise)
             dismiss()
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 }

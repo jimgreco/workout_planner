@@ -112,6 +112,7 @@ final class WorkoutStore: ObservableObject {
             auth.signOut()
             errorMessage = WorkoutAPIError.unauthorized.localizedDescription
         } catch {
+            if isCancellationError(error) { return }
             if isNetworkAvailabilityError(error),
                (hadOfflineSnapshot || loadOfflineSnapshot(markOffline: true)) {
                 isUsingOfflineSnapshot = true
@@ -145,6 +146,7 @@ final class WorkoutStore: ObservableObject {
                 PendingResourceQueue.remove(.exercises, id: exercise.id)
                 PendingSyncConflictQueue.remove(.exercises, id: exercise.id)
             } catch {
+                if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .exercises, operation: .put, itemId: exercise.id, local: .exercise(exercise), error: error) {
                     PendingResourceQueue.upsertExercise(exercise)
                     saved = exercise
@@ -169,6 +171,7 @@ final class WorkoutStore: ObservableObject {
                 try await api.deleteExercise(id)
                 PendingResourceQueue.remove(.exercises, id: id)
             } catch {
+                if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
                 PendingResourceQueue.delete(.exercises, id: id)
             }
@@ -189,6 +192,7 @@ final class WorkoutStore: ObservableObject {
                 PendingResourceQueue.remove(.templates, id: template.id)
                 PendingSyncConflictQueue.remove(.templates, id: template.id)
             } catch {
+                if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .templates, operation: .put, itemId: template.id, local: .template(template), error: error) {
                     PendingResourceQueue.upsertTemplate(template)
                     saved = template
@@ -213,6 +217,7 @@ final class WorkoutStore: ObservableObject {
                 try await api.deleteTemplate(id)
                 PendingResourceQueue.remove(.templates, id: id)
             } catch {
+                if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
                 PendingResourceQueue.delete(.templates, id: id)
             }
@@ -233,6 +238,7 @@ final class WorkoutStore: ObservableObject {
                 PendingResourceQueue.remove(.programs, id: program.id)
                 PendingSyncConflictQueue.remove(.programs, id: program.id)
             } catch {
+                if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .programs, operation: .put, itemId: program.id, local: .program(program), error: error) {
                     PendingResourceQueue.upsertProgram(program)
                     saved = program
@@ -257,6 +263,7 @@ final class WorkoutStore: ObservableObject {
                 try await api.deleteProgram(id)
                 PendingResourceQueue.remove(.programs, id: id)
             } catch {
+                if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
                 PendingResourceQueue.delete(.programs, id: id)
             }
@@ -278,6 +285,7 @@ final class WorkoutStore: ObservableObject {
                 PendingWorkoutLogQueue.remove(log.id)
                 PendingSyncConflictQueue.remove(.logs, id: log.id)
             } catch {
+                if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .logs, operation: .put, itemId: log.id, local: .log(log), error: error) {
                     PendingWorkoutLogQueue.upsert(log)
                     saved = log
@@ -302,6 +310,7 @@ final class WorkoutStore: ObservableObject {
                 try await api.deleteLog(id)
                 PendingWorkoutLogQueue.remove(id)
             } catch {
+                if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
                 PendingWorkoutLogQueue.delete(id)
             }
@@ -753,6 +762,9 @@ final class WorkoutStore: ObservableObject {
         failures: inout [String],
         firstError: inout Error?
     ) throws {
+        if isCancellationError(error) {
+            throw error
+        }
         if case WorkoutAPIError.unauthorized = error {
             throw error
         }
@@ -993,6 +1005,7 @@ final class WorkoutStore: ObservableObject {
                 errorMessage = WorkoutAPIError.unauthorized.localizedDescription
                 break
             } catch {
+                if isCancellationError(error) { break }
                 if rememberConflict(change, error: error) {
                     syncIssueMessage = "A pending library change changed in the cloud. Review sync conflicts."
                 } else if !isNetworkAvailabilityError(error) {
@@ -1032,6 +1045,7 @@ final class WorkoutStore: ObservableObject {
                 errorMessage = WorkoutAPIError.unauthorized.localizedDescription
                 break
             } catch {
+                if isCancellationError(error) { break }
                 if rememberConflict(change, error: error) {
                     syncIssueMessage = "A pending workout changed in the cloud. Review sync conflicts."
                 } else if !isNetworkAvailabilityError(error) {
@@ -1333,6 +1347,13 @@ private func isNetworkAvailabilityError(_ error: Error) -> Bool {
     default:
         return false
     }
+}
+
+func isCancellationError(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+    let nsError = error as NSError
+    return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
 }
 
 private extension Array where Element == Exercise {

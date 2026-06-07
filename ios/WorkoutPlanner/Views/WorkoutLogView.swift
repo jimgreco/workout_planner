@@ -27,6 +27,8 @@ struct WorkoutLogView: View {
     @State private var restAlertTask: Task<Void, Never>?
     @State private var saveTask: Task<Void, Never>?
     @State private var saveGeneration = 0
+    @State private var hasPendingTextCommit = false
+    @State private var hasPendingBuilderCommit = false
     @State private var liveActivityUpdateTask: Task<Void, Never>?
     @State private var liveActivityUpdateGeneration = 0
     @FocusState private var focusedTextField: FocusedTextField?
@@ -75,7 +77,8 @@ struct WorkoutLogView: View {
                         planningMode: isPlanningMode,
                         onSetCompleted: markSetCompleted,
                         onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
-                        onChanged: builderChanged
+                        onChanged: builderChanged,
+                        onTextChanged: builderTextChanged
                     )
 
                     Divider().opacity(0.3)
@@ -86,7 +89,7 @@ struct WorkoutLogView: View {
                             .lineLimit(2...5)
                             .focused($focusedTextField, equals: .notes)
                             .fieldStyle()
-                            .onChange(of: notes) { _, _ in scheduleSave() }
+                            .onChange(of: notes) { _, _ in hasPendingTextCommit = true }
                     }
                 }
                 .padding(16)
@@ -120,12 +123,20 @@ struct WorkoutLogView: View {
             updateExternalLiveActivityNow()
         }
         .onChange(of: workoutId) { _, _ in updateExternalLiveActivity() }
-        .onChange(of: name) { _, _ in scheduleExternalLiveActivityUpdate() }
-        .onChange(of: items) { _, _ in scheduleExternalLiveActivityUpdate() }
         .onChange(of: startTime) { _, _ in updateExternalLiveActivity() }
         .onChange(of: activeExerciseIndex) { _, _ in updateExternalLiveActivity() }
         .onChange(of: activeSetIndex) { _, _ in updateExternalLiveActivity() }
         .onChange(of: store.exercises) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: focusedTextField) { oldValue, newValue in
+            if oldValue != nil, newValue != oldValue {
+                commitTextFieldsIfNeeded()
+            }
+        }
+        .onChange(of: focusedBuilderField) { oldValue, newValue in
+            if oldValue != nil, newValue != oldValue {
+                commitBuilderFieldsIfNeeded()
+            }
+        }
         .alert(isEditing ? "Cancel Editing?" : "Discard Workout?", isPresented: $showDiscardConfirm) {
             Button(isEditing ? "Keep Editing" : "Keep Going", role: .cancel) {}
             Button(isEditing ? "Cancel Edit" : "Discard Workout", role: .destructive) {
@@ -204,7 +215,8 @@ struct WorkoutLogView: View {
             focusedField: $focusedBuilderField,
             onSetCompleted: markSetCompleted,
             onEndRest: endRest,
-            onChanged: liveCardChanged
+            onChanged: liveCardChanged,
+            onTextChanged: builderTextChanged
         )
     }
 
@@ -215,7 +227,7 @@ struct WorkoutLogView: View {
                 TextField("e.g. Monday Push Day", text: $name)
                     .focused($focusedTextField, equals: .name)
                     .fieldStyle()
-                    .onChange(of: name) { _, _ in scheduleSave() }
+                    .onChange(of: name) { _, _ in hasPendingTextCommit = true }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -279,6 +291,7 @@ struct WorkoutLogView: View {
     }
 
     private func builderChanged() {
+        scheduleExternalLiveActivityUpdate()
         if workoutId == nil, !items.isEmpty {
             workoutId = UUID().uuidString
             saveNow(status: "planning")
@@ -287,7 +300,28 @@ struct WorkoutLogView: View {
         }
     }
 
+    private func builderTextChanged() {
+        if workoutId == nil, !items.isEmpty {
+            workoutId = UUID().uuidString
+        }
+        hasPendingBuilderCommit = true
+    }
+
+    private func commitTextFieldsIfNeeded() {
+        guard hasPendingTextCommit else { return }
+        hasPendingTextCommit = false
+        scheduleExternalLiveActivityUpdate()
+        scheduleSave()
+    }
+
+    private func commitBuilderFieldsIfNeeded() {
+        guard hasPendingBuilderCommit else { return }
+        hasPendingBuilderCommit = false
+        builderChanged()
+    }
+
     private func liveCardChanged() {
+        scheduleExternalLiveActivityUpdate()
         scheduleSave()
         rescheduleRestAlertIfNeeded()
     }
@@ -325,13 +359,17 @@ struct WorkoutLogView: View {
                 updated.personalBest = nil
                 try await store.saveExercise(updated)
             } catch {
-                store.errorMessage = error.localizedDescription
+                if !isCancellationError(error) {
+                    store.errorMessage = error.localizedDescription
+                }
             }
         }
     }
 
     private func finishWorkout() async {
         guard let workoutId, !isSaving else { return }
+        commitTextFieldsIfNeeded()
+        commitBuilderFieldsIfNeeded()
         cancelScheduledSave()
         isSaving = true
         defer { isSaving = false }
@@ -383,12 +421,16 @@ struct WorkoutLogView: View {
                 )
             }
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 
     private func discardWorkout() async {
         guard let id = workoutId else { return }
+        hasPendingTextCommit = false
+        hasPendingBuilderCommit = false
         cancelScheduledSave()
         isSaving = true
         defer { isSaving = false }
@@ -400,17 +442,23 @@ struct WorkoutLogView: View {
             }
             resetWorkout()
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 
     private func saveNow(status: String) {
         cancelScheduledSave()
+        hasPendingTextCommit = false
+        hasPendingBuilderCommit = false
         guard let log = logSnapshot(status: status) else { return }
         Task { await persist(log) }
     }
 
     private func flushScheduledSave() {
+        commitTextFieldsIfNeeded()
+        commitBuilderFieldsIfNeeded()
         guard saveTask != nil else { return }
         saveNow(status: currentStatus())
     }
@@ -438,7 +486,9 @@ struct WorkoutLogView: View {
         do {
             try await store.saveLog(log)
         } catch {
-            store.errorMessage = error.localizedDescription
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -765,6 +815,8 @@ struct WorkoutLogView: View {
         liveActivityUpdateTask = nil
         restAlert = nil
         WorkoutLiveActivityController.shared.end(workoutID: workoutId)
+        hasPendingTextCommit = false
+        hasPendingBuilderCommit = false
         workoutId = nil
         name = ""
         date = Date()
@@ -855,6 +907,7 @@ private struct WorkoutLiveActivityCard: View {
     let onSetCompleted: (Int, Int) -> Void
     let onEndRest: (Int, Int) -> Void
     let onChanged: () -> Void
+    let onTextChanged: () -> Void
 
     private var totalSets: Int {
         items.reduce(0) { $0 + $1.sets.count }
@@ -1332,7 +1385,7 @@ private struct WorkoutLiveActivityCard: View {
             get: { set.wrappedValue[keyPath: keyPath] ?? "" },
             set: { value in
                 set.wrappedValue[keyPath: keyPath] = value
-                onChanged()
+                onTextChanged()
             }
         )
     }

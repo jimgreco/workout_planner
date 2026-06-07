@@ -52,7 +52,9 @@ struct HistoryView: View {
                         if expandedId == target.id { expandedId = nil }
                         deleteTarget = nil
                     } catch {
-                        store.errorMessage = error.localizedDescription
+                        if !isCancellationError(error) {
+                            store.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
