@@ -105,7 +105,7 @@ function conflictDetails(item, resource) {
   if (resource === 'exercises') {
     return [
       item.muscleGroup ? `Group: ${item.muscleGroup}` : '',
-      item.personalBest?.weight ? `PB: ${personalBestLabel(item.personalBest)}` : '',
+      item.personalBest?.weight ? `PB: ${personalBestLabel(item.personalBest, item.usesTime)}` : '',
       item.notes ? `Notes: ${item.notes}` : '',
     ].filter(Boolean);
   }

@@ -65,6 +65,19 @@ describe('WorkoutBuilder', () => {
     expect(weightInput).toBeInTheDocument();
   });
 
+  it('labels the set value as seconds for time based exercises', () => {
+    render(
+      <WorkoutBuilder
+        exercises={[{ ...exercises[0], usesTime: true }, ...exercises.slice(1)]}
+        items={oneItem}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Secs' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Reps' })).not.toBeInTheDocument();
+  });
+
   it('calls onChange when a set value is updated', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);

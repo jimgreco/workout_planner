@@ -221,7 +221,10 @@ private struct ExerciseRow: View {
     @ViewBuilder
     private var badges: some View {
         Badge(text: exercise.muscleGroup)
-        if let best = personalBestLabel(exercise.personalBest) {
+        if exercise.usesTime == true {
+            Badge(text: "Time based")
+        }
+        if let best = personalBestLabel(exercise.personalBest, usesTime: exercise.usesTime == true) {
             Button(action: onPB) {
                 Badge(text: best, icon: "star.fill", accent: true)
             }
@@ -257,7 +260,7 @@ private struct ExerciseDetailSheet: View {
                         ExerciseDetailMetric(title: "Sessions", value: "\(summary.sessions)")
                         ExerciseDetailMetric(title: "Total Volume", value: formatVolume(summary.totalVolume))
                         ExerciseDetailMetric(title: "Total Sets", value: "\(summary.totalSets)")
-                        ExerciseDetailMetric(title: "Best Set", value: summary.bestSet.map { setLabel($0.set, weightType: $0.weightType) } ?? "-")
+                        ExerciseDetailMetric(title: "Best Set", value: summary.bestSet.map { setLabel($0.set, weightType: $0.weightType, usesTime: exercise.usesTime == true) } ?? "-")
                     }
 
                     ProgressPanel(title: "Trend") {
@@ -271,7 +274,7 @@ private struct ExerciseDetailSheet: View {
                         } else {
                             VStack(spacing: 14) {
                                 ForEach(summary.history) { entry in
-                                    ExerciseSessionDetail(entry: entry)
+                                    ExerciseSessionDetail(entry: entry, usesTime: exercise.usesTime == true)
                                 }
                             }
                         }
@@ -342,6 +345,7 @@ private struct ExerciseDetailTrend: View {
 
 private struct ExerciseSessionDetail: View {
     let entry: ExerciseHistoryEntry
+    let usesTime: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -362,7 +366,7 @@ private struct ExerciseSessionDetail: View {
 
             FlowLayout(spacing: 6) {
                 ForEach(entry.item.sets.indices, id: \.self) { index in
-                    Text(setLabel(entry.item.sets[index], weightType: entry.item.weightType))
+                    Text(setLabel(entry.item.sets[index], weightType: entry.item.weightType, usesTime: usesTime))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.text)
                         .padding(.horizontal, 8)
@@ -426,11 +430,15 @@ struct ExerciseFormSheet: View {
                         get: { form.isUnilateral == true },
                         set: { form.isUnilateral = $0 }
                     ))
+                    Toggle("Use seconds instead of reps", isOn: Binding(
+                        get: { form.usesTime == true },
+                        set: { form.usesTime = $0 }
+                    ))
                     Stepper("Default Sets: \(form.defaultSets.map(String.init) ?? "Workout default")", value: Binding(
                         get: { form.defaultSets ?? store.settings.defaultSets },
                         set: { form.defaultSets = $0 }
                     ), in: 1...20)
-                    Stepper("Default Reps: \(form.defaultReps.map(String.init) ?? "Workout default")", value: Binding(
+                    Stepper("\(form.usesTime == true ? "Default Secs" : "Default Reps"): \(form.defaultReps.map(String.init) ?? "Workout default")", value: Binding(
                         get: { form.defaultReps ?? store.settings.defaultReps },
                         set: { form.defaultReps = $0 }
                     ), in: 1...100)
@@ -498,7 +506,7 @@ private struct PersonalBestSheet: View {
                 Section("Personal Best") {
                     TextField("e.g. 225", text: $weight)
                         .keyboardType(.decimalPad)
-                    TextField("Reps (optional)", text: $reps)
+                    TextField(exercise.usesTime == true ? "Secs (optional)" : "Reps (optional)", text: $reps)
                         .keyboardType(.numberPad)
                     DatePicker("Date Achieved", selection: $date, displayedComponents: .date)
                 }

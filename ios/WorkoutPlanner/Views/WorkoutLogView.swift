@@ -388,7 +388,7 @@ struct WorkoutLogView: View {
                 else { continue }
                 let personalBest = personalBestPayload(candidate, date: DateHelpers.dayString(from: date))
                 pbExerciseIds.append(item.exerciseId)
-                pbExercises.append("\(exercise.name) - \(personalBestLabel(personalBest) ?? candidate.weight)")
+                pbExercises.append("\(exercise.name) - \(personalBestLabel(personalBest, usesTime: exercise.usesTime == true) ?? candidate.weight)")
                 exercise.personalBest = personalBest
                 try await store.saveExercise(exercise)
             }
@@ -677,7 +677,7 @@ struct WorkoutLogView: View {
             reps: liveRepsLabel(for: context.set) ?? "-",
             weight: liveWeightLabel(for: context) ?? "",
             setType: setTypeLabel(context.set.setType),
-            personalBest: personalBestLabel(context.exercise.personalBest),
+            personalBest: personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true),
             completedSets: completed,
             totalSets: total,
             exerciseCount: items.count,
@@ -1155,7 +1155,7 @@ private struct WorkoutLiveActivityCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 LazyVGrid(columns: liveFieldColumns(count: showsWeight ? 3 : 2), alignment: .leading, spacing: 8) {
                     WorkoutLiveInput(
-                        title: "Reps",
+                        title: context.exercise.usesTime == true ? "Secs" : "Reps",
                         text: stringBinding(set, \.reps),
                         placeholder: repsLabel(for: context.set) ?? "0",
                         keyboard: .numberPad
@@ -1198,7 +1198,7 @@ private struct WorkoutLiveActivityCard: View {
                 .frame(maxWidth: .infinity)
             }
 
-            if let personalBest = personalBestLabel(context.exercise.personalBest) {
+            if let personalBest = personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true) {
                 Label("PB \(personalBest)", systemImage: "star.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.accent)

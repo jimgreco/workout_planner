@@ -4,6 +4,7 @@ export const emptyExercise = () => ({
   notes: '',
   description: '',
   isUnilateral: false,
+  usesTime: false,
   defaultSets: '',
   defaultReps: '',
 });

@@ -363,7 +363,7 @@ export default function WorkoutLog({
         const personalBest = personalBestPayload(candidate, date);
         if (personalBest) {
           pbExerciseIds.push(item.exerciseId);
-          pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest)}`);
+          pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest, ex.usesTime)}`);
           // Update the exercise's PB
           const updated = await saveExercise({
             ...ex,

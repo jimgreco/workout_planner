@@ -58,11 +58,11 @@ function formatPersonalBestValue(value) {
   return Number.isFinite(parsed) ? formatNumber(parsed) : text;
 }
 
-export function personalBestLabel(personalBest) {
+export function personalBestLabel(personalBest, usesTime = false) {
   if (!personalBest?.weight) return '';
   const weight = `${formatPersonalBestValue(personalBest.weight)} lbs`;
   const reps = formatPersonalBestValue(personalBest.reps);
-  return numeric(personalBest.reps) > 0 ? `${weight} x ${reps} reps` : weight;
+  return numeric(personalBest.reps) > 0 ? `${weight} x ${reps} ${usesTime ? 'secs' : 'reps'}` : weight;
 }
 
 export function bestPersonalBestSet(sets = [], weightType = 'weight') {
@@ -100,10 +100,11 @@ export function personalBestPayload(candidate, date) {
   };
 }
 
-export function setLabel(set, weightType = 'weight') {
+export function setLabel(set, weightType = 'weight', usesTime = false) {
   const reps = set.repsLeft || set.repsRight
     ? `${set.repsLeft || '—'}/${set.repsRight || '—'}`
     : (set.reps || '—');
+  const unit = usesTime ? 'secs' : 'reps';
   const typePrefix = set.setType && set.setType !== 'working'
     ? `${set.setType.charAt(0).toUpperCase()}${set.setType.slice(1)} · `
     : '';
@@ -112,7 +113,7 @@ export function setLabel(set, weightType = 'weight') {
     set.rir ? `RIR ${set.rir}` : '',
   ].filter(Boolean).join(' · ');
   const effortSuffix = effort ? ` · ${effort}` : '';
-  if (weightType === 'none') return `${typePrefix}${reps} reps${effortSuffix}`;
+  if (weightType === 'none') return `${typePrefix}${reps} ${unit}${effortSuffix}`;
   const weight = set.weight ? `${formatWeight(set.weight)} lb` : '—';
   const suffix = weightType === 'bar_double' ? ' (bar + 2x)' : weightType === 'double' ? ' (2x)' : '';
   return `${typePrefix}${reps} x ${weight}${suffix}${effortSuffix}`;

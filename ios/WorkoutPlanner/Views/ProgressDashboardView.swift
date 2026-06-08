@@ -292,7 +292,7 @@ private struct ProgressCallout: View {
                     Text(summary.exercise.name)
                         .font(.system(size: 15, weight: .heavy))
                         .foregroundStyle(Theme.text)
-                    Text("Best recent set: \(setLabel(best.set, weightType: best.weightType)) • \(shortDate(best.date))")
+                    Text("Best recent set: \(setLabel(best.set, weightType: best.weightType, usesTime: summary.exercise.usesTime == true)) • \(shortDate(best.date))")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.muted)
                 }
@@ -549,15 +549,16 @@ func estimatedOneRepMax(weight: Double, reps: String?) -> Double {
     return weight * (1 + reps / 30)
 }
 
-func setLabel(_ set: WorkoutSet, weightType: String?) -> String {
+func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool = false) -> String {
     let reps = (set.reps?.isEmpty == false) ? set.reps! : "-"
+    let unit = usesTime ? "secs" : "reps"
     let effort = [
         set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
         set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
     ].compactMap { $0 }.joined(separator: " · ")
     let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
     let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
-    guard weightType != "none" else { return "\(typePrefix)\(reps) reps\(effortSuffix)" }
+    guard weightType != "none" else { return "\(typePrefix)\(reps) \(unit)\(effortSuffix)" }
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
     let suffix = weightType == "bar_double" ? " (bar + 2x)" : weightType == "double" ? " (2x)" : ""
     return "\(typePrefix)\(reps) x \(weight)\(suffix)\(effortSuffix)"

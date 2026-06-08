@@ -214,7 +214,7 @@ private struct HistoryItemView: View {
                                 FlowLayout(spacing: 6) {
                                     ForEach(item.sets.indices, id: \.self) { index in
                                         let set = item.sets[index]
-                                        Text(setLabel(set, weightType: item.weightType))
+                                        Text(setLabel(set, weightType: item.weightType, usesTime: exercise.usesTime == true))
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(Theme.text)
                                             .padding(.horizontal, 8)
@@ -264,8 +264,9 @@ private struct HistoryItemView: View {
         .shadow(color: .black.opacity(isExpanded ? 0.12 : 0.06), radius: isExpanded ? 10 : 4, x: 0, y: 2)
     }
 
-    private func setLabel(_ set: WorkoutSet, weightType: String?) -> String {
+    private func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool) -> String {
         let reps = (set.reps?.isEmpty == false ? set.reps : "-") ?? "-"
+        let unit = usesTime ? "secs" : "reps"
         let effort = [
             set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
             set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
@@ -273,7 +274,7 @@ private struct HistoryItemView: View {
         let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
         let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
         if weightType == "none" {
-            return "\(typePrefix)\(reps) reps\(effortSuffix)"
+            return "\(typePrefix)\(reps) \(unit)\(effortSuffix)"
         }
         let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
         let suffix = weightType == "bar_double" ? " lbs (bar + 2x)" : weightType == "double" ? " lbs (2x)" : " lbs"

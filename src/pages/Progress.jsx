@@ -135,7 +135,7 @@ function LatestBest({ items }) {
       <div>
         <div className="progress-callout-title">{withBest.exercise.name}</div>
         <div className="progress-callout-meta">
-          Best recent set: {setLabel(withBest.best.set, withBest.best.item.weightType)} · {fullDate(withBest.best.date)}
+          Best recent set: {setLabel(withBest.best.set, withBest.best.item.weightType, withBest.exercise.usesTime)} · {fullDate(withBest.best.date)}
         </div>
       </div>
     </div>

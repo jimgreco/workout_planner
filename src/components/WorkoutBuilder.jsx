@@ -278,6 +278,9 @@ export default function WorkoutBuilder({
         if (!ex) return null;
         const hasWeightColumn = showWeight && (!readOnly || item.weightType !== 'none');
         const isUnilateral = Boolean(ex.isUnilateral);
+        const usesTime = Boolean(ex.usesTime);
+        const repUnit = usesTime ? 'secs' : 'reps';
+        const repUnitTitle = usesTime ? 'Secs' : 'Reps';
         const repsField = planningMode ? 'placeholderReps' : 'reps';
         const leftRepsField = planningMode ? 'placeholderRepsLeft' : 'repsLeft';
         const rightRepsField = planningMode ? 'placeholderRepsRight' : 'repsRight';
@@ -298,7 +301,7 @@ export default function WorkoutBuilder({
                   <span className="badge">{ex.muscleGroup}</span>
                   {ex.personalBest?.weight && (
                     <span className="pb-label">
-                      • PB: {personalBestLabel(ex.personalBest)}
+                      • PB: {personalBestLabel(ex.personalBest, ex.usesTime)}
                       {onResetPersonalBest && !planningMode && !readOnly && (
                         <button
                           type="button"
@@ -372,7 +375,7 @@ export default function WorkoutBuilder({
                       checked={Boolean(item.useIndividualReps)}
                       onChange={(e) => updateItem(idx, { useIndividualReps: e.target.checked })}
                     />
-                    <span>Advanced reps per set</span>
+                    <span>Advanced {repUnit} per set</span>
                   </label>
                 )}
               </div>
@@ -396,7 +399,7 @@ export default function WorkoutBuilder({
                   {isUnilateral ? (
                     <>
                       <label className="form-group">
-                        <span>Left reps for all sets</span>
+                        <span>Left {repUnit} for all sets</span>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -405,7 +408,7 @@ export default function WorkoutBuilder({
                         />
                       </label>
                       <label className="form-group">
-                        <span>Right reps for all sets</span>
+                        <span>Right {repUnit} for all sets</span>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -416,7 +419,7 @@ export default function WorkoutBuilder({
                     </>
                   ) : (
                     <label className="form-group">
-                      <span>Reps for all sets</span>
+                      <span>{repUnitTitle} for all sets</span>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -441,7 +444,7 @@ export default function WorkoutBuilder({
               <thead>
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
-                  <th>{isUnilateral ? 'Reps L/R' : 'Reps'}</th>
+                  <th>{isUnilateral ? `${repUnitTitle} L/R` : repUnitTitle}</th>
                   {hasWeightColumn && (
                     <th style={{ paddingTop: 0, paddingBottom: 0 }}>
                       {!readOnly ? (
@@ -481,7 +484,7 @@ export default function WorkoutBuilder({
                             value={planningMode ? (set.placeholderRepsLeft || '') : (set.repsLeft ?? '')}
                             onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft', e.target.value)}
                             disabled={readOnly}
-                            aria-label={`Left reps for set ${si + 1} of ${ex.name}`}
+                            aria-label={`Left ${repUnit} for set ${si + 1} of ${ex.name}`}
                             style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                           />
                           <input
@@ -491,7 +494,7 @@ export default function WorkoutBuilder({
                             value={planningMode ? (set.placeholderRepsRight || '') : (set.repsRight ?? '')}
                             onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight', e.target.value)}
                             disabled={readOnly}
-                            aria-label={`Right reps for set ${si + 1} of ${ex.name}`}
+                            aria-label={`Right ${repUnit} for set ${si + 1} of ${ex.name}`}
                             style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                           />
                         </div>

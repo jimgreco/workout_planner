@@ -26,6 +26,7 @@ struct Exercise: Codable, Identifiable, Equatable {
     var notes: String?
     var description: String?
     var isUnilateral: Bool?
+    var usesTime: Bool?
     var defaultSets: Int?
     var defaultReps: Int?
     var personalBest: PersonalBest?
@@ -39,6 +40,7 @@ struct Exercise: Codable, Identifiable, Equatable {
         notes: String? = nil,
         description: String? = nil,
         isUnilateral: Bool? = nil,
+        usesTime: Bool? = nil,
         defaultSets: Int? = nil,
         defaultReps: Int? = nil,
         personalBest: PersonalBest? = nil,
@@ -51,6 +53,7 @@ struct Exercise: Codable, Identifiable, Equatable {
         self.notes = notes
         self.description = description
         self.isUnilateral = isUnilateral
+        self.usesTime = usesTime
         self.defaultSets = defaultSets
         self.defaultReps = defaultReps
         self.personalBest = personalBest
@@ -566,11 +569,11 @@ private func personalBestTextLabel(_ value: String?) -> String? {
     return text
 }
 
-func personalBestLabel(_ best: PersonalBest?) -> String? {
+func personalBestLabel(_ best: PersonalBest?, usesTime: Bool = false) -> String? {
     guard let best, let weight = personalBestTextLabel(best.weight) else { return nil }
     let reps = personalBestNumber(best.reps)
     if reps > 0 {
-        return "\(weight) lbs x \(personalBestNumberLabel(reps)) reps"
+        return "\(weight) lbs x \(personalBestNumberLabel(reps)) \(usesTime ? "secs" : "reps")"
     }
     return "\(weight) lbs"
 }

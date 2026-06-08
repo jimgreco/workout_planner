@@ -215,7 +215,7 @@ export function validateSettings(body) {
 
 export function validateExercise(body, pathId) {
   assertObject(body, 'exercise');
-  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'defaultSets', 'defaultReps', 'personalBest', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
+  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
   requireMatchingId(body, pathId);
   optionalRevision(body.expectedRevision, 'expectedRevision');
   const muscleGroup = stringValue(body.muscleGroup, 'muscleGroup', { max: 60 }) ?? 'Other';
@@ -231,6 +231,8 @@ export function validateExercise(body, pathId) {
   if (description !== undefined) exercise.description = description;
   const isUnilateral = boolValue(body.isUnilateral, 'isUnilateral');
   if (isUnilateral !== undefined) exercise.isUnilateral = isUnilateral;
+  const usesTime = boolValue(body.usesTime, 'usesTime');
+  if (usesTime !== undefined) exercise.usesTime = usesTime;
   const defaultSets = optionalIntValue(body.defaultSets, 'defaultSets', 1, 20);
   if (defaultSets !== undefined) exercise.defaultSets = defaultSets;
   const defaultReps = optionalIntValue(body.defaultReps, 'defaultReps', 1, 100);

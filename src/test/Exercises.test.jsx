@@ -49,6 +49,15 @@ describe('Exercises page', () => {
     expect(screen.getByText(/225 lbs x 5 reps/i)).toBeInTheDocument();
   });
 
+  it('shows personal best seconds for time based exercises', () => {
+    render(<Exercises exercises={[
+      { ...sampleExercises[0], usesTime: true, personalBest: { weight: '25', reps: '45', date: '2026-05-21' } },
+    ]} onUpdate={() => {}} />);
+
+    expect(screen.getByText(/25 lbs x 45 secs/i)).toBeInTheDocument();
+    expect(screen.getByText(/Time based/i)).toBeInTheDocument();
+  });
+
   it('shows empty state when no exercises', () => {
     render(<Exercises exercises={[]} onUpdate={() => {}} />);
     expect(screen.getByText(/No exercises yet/i)).toBeInTheDocument();
@@ -99,6 +108,21 @@ describe('Exercises page', () => {
     fireEvent.click(screen.getAllByText(/Add Exercise/i, { selector: 'button.btn-primary' })[1]);
     await waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
     expect(screen.queryByPlaceholderText(/e.g. Bench Press/i)).not.toBeInTheDocument();
+  });
+
+  it('saves time based exercise setting', async () => {
+    const onUpdate = vi.fn();
+    render(<Exercises exercises={sampleExercises} onUpdate={onUpdate} />);
+    fireEvent.click(screen.getAllByText(/Add Exercise/i)[0]);
+    fireEvent.change(screen.getByPlaceholderText(/e.g. Bench Press/i), { target: { value: 'Plank' } });
+    fireEvent.click(screen.getByLabelText(/Use seconds instead of reps/i));
+    fireEvent.click(screen.getAllByText(/Add Exercise/i, { selector: 'button.btn-primary' })[1]);
+
+    await waitFor(() => expect(saveExercise).toHaveBeenCalledOnce());
+    expect(saveExercise.mock.calls[0][0]).toMatchObject({
+      name: 'Plank',
+      usesTime: true,
+    });
   });
 
   it('saves optional reps with manual personal bests', async () => {

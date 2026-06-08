@@ -1356,7 +1356,6 @@ private struct TemplateSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: WorkoutStore
     @State private var form: WorkoutSettings
-    @State private var saved = false
     @Binding var isSaving: Bool
 
     init(isSaving: Binding<Bool>) {
@@ -1393,7 +1392,7 @@ private struct TemplateSettingsSheet: View {
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(saved ? "Saved" : isSaving ? "Saving..." : "Save") {
+                    Button(isSaving ? "Saving..." : "Save") {
                         Task { await save() }
                     }
                     .disabled(isSaving || form == store.settings)
@@ -1410,10 +1409,7 @@ private struct TemplateSettingsSheet: View {
         defer { isSaving = false }
         do {
             try await store.saveSettings(form)
-            saved = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                saved = false
-            }
+            dismiss()
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription

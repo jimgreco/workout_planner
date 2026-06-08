@@ -4,6 +4,7 @@ import {
   buildProgress,
   isPersonalBestImprovement,
   personalBestLabel,
+  setLabel,
   summarizeExercise,
 } from '../progress.js';
 
@@ -89,6 +90,8 @@ describe('progress calculations', () => {
     expect(isPersonalBestImprovement(candidate, { weight: '225', reps: '5' })).toBe(false);
     expect(isPersonalBestImprovement(candidate, { weight: '230', reps: '1' })).toBe(false);
     expect(personalBestLabel({ weight: '225', reps: '5' })).toBe('225 lbs x 5 reps');
+    expect(personalBestLabel({ weight: '25', reps: '45' }, true)).toBe('25 lbs x 45 secs');
+    expect(setLabel({ reps: '45' }, 'none', true)).toBe('45 secs');
   });
 
   it('uses weight type when calculating personal best weight', () => {

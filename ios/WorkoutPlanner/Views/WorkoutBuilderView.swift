@@ -238,6 +238,9 @@ private struct ExerciseSetsCard: View {
     private var canEditExercise: Bool {
         !readOnly && planningMode && onEditExercise != nil
     }
+    private var repUnitTitle: String {
+        exercise.usesTime == true ? "Secs" : "Reps"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -334,7 +337,7 @@ private struct ExerciseSetsCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Badge(text: exercise.muscleGroup)
             }
-            if let pb = personalBestLabel(exercise.personalBest) {
+            if let pb = personalBestLabel(exercise.personalBest, usesTime: exercise.usesTime == true) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("PB: \(pb)")
                         .font(.system(size: 12, weight: .medium))
@@ -438,7 +441,7 @@ private struct ExerciseSetsCard: View {
         HStack(spacing: rowSpacing) {
             Text("Set")
                 .frame(width: setColumnWidth)
-            Text(exercise.isUnilateral == true ? "Reps L/R" : "Reps")
+            Text(exercise.isUnilateral == true ? "\(repUnitTitle) L/R" : repUnitTitle)
                 .frame(maxWidth: .infinity)
             if showsWeightColumn {
                 Text(weightHeaderLabel)

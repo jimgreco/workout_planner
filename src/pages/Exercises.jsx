@@ -55,7 +55,7 @@ function ExerciseTrend({ history }) {
 function ExerciseDetail({ exercise, logs }) {
   const summary = summarizeExercise(exercise, logs);
   const history = getExerciseHistory(exercise.id, logs);
-  const bestLabel = summary.best ? setLabel(summary.best.set, summary.best.item.weightType) : '—';
+  const bestLabel = summary.best ? setLabel(summary.best.set, summary.best.item.weightType, exercise.usesTime) : '—';
 
   return (
     <div className="exercise-detail">
@@ -101,7 +101,7 @@ function ExerciseDetail({ exercise, logs }) {
                 <div className="history-sets">
                   {entry.sets.map((set, index) => (
                     <span className="history-set" key={`${entry.id}-${index}`}>
-                      {setLabel(set, entry.item.weightType)}
+                      {setLabel(set, entry.item.weightType, exercise.usesTime)}
                     </span>
                   ))}
                 </div>
@@ -150,6 +150,14 @@ export function ExerciseFormFields({ form, setForm, autoFocus = false }) {
         />
         <span>Track left and right reps separately</span>
       </label>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={Boolean(form.usesTime)}
+          onChange={(e) => setForm({ ...form, usesTime: e.target.checked })}
+        />
+        <span>Use seconds instead of reps</span>
+      </label>
       <div className="form-row">
         <div className="form-group">
           <label>Default Sets (optional)</label>
@@ -163,7 +171,7 @@ export function ExerciseFormFields({ form, setForm, autoFocus = false }) {
           />
         </div>
         <div className="form-group">
-          <label>Default Reps (optional)</label>
+          <label>{form.usesTime ? 'Default Secs (optional)' : 'Default Reps (optional)'}</label>
           <input
             type="number"
             min="1"
@@ -311,13 +319,14 @@ export default function Exercises({ exercises, logs = [], onUpdate, actionReques
                 <span className="badge">{ex.muscleGroup}</span>
                 {ex.personalBest && (
                   <span className="pb-badge" onClick={() => openPB(ex)} title="Click to edit PB">
-                    <Star size={12} fill="currentColor" /> {personalBestLabel(ex.personalBest)}
+                    <Star size={12} fill="currentColor" /> {personalBestLabel(ex.personalBest, ex.usesTime)}
                   </span>
                 )}
                 {ex.isUnilateral && <span className="badge">Single side</span>}
+                {ex.usesTime && <span className="badge">Time based</span>}
                 {(ex.defaultSets || ex.defaultReps) && (
                   <span className="text-muted" style={{ fontSize: 13 }}>
-                    • {ex.defaultSets || 'Default'} sets × {ex.defaultReps || 'default'} reps
+                    • {ex.defaultSets || 'Default'} sets × {ex.defaultReps || 'default'} {ex.usesTime ? 'secs' : 'reps'}
                   </span>
                 )}
                 {ex.notes && <span className="text-muted" style={{ fontSize: 13 }}>• {ex.notes}</span>}
@@ -385,7 +394,7 @@ export default function Exercises({ exercises, logs = [], onUpdate, actionReques
               />
             </div>
             <div className="form-group">
-              <label>Reps (optional)</label>
+              <label>{pbForm.usesTime ? 'Secs (optional)' : 'Reps (optional)'}</label>
               <input
                 type="number"
                 min="0"

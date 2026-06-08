@@ -74,7 +74,7 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
                 <div className="history-sets">
                   {item.sets.map((s, si) => (
                     <span key={si} className="history-set">
-                      {setLabel(s, item.weightType)}
+                      {setLabel(s, item.weightType, ex.usesTime)}
                     </span>
                   ))}
                 </div>
