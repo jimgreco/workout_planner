@@ -196,48 +196,9 @@ private struct ExerciseSetsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text(exercise.name)
-                            .font(.system(size: 17, weight: .heavy))
-                            .foregroundStyle(Theme.text)
-                            .lineLimit(2)
-                        Badge(text: exercise.muscleGroup)
-                    }
-                    if let pb = personalBestLabel(exercise.personalBest) {
-                        HStack(spacing: 8) {
-                            Text("PB: \(pb)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.muted)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.76)
-
-                            if canResetPersonalBest {
-                                Button(role: .destructive) {
-                                    onResetPersonalBest?(exercise)
-                                } label: {
-                                    Label("Reset PB", systemImage: "arrow.counterclockwise")
-                                        .labelStyle(.titleAndIcon)
-                                        .font(.system(size: 12, weight: .bold))
-                                        .lineLimit(1)
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(Theme.danger)
-                            }
-                        }
-                    }
-                }
-
-                Spacer()
-
-                if !readOnly {
-                    HStack(spacing: 6) {
-                        IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp) { onMove(-1) }
-                        IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown) { onMove(1) }
-                        IconCircleButton(systemName: "xmark", tint: Theme.danger, action: onRemove)
-                    }
-                }
+            ViewThatFits(in: .horizontal) {
+                headerContent(stacked: false)
+                headerContent(stacked: true)
             }
 
             Divider()
@@ -256,38 +217,12 @@ private struct ExerciseSetsCard: View {
             }
 
             if !readOnly {
-                HStack(spacing: 8) {
-                    Menu {
-                        ForEach(restTargetOptions, id: \.label) { option in
-                            Button(option.label) {
-                                item.restTargetSeconds = option.seconds
-                                onChanged?()
-                            }
-                        }
-                    } label: {
-                        Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                ViewThatFits(in: .horizontal) {
+                    controlRow
+                    VStack(spacing: 8) {
+                        restMenu
+                        pairMenu
                     }
-                    .buttonStyle(SecondaryButtonStyle(compact: true))
-                    .frame(maxWidth: .infinity)
-
-                    Menu {
-                        ForEach(supersetOptions, id: \.label) { option in
-                            Button(option.label) {
-                                item.supersetGroup = option.value
-                                onChanged?()
-                            }
-                        }
-                    } label: {
-                        Label("Pair \(supersetLabel(item.supersetGroup))", systemImage: "link")
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(SecondaryButtonStyle(compact: true))
-                    .frame(maxWidth: .infinity)
                 }
             } else if item.restTargetSeconds ?? 0 > 0 {
                 Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
@@ -325,6 +260,115 @@ private struct ExerciseSetsCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .shadow(color: .black.opacity(isActiveExercise ? 0.12 : 0.06), radius: isActiveExercise ? 10 : 4, x: 0, y: 2)
+    }
+
+    private func headerContent(stacked: Bool) -> some View {
+        Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 10) {
+                    exerciseTitle
+                    headerButtons
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    exerciseTitle
+                    Spacer(minLength: 8)
+                    headerButtons
+                }
+            }
+        }
+    }
+
+    private var exerciseTitle: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(exercise.name)
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Badge(text: exercise.muscleGroup)
+            }
+            if let pb = personalBestLabel(exercise.personalBest) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("PB: \(pb)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if canResetPersonalBest {
+                        Button(role: .destructive) {
+                            onResetPersonalBest?(exercise)
+                        } label: {
+                            Label("Reset PB", systemImage: "arrow.counterclockwise")
+                                .labelStyle(.titleAndIcon)
+                                .font(.system(size: 12, weight: .bold))
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.danger)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
+    }
+
+    @ViewBuilder
+    private var headerButtons: some View {
+        if !readOnly {
+            HStack(spacing: 6) {
+                IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp) { onMove(-1) }
+                IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown) { onMove(1) }
+                IconCircleButton(systemName: "xmark", tint: Theme.danger, action: onRemove)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private var controlRow: some View {
+        HStack(spacing: 8) {
+            restMenu
+            pairMenu
+        }
+    }
+
+    private var restMenu: some View {
+        Menu {
+            ForEach(restTargetOptions, id: \.label) { option in
+                Button(option.label) {
+                    item.restTargetSeconds = option.seconds
+                    onChanged?()
+                }
+            }
+        } label: {
+            Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .frame(maxWidth: .infinity)
+    }
+
+    private var pairMenu: some View {
+        Menu {
+            ForEach(supersetOptions, id: \.label) { option in
+                Button(option.label) {
+                    item.supersetGroup = option.value
+                    onChanged?()
+                }
+            }
+        } label: {
+            Label("Pair \(supersetLabel(item.supersetGroup))", systemImage: "link")
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .frame(maxWidth: .infinity)
     }
 
     private var cardStrokeColor: Color {

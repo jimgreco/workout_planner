@@ -765,6 +765,7 @@ private struct ProgramDayChip: View {
                         .foregroundStyle(Theme.text)
                         .lineLimit(2)
                         .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
                     if day.templates.count > 1 {
                         Text("+\(day.templates.count - 1) more")
                             .foregroundStyle(Theme.muted)
@@ -807,8 +808,8 @@ private struct TemplateCard: View {
                         Text(template.name)
                             .font(.system(size: 17, weight: .bold))
                             .foregroundStyle(Theme.text)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         if let description = template.description, !description.isEmpty {
                             Text(description)
                                 .font(.system(size: 14))
@@ -818,12 +819,11 @@ private struct TemplateCard: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer()
-
                     HStack(spacing: 8) {
                         IconCircleButton(systemName: "pencil", action: onEdit)
                         IconCircleButton(systemName: "trash", tint: Theme.danger, action: onDelete)
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
 
                 FlowLayout(spacing: 6) {

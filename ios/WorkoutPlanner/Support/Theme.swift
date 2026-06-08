@@ -169,13 +169,15 @@ struct Badge: View {
             Text(text)
                 .font(.system(size: 10, weight: .bold))
                 .textCase(.uppercase)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
         }
         .foregroundStyle(accent ? Theme.accent : Theme.muted)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(accent ? Theme.accent.opacity(0.1) : Theme.surface2)
         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

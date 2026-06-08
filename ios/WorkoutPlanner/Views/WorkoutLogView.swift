@@ -1039,49 +1039,83 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func restSection(_ context: WorkoutLiveSetContext) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "timer")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(restTint(for: context))
-                .frame(width: 34, height: 34)
-                .background(restTint(for: context).opacity(0.12))
-                .clipShape(Circle())
+        ViewThatFits(in: .horizontal) {
+            restContent(context, stacked: false)
+            restContent(context, stacked: true)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Resting after \(context.exercise.name)")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+    private func restContent(_ context: WorkoutLiveSetContext, stacked: Bool) -> some View {
+        let title = Text("Resting after \(context.exercise.name)")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.muted)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
 
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: context.item.restTargetSeconds))
-                        .font(.system(size: 28, weight: .heavy, design: .rounded))
-                        .foregroundStyle(restTint(for: context))
-                        .monospacedDigit()
-
-                    Text("Set \(context.setIndex + 1)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.muted)
+        return Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
+                        restIcon(context)
+                        VStack(alignment: .leading, spacing: 4) {
+                            title
+                            restClock(context)
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        restTargetMenu(context)
+                        endRestButton(context)
+                    }
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    restIcon(context)
+                    VStack(alignment: .leading, spacing: 4) {
+                        title
+                        restClock(context)
+                    }
+                    Spacer()
+                    restTargetMenu(context)
+                    endRestButton(context)
                 }
             }
-
-            Spacer()
-
-            restTargetMenu(context)
-
-            Button {
-                onEndRest(context.exerciseIndex, context.setIndex)
-            } label: {
-                Image(systemName: "forward.end.fill")
-                    .font(.system(size: 13, weight: .heavy))
-                    .frame(width: 34, height: 34)
-                    .background(Theme.background.opacity(0.78))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("End rest")
         }
+    }
+
+    private func restIcon(_ context: WorkoutLiveSetContext) -> some View {
+        Image(systemName: "timer")
+            .font(.system(size: 18, weight: .bold))
+            .foregroundStyle(restTint(for: context))
+            .frame(width: 34, height: 34)
+            .background(restTint(for: context).opacity(0.12))
+            .clipShape(Circle())
+    }
+
+    private func restClock(_ context: WorkoutLiveSetContext) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: context.item.restTargetSeconds))
+                .font(.system(size: 28, weight: .heavy, design: .rounded))
+                .foregroundStyle(restTint(for: context))
+                .monospacedDigit()
+
+            Text("Set \(context.setIndex + 1)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.muted)
+        }
+    }
+
+    private func endRestButton(_ context: WorkoutLiveSetContext) -> some View {
+        Button {
+            onEndRest(context.exerciseIndex, context.setIndex)
+        } label: {
+            Image(systemName: "forward.end.fill")
+                .font(.system(size: 13, weight: .heavy))
+                .frame(width: 34, height: 34)
+                .background(Theme.background.opacity(0.78))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("End rest")
     }
 
     private var completionSection: some View {
@@ -1112,31 +1146,9 @@ private struct WorkoutLiveActivityCard: View {
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
 
-                HStack(alignment: .center, spacing: 8) {
-                    Text("\(context.setIndex + 1)/\(context.item.sets.count)")
-                        .font(.system(size: 14, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Theme.accent)
-                        .monospacedDigit()
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(Theme.accent.opacity(0.11))
-                        .clipShape(Capsule())
-                        .accessibilityLabel("Set \(context.setIndex + 1) of \(context.item.sets.count)")
-
-                    Text(context.exercise.name)
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.74)
-                        .layoutPriority(1)
-
-                    if !context.exercise.muscleGroup.isEmpty {
-                        Badge(text: context.exercise.muscleGroup)
-                    }
-
-                    Spacer(minLength: 4)
-
-                    restTargetMenu(context)
+                ViewThatFits(in: .horizontal) {
+                    currentSetHeaderContent(context, stacked: false)
+                    currentSetHeaderContent(context, stacked: true)
                 }
             }
 
@@ -1190,8 +1202,8 @@ private struct WorkoutLiveActivityCard: View {
                 Label("PB \(personalBest)", systemImage: "star.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.accent)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 10) {
@@ -1203,10 +1215,10 @@ private struct WorkoutLiveActivityCard: View {
                         .frame(width: 42, height: 42)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(canMoveToPreviousSet ? Theme.text : Theme.muted.opacity(0.5))
-                .background(Theme.background.opacity(0.72))
+                .background(Theme.surface)
                 .clipShape(Circle())
                 .disabled(!canMoveToPreviousSet)
+                .opacity(canMoveToPreviousSet ? 1 : 0.45)
                 .accessibilityLabel("Previous set")
 
                 Button {
@@ -1217,25 +1229,70 @@ private struct WorkoutLiveActivityCard: View {
                         .frame(width: 42, height: 42)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(canMoveToNextSet ? Theme.text : Theme.muted.opacity(0.5))
-                .background(Theme.background.opacity(0.72))
+                .background(Theme.surface)
                 .clipShape(Circle())
                 .disabled(!canMoveToNextSet)
+                .opacity(canMoveToNextSet ? 1 : 0.45)
                 .accessibilityLabel("Next set")
 
                 Button {
                     onSetCompleted(context.exerciseIndex, context.setIndex)
                 } label: {
                     Label(isCompleted(context.set) ? "Logged" : "Log Set", systemImage: "checkmark")
-                        .font(.system(size: 15, weight: .heavy))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 42)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(isCompleted(context.set) ? Theme.success : .white)
-                .background(isCompleted(context.set) ? Theme.success.opacity(0.14) : Theme.accent)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .buttonStyle(PrimaryButtonStyle(compact: true))
                 .disabled(isCompleted(context.set))
+            }
+        }
+        .padding(14)
+        .background(isUpNext ? Theme.accent.opacity(0.08) : Theme.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(isUpNext ? Theme.accent.opacity(0.45) : Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private func currentSetHeaderContent(_ context: WorkoutLiveSetContext, stacked: Bool) -> some View {
+        let badge = Text("\(context.setIndex + 1)/\(context.item.sets.count)")
+            .font(.system(size: 14, weight: .heavy, design: .rounded))
+            .foregroundStyle(Theme.accent)
+            .monospacedDigit()
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Theme.accent.opacity(0.11))
+            .clipShape(Capsule())
+            .accessibilityLabel("Set \(context.setIndex + 1) of \(context.item.sets.count)")
+
+        let title = Text(context.exercise.name)
+            .font(.system(size: 22, weight: .heavy))
+            .foregroundStyle(Theme.text)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+
+        return Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        badge
+                        if !context.exercise.muscleGroup.isEmpty {
+                            Badge(text: context.exercise.muscleGroup)
+                        }
+                    }
+                    title
+                    restTargetMenu(context)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 8) {
+                    badge
+                    title.layoutPriority(1)
+                    if !context.exercise.muscleGroup.isEmpty {
+                        Badge(text: context.exercise.muscleGroup)
+                    }
+                    Spacer(minLength: 4)
+                    restTargetMenu(context)
+                }
             }
         }
     }
@@ -1400,6 +1457,7 @@ private struct WorkoutLiveActivityCard: View {
         activeExerciseIndex = flatSetPositions[nextIndex].exerciseIndex
         activeSetIndex = flatSetPositions[nextIndex].setIndex
     }
+
 }
 
 private struct WorkoutLiveSetContext {

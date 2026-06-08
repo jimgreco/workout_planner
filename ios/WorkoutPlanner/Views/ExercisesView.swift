@@ -172,18 +172,11 @@ private struct ExerciseRow: View {
                 actionButtons
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                FlowLayout(spacing: 6) {
                     badges
-                    exerciseNotes(lineLimit: 1)
                 }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        badges
-                    }
-                    exerciseNotes(lineLimit: 2)
-                }
+                exerciseNotes(lineLimit: 3)
             }
         }
         .padding(14)
