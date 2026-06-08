@@ -39,51 +39,21 @@ struct TemplatesView: View {
                                 Task { await skip(workout) }
                             }
                         )
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        ProgramSectionHeader(
-                            title: "Routines",
-                            subtitle: routineCountLabel
+                        ProgramList(
+                            programs: store.programs,
+                            onEdit: { program in sheet = .program(program) },
+                            onDelete: { program in deleteProgramTarget = program }
                         )
-
-                        if store.templates.isEmpty {
-                            VStack(spacing: 12) {
-                                EmptyState(icon: "square.grid.2x2", text: "No routines yet. Tap + to save your favorite workouts.")
-
-                                Button {
-                                    Task { await createStarterTemplates() }
-                                } label: {
-                                    Label("Add Starter Routines", systemImage: "plus")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(PrimaryButtonStyle())
-                                .disabled(isSaving || store.exercises.isEmpty)
-                            }
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(store.templates) { template in
-                                    TemplateCard(
-                                        template: template,
-                                        exercises: store.exercises,
-                                        onView: { sheet = .view(template) },
-                                        onStart: {
-                                            store.setStartTemplate(template)
-                                            selectedPage = .log
-                                        },
-                                        onEdit: { sheet = .form(template) },
-                                        onDelete: { deleteTarget = template }
-                                    )
-                                }
-                            }
-                        }
                     }
 
                     Divider()
 
-                    ExerciseLibrarySection()
+                    ProgramLibraryLinks(
+                        routineCount: routineCountLabel,
+                        exerciseCount: store.exercises.count == 1 ? "1 exercise" : "\(store.exercises.count) exercises",
+                        onOpenRoutines: { sheet = .routineLibrary },
+                        onOpenExercises: { sheet = .exerciseLibrary }
+                    )
                 }
                 .padding(16)
                 .padding(.bottom, 96)
@@ -145,6 +115,10 @@ struct TemplatesView: View {
                 ProgramFormSheet(program: program, templates: store.templates, isSaving: $isSaving)
             case let .exercise(exercise):
                 ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
+            case .routineLibrary:
+                routineLibrarySheet
+            case .exerciseLibrary:
+                exerciseLibrarySheet
             }
         }
         .alert("Delete Template", isPresented: Binding(
@@ -224,6 +198,82 @@ struct TemplatesView: View {
             }
         }
     }
+
+    private var routineLibrarySheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ProgramSectionHeader(
+                        title: "Routines",
+                        subtitle: routineCountLabel
+                    )
+
+                    if store.templates.isEmpty {
+                        VStack(spacing: 12) {
+                            EmptyState(icon: "square.grid.2x2", text: "No routines yet. Tap + to save your favorite workouts.")
+
+                            Button {
+                                Task { await createStarterTemplates() }
+                            } label: {
+                                Label("Add Starter Routines", systemImage: "plus")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(isSaving || store.exercises.isEmpty)
+                        }
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(store.templates) { template in
+                                TemplateCard(
+                                    template: template,
+                                    exercises: store.exercises,
+                                    onView: { sheet = .view(template) },
+                                    onStart: {
+                                        store.setStartTemplate(template)
+                                        selectedPage = .log
+                                        sheet = nil
+                                    },
+                                    onEdit: { sheet = .form(template) },
+                                    onDelete: { deleteTarget = template }
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .navigationTitle("Routines")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { sheet = nil }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        sheet = .form(WorkoutTemplate(name: ""))
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+        }
+    }
+
+    private var exerciseLibrarySheet: some View {
+        NavigationStack {
+            ScrollView {
+                ExerciseLibrarySection(showHeader: false)
+                    .padding(16)
+            }
+            .navigationTitle("Exercise Library")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { sheet = nil }
+                }
+            }
+        }
+    }
 }
 
 private enum StarterTemplates {
@@ -264,6 +314,8 @@ private enum TemplateSheet: Identifiable {
     case settings
     case program(TrainingProgram)
     case exercise(Exercise)
+    case routineLibrary
+    case exerciseLibrary
 
     var id: String {
         switch self {
@@ -272,6 +324,8 @@ private enum TemplateSheet: Identifiable {
         case .settings: return "settings"
         case let .program(program): return "program-\(program.id)"
         case let .exercise(exercise): return "exercise-\(exercise.id)"
+        case .routineLibrary: return "routine-library"
+        case .exerciseLibrary: return "exercise-library"
         }
     }
 }
@@ -343,7 +397,7 @@ private enum ProgramPlanner {
     ]
 
     static func activeProgram(from programs: [TrainingProgram]) -> TrainingProgram? {
-        programs.first { $0.active == true } ?? programs.first
+        programs.first { $0.active == true }
     }
 
     static func nextWorkout(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> NextProgramWorkout? {
@@ -514,6 +568,107 @@ struct ProgramSectionHeader: View {
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+private struct ProgramList: View {
+    let programs: [TrainingProgram]
+    let onEdit: (TrainingProgram) -> Void
+    let onDelete: (TrainingProgram) -> Void
+
+    var body: some View {
+        if !programs.isEmpty {
+            VStack(spacing: 10) {
+                ForEach(programs) { program in
+                    Card {
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(program.name.isEmpty ? "Untitled program" : program.name)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(program.active == true ? Theme.text : Theme.muted)
+                                Text("\(program.schedule.count) scheduled \(program.schedule.count == 1 ? "day" : "days")")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.muted)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text(program.active == true ? "Active" : "Inactive")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(program.active == true ? Theme.success : Theme.muted)
+                                .textCase(.uppercase)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background((program.active == true ? Theme.success : Theme.muted).opacity(0.1), in: Capsule())
+
+                            IconCircleButton(systemName: "pencil") { onEdit(program) }
+                            IconCircleButton(systemName: "trash", tint: Theme.danger) { onDelete(program) }
+                        }
+                    }
+                    .opacity(program.active == true ? 1 : 0.72)
+                }
+            }
+        }
+    }
+}
+
+private struct ProgramLibraryLinks: View {
+    let routineCount: String
+    let exerciseCount: String
+    let onOpenRoutines: () -> Void
+    let onOpenExercises: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ProgramSectionHeader(title: "Libraries", subtitle: "Open routines and exercises from Program")
+            ProgramLibraryLinkCard(
+                title: "Routines",
+                subtitle: routineCount,
+                systemImage: "square.grid.2x2",
+                action: onOpenRoutines
+            )
+            ProgramLibraryLinkCard(
+                title: "Exercise Library",
+                subtitle: exerciseCount,
+                systemImage: "dumbbell",
+                action: onOpenExercises
+            )
+        }
+    }
+}
+
+private struct ProgramLibraryLinkCard: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Card {
+                HStack(spacing: 12) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 34, height: 34)
+                        .background(Theme.accent.opacity(0.1), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                        Text(subtitle)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

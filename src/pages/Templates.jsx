@@ -424,6 +424,7 @@ function cleanProgram(program) {
 }
 
 export default function Templates({
+  mode = 'all',
   templates,
   exercises,
   logs = [],
@@ -448,9 +449,13 @@ export default function Templates({
   const [saved, setSaved]               = useState(false);
   const [showAddMenu, setShowAddMenu]   = useState(false);
   const addMenuRef = useRef(null);
+  const showPrograms = mode === 'all' || mode === 'programs';
+  const showRoutines = mode === 'all' || mode === 'routines';
+  const showExerciseLibrary = mode === 'all';
+  const pageTitle = mode === 'routines' ? 'Routines' : 'Program';
 
   const activeProgram = useMemo(
-    () => programs.find((program) => program.active) ?? programs[0] ?? null,
+    () => programs.find((program) => program.active) ?? null,
     [programs],
   );
   const nextWorkout = useMemo(
@@ -643,7 +648,7 @@ export default function Templates({
   return (
     <div className="page">
       <div className="action-row">
-        <h1 style={{ marginBottom: 0 }}>Program</h1>
+        <h1 style={{ marginBottom: 0 }}>{pageTitle}</h1>
         <div className="flex gap-8">
           <button className="btn btn-secondary" onClick={openSettings}>
             <Settings size={18} /> Settings
@@ -659,21 +664,28 @@ export default function Templates({
             </button>
             {showAddMenu && (
               <div className="add-menu" role="menu">
-                <button className="dropdown-item" role="menuitem" onClick={() => openProgram()}>
-                  <CalendarDays size={16} /> New Program
-                </button>
-                <button className="dropdown-item" role="menuitem" onClick={openAdd}>
-                  <LayoutGrid size={16} /> New Routine
-                </button>
-                <button className="dropdown-item" role="menuitem" onClick={openExerciseAdd}>
-                  <Plus size={16} /> New Exercise
-                </button>
+                {showPrograms && (
+                  <button className="dropdown-item" role="menuitem" onClick={() => openProgram()}>
+                    <CalendarDays size={16} /> New Program
+                  </button>
+                )}
+                {showRoutines && (
+                  <button className="dropdown-item" role="menuitem" onClick={openAdd}>
+                    <LayoutGrid size={16} /> New Routine
+                  </button>
+                )}
+                {showExerciseLibrary && (
+                  <button className="dropdown-item" role="menuitem" onClick={openExerciseAdd}>
+                    <Plus size={16} /> New Exercise
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
 
+      {showPrograms && (
       <section className="program-section">
         <div className="program-section-heading">
           <div>
@@ -810,8 +822,33 @@ export default function Templates({
           </div>
         )}
       </div>
+        {programs.length > 0 && (
+          <div className="program-list">
+            {programs.map((program) => (
+              <div key={program.id} className={`program-list-item ${program.active ? 'active' : 'inactive'}`}>
+                <div>
+                  <strong>{program.name || 'Untitled program'}</strong>
+                  <span>{program.schedule?.length || 0} scheduled {program.schedule?.length === 1 ? 'day' : 'days'}</span>
+                </div>
+                <div className="flex gap-8 items-center card-actions">
+                  <span className={`status-pill ${program.active ? 'active' : 'inactive'}`}>
+                    {program.active ? 'Active' : 'Inactive'}
+                  </span>
+                  <button className="btn-icon" title="Edit Program" onClick={() => openProgram(program)}>
+                    <Pencil size={16} />
+                  </button>
+                  <button className="btn-icon" title="Delete Program" onClick={() => setConfirmProgramDelete(program)}>
+                    <Trash2 size={16} color="var(--danger)" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
+      )}
 
+      {showRoutines && (
       <section className="routine-library-section">
         <div className="program-section-heading">
           <div>
@@ -874,7 +911,9 @@ export default function Templates({
         ))}
         </div>
       </section>
+      )}
 
+      {showExerciseLibrary && (
       <section className="exercise-library-section">
         <Exercises
           exercises={exercises}
@@ -884,6 +923,7 @@ export default function Templates({
           embedded
         />
       </section>
+      )}
 
       {(modal === 'add' || modal === 'edit') && (
         <Modal

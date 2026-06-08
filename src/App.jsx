@@ -4,6 +4,8 @@ import {
   Dumbbell, 
   Calendar as CalendarIcon, 
   ClipboardList,
+  LayoutGrid,
+  Library,
   TrendingUp,
   LogOut,
   ChevronRight,
@@ -37,6 +39,7 @@ import {
 import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
 import Templates from './pages/Templates.jsx';
+import Exercises from './pages/Exercises.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
 import Progress from './pages/Progress.jsx';
@@ -46,7 +49,9 @@ import { personalBestLabel } from './progress.js';
 
 const PAGES = [
   { id: 'log',       label: 'Workout',          icon: Dumbbell },
-  { id: 'templates', label: 'Program',          icon: ClipboardList },
+  { id: 'programs',  label: 'Program',          icon: ClipboardList },
+  { id: 'routines',  label: 'Routines',         icon: LayoutGrid },
+  { id: 'exercises', label: 'Exercise Library', icon: Library },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
 ];
@@ -626,8 +631,9 @@ export default function App() {
         {page === 'progress' && (
           <Progress logs={logs} exercises={exercises} />
         )}
-        {page === 'templates' && (
+        {page === 'programs' && (
           <Templates
+            mode="programs"
             templates={templates}
             exercises={exercises}
             logs={logs}
@@ -639,6 +645,29 @@ export default function App() {
             onSettingsUpdate={setSettings}
             onExercisesUpdate={setExercises}
             onStartWorkout={handleStartWorkout}
+          />
+        )}
+        {page === 'routines' && (
+          <Templates
+            mode="routines"
+            templates={templates}
+            exercises={exercises}
+            logs={logs}
+            programs={programs}
+            settings={settings}
+            onUpdate={setTemplates}
+            onProgramsUpdate={setPrograms}
+            onLogsChanged={setLogs}
+            onSettingsUpdate={setSettings}
+            onExercisesUpdate={setExercises}
+            onStartWorkout={handleStartWorkout}
+          />
+        )}
+        {page === 'exercises' && (
+          <Exercises
+            exercises={exercises}
+            logs={logs}
+            onUpdate={setExercises}
           />
         )}
         {page === 'log' && (
@@ -906,11 +935,11 @@ export default function App() {
           <div className="onboarding-modal">
             <p className="text-muted">Pick a starting point for this account.</p>
             <div className="onboarding-actions">
-              <button className="support-link" onClick={() => dismissOnboarding('templates')}>
+              <button className="support-link" onClick={() => dismissOnboarding('routines')}>
                 <span>Build a Routine</span>
                 <ChevronRight size={16} />
               </button>
-              <button className="support-link" onClick={() => dismissOnboarding('templates')}>
+              <button className="support-link" onClick={() => dismissOnboarding('exercises')}>
                 <span>Browse Exercise Library</span>
                 <ChevronRight size={16} />
               </button>
