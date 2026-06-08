@@ -1,11 +1,26 @@
 import SwiftUI
 
 struct ExercisesView: View {
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                ExerciseLibrarySection(showHeader: false)
+                    .padding(16)
+                    .padding(.bottom, 96)
+            }
+                .navigationTitle("Exercise Library")
+                .navigationBarTitleDisplayMode(.large)
+        }
+    }
+}
+
+struct ExerciseLibrarySection: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var search = ""
     @State private var sheet: ExerciseSheet?
     @State private var deleteTarget: Exercise?
     @State private var isSaving = false
+    var showHeader = true
 
     private var filtered: [Exercise] {
         store.exercises
@@ -18,41 +33,40 @@ struct ExercisesView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ExerciseSearchBar(text: $search)
+        VStack(alignment: .leading, spacing: 12) {
+            if showHeader {
+                ProgramSectionHeader(
+                    title: "Exercise Library",
+                    subtitle: store.exercises.count == 1 ? "1 exercise" : "\(store.exercises.count) exercises"
+                )
+            }
 
-                    if filtered.isEmpty {
-                        EmptyState(
-                            icon: "dumbbell",
-                            text: search.isEmpty ? "No exercises yet. Tap + to get started." : "No exercises match your search."
+            ExerciseSearchBar(text: $search)
+
+            if filtered.isEmpty {
+                EmptyState(
+                    icon: "dumbbell",
+                    text: search.isEmpty ? "No exercises yet. Tap + to get started." : "No exercises match your search."
+                )
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(filtered) { exercise in
+                        ExerciseRow(
+                            exercise: exercise,
+                            onDetail: { sheet = .detail(exercise) },
+                            onPB: { sheet = .personalBest(exercise) },
+                            onEdit: { sheet = .form(exercise) },
+                            onDelete: { deleteTarget = exercise }
                         )
-                    } else {
-                        VStack(spacing: 12) {
-                            ForEach(filtered) { exercise in
-                                ExerciseRow(
-                                    exercise: exercise,
-                                    onDetail: { sheet = .detail(exercise) },
-                                    onPB: { sheet = .personalBest(exercise) },
-                                    onEdit: { sheet = .form(exercise) },
-                                    onDelete: { deleteTarget = exercise }
-                                )
-                            }
-                        }
                     }
                 }
-                .padding(16)
-                .padding(.bottom, 96)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle("Exercise Library")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .toolbar {
+            if !showHeader {
                 ToolbarItem(placement: .primaryAction) {
-                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "Add Exercise") {
-                        sheet = .form(Exercise(name: "", muscleGroup: "Other", notes: nil))
-                    }
+                    ToolbarCircleActionButton(systemName: "plus", accessibilityLabel: "Add Exercise") { openNewExercise() }
                 }
             }
         }
@@ -87,6 +101,10 @@ struct ExercisesView: View {
         } message: {
             Text("Delete \(deleteTarget?.name ?? "this exercise")? This cannot be undone.")
         }
+    }
+
+    func openNewExercise() {
+        sheet = .form(Exercise(name: "", muscleGroup: "Other", notes: nil))
     }
 }
 
@@ -365,7 +383,7 @@ private struct ExerciseSessionDetail: View {
     }
 }
 
-private struct ExerciseFormSheet: View {
+struct ExerciseFormSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: WorkoutStore
     @State private var form: Exercise

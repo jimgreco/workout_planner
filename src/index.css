@@ -363,12 +363,17 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   gap: 14px;
 }
 .program-section,
-.routine-library-section {
+.routine-library-section,
+.exercise-library-section {
   margin-top: 22px;
 }
-.routine-library-section {
+.routine-library-section,
+.exercise-library-section {
   border-top: 1px solid var(--border);
   padding-top: 22px;
+}
+.exercise-library-embedded {
+  max-width: 100%;
 }
 .program-section-heading {
   display: flex;

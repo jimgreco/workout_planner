@@ -8,7 +8,6 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
     case templates
     case progress
     case history
-    case exercises
     case settings
 
     var id: String { rawValue }
@@ -19,7 +18,6 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
         case .progress: return "Progress"
         case .history: return "History"
         case .templates: return "Program"
-        case .exercises: return "Exercise Library"
         case .settings: return "Settings"
         }
     }
@@ -30,7 +28,6 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
         case .progress: return "chart.bar.fill"
         case .history: return "calendar"
         case .templates: return "list.clipboard"
-        case .exercises: return "figure.strengthtraining.traditional"
         case .settings: return "gearshape.fill"
         }
     }
@@ -95,10 +92,6 @@ struct AppShell: View {
                 tabContent(for: .history)
             }
 
-            Tab(AppPage.exercises.label, systemImage: AppPage.exercises.symbol, value: AppPage.exercises) {
-                tabContent(for: .exercises)
-            }
-
             Tab(AppPage.settings.label, systemImage: AppPage.settings.symbol, value: AppPage.settings) {
                 tabContent(for: .settings)
             }
@@ -129,8 +122,6 @@ struct AppShell: View {
             HistoryView(selectedPage: $page)
         case .templates:
             TemplatesView(selectedPage: $page)
-        case .exercises:
-            ExercisesView()
         case .settings:
             SettingsPage {
                 page = .log

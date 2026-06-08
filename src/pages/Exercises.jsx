@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
+import { cleanExerciseForm, emptyExercise } from '../exerciseForm.js';
 import { formatVolume, getExerciseHistory, personalBestLabel, setLabel, summarizeExercise } from '../progress.js';
 
 const MUSCLE_GROUPS = [
@@ -9,8 +10,6 @@ const MUSCLE_GROUPS = [
   'Forearms', 'Core', 'Quads', 'Hamstrings', 'Glutes',
   'Calves', 'Full Body', 'Cardio', 'Other',
 ];
-
-const empty = () => ({ name: '', muscleGroup: 'Other', notes: '', description: '', isUnilateral: false, defaultSets: '', defaultReps: '' });
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -115,9 +114,82 @@ function ExerciseDetail({ exercise, logs }) {
   );
 }
 
-export default function Exercises({ exercises, logs = [], onUpdate }) {
+export function ExerciseFormFields({ form, setForm, autoFocus = false }) {
+  return (
+    <>
+      <div className="form-group">
+        <label>Exercise Name *</label>
+        <input
+          type="text"
+          placeholder="e.g. Bench Press"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          autoFocus={autoFocus}
+        />
+      </div>
+      <div className="form-group">
+        <label>Muscle Group</label>
+        <select value={form.muscleGroup} onChange={(e) => setForm({ ...form, muscleGroup: e.target.value })}>
+          {MUSCLE_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label>Description (shown in routines)</label>
+        <textarea
+          rows={2}
+          placeholder="Setup, cues, range of motion, or form notes…"
+          value={form.description || ''}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+      </div>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={Boolean(form.isUnilateral)}
+          onChange={(e) => setForm({ ...form, isUnilateral: e.target.checked })}
+        />
+        <span>Track left and right reps separately</span>
+      </label>
+      <div className="form-row">
+        <div className="form-group">
+          <label>Default Sets (optional)</label>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            placeholder="Use workout default"
+            value={form.defaultSets || ''}
+            onChange={(e) => setForm({ ...form, defaultSets: e.target.value ? parseInt(e.target.value, 10) : '' })}
+          />
+        </div>
+        <div className="form-group">
+          <label>Default Reps (optional)</label>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            placeholder="Use workout default"
+            value={form.defaultReps || ''}
+            onChange={(e) => setForm({ ...form, defaultReps: e.target.value ? parseInt(e.target.value, 10) : '' })}
+          />
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Notes (optional)</label>
+        <textarea
+          rows={2}
+          placeholder="Any notes about this exercise…"
+          value={form.notes || ''}
+          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+        />
+      </div>
+    </>
+  );
+}
+
+export default function Exercises({ exercises, logs = [], onUpdate, actionRequest = null, embedded = false }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'pb'
-  const [form, setForm]                 = useState(empty());
+  const [form, setForm]                 = useState(emptyExercise());
   const [search, setSearch]             = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saving, setSaving]             = useState(false);
@@ -132,7 +204,7 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
     )
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  function openAdd() { setForm(empty()); setModal('add'); }
+  function openAdd() { setForm(emptyExercise()); setModal('add'); }
   function openEdit(ex) { setForm({ ...ex }); setModal('edit'); }
   function openPB(ex) {
     setPbForm({
@@ -144,14 +216,21 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
     setModal('pb');
   }
 
+  useEffect(() => {
+    if (!actionRequest) return;
+    if (actionRequest.type === 'add') {
+      openAdd();
+    } else if (actionRequest.type === 'edit') {
+      const exercise = exercises.find((item) => item.id === actionRequest.exerciseId);
+      if (exercise) openEdit(exercise);
+    }
+  }, [actionRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleSave() {
     if (!form.name.trim() || saving) return;
     setSaving(true);
     try {
-      const exercise = { ...form, name: form.name.trim() };
-      if (!exercise.defaultSets) delete exercise.defaultSets;
-      if (!exercise.defaultReps) delete exercise.defaultReps;
-      const updated = await saveExercise(exercise);
+      const updated = await saveExercise(cleanExerciseForm(form));
       onUpdate(updated);
       setModal(null);
     } finally {
@@ -198,7 +277,7 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
   }
 
   return (
-    <div className="page">
+    <div className={embedded ? 'exercise-library-embedded' : 'page'}>
       <div className="action-row">
         <h1 style={{ marginBottom: 0 }}>Exercise Library</h1>
         <button className="btn btn-primary" onClick={openAdd}>
@@ -275,72 +354,7 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
             </>
           }
         >
-          <div className="form-group">
-            <label>Exercise Name *</label>
-            <input
-              type="text"
-              placeholder="e.g. Bench Press"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              autoFocus
-            />
-          </div>
-          <div className="form-group">
-            <label>Muscle Group</label>
-            <select value={form.muscleGroup} onChange={(e) => setForm({ ...form, muscleGroup: e.target.value })}>
-              {MUSCLE_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Description (shown in routines)</label>
-            <textarea
-              rows={2}
-              placeholder="Setup, cues, range of motion, or form notes…"
-              value={form.description || ''}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-          </div>
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={Boolean(form.isUnilateral)}
-              onChange={(e) => setForm({ ...form, isUnilateral: e.target.checked })}
-            />
-            <span>Track left and right reps separately</span>
-          </label>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Default Sets (optional)</label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                placeholder="Use workout default"
-                value={form.defaultSets || ''}
-                onChange={(e) => setForm({ ...form, defaultSets: e.target.value ? parseInt(e.target.value, 10) : '' })}
-              />
-            </div>
-            <div className="form-group">
-              <label>Default Reps (optional)</label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                placeholder="Use workout default"
-                value={form.defaultReps || ''}
-                onChange={(e) => setForm({ ...form, defaultReps: e.target.value ? parseInt(e.target.value, 10) : '' })}
-              />
-            </div>
-          </div>
-          <div className="form-group">
-            <label>Notes (optional)</label>
-            <textarea
-              rows={2}
-              placeholder="Any notes about this exercise…"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            />
-          </div>
+          <ExerciseFormFields form={form} setForm={setForm} autoFocus />
         </Modal>
       )}
 

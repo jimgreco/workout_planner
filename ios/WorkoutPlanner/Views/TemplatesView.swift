@@ -80,6 +80,10 @@ struct TemplatesView: View {
                             }
                         }
                     }
+
+                    Divider()
+
+                    ExerciseLibrarySection()
                 }
                 .padding(16)
                 .padding(.bottom, 96)
@@ -108,6 +112,12 @@ struct TemplatesView: View {
                         } label: {
                             Label("New Routine", systemImage: "square.grid.2x2")
                         }
+
+                        Button {
+                            sheet = .exercise(Exercise(name: "", muscleGroup: "Other", notes: nil))
+                        } label: {
+                            Label("New Exercise", systemImage: "plus")
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 20, weight: .bold))
@@ -133,6 +143,8 @@ struct TemplatesView: View {
                 TemplateSettingsSheet(isSaving: $isSaving)
             case let .program(program):
                 ProgramFormSheet(program: program, templates: store.templates, isSaving: $isSaving)
+            case let .exercise(exercise):
+                ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
             }
         }
         .alert("Delete Template", isPresented: Binding(
@@ -251,6 +263,7 @@ private enum TemplateSheet: Identifiable {
     case view(WorkoutTemplate)
     case settings
     case program(TrainingProgram)
+    case exercise(Exercise)
 
     var id: String {
         switch self {
@@ -258,6 +271,7 @@ private enum TemplateSheet: Identifiable {
         case let .view(template): return "view-\(template.id)"
         case .settings: return "settings"
         case let .program(program): return "program-\(program.id)"
+        case let .exercise(exercise): return "exercise-\(exercise.id)"
         }
     }
 }
@@ -485,7 +499,7 @@ private enum ProgramPlanner {
     }
 }
 
-private struct ProgramSectionHeader: View {
+struct ProgramSectionHeader: View {
     let title: String
     let subtitle: String
 
@@ -877,6 +891,7 @@ private struct TemplateFormSheet: View {
 
     @State private var form: WorkoutTemplate
     @Binding var isSaving: Bool
+    @State private var editingExercise: Exercise?
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
@@ -920,7 +935,8 @@ private struct TemplateFormSheet: View {
                         defaultSets: store.settings.defaultSets,
                         defaultReps: store.settings.defaultReps,
                         defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
-                        planningMode: true
+                        planningMode: true,
+                        onEditExercise: { exercise in editingExercise = exercise }
                     )
                 }
                 .padding(16)
@@ -945,6 +961,9 @@ private struct TemplateFormSheet: View {
                     }
                 }
             }
+        }
+        .sheet(item: $editingExercise) { exercise in
+            ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
         }
     }
 

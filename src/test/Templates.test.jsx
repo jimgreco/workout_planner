@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Templates from '../pages/Templates.jsx';
-import { saveLog, saveProgram, saveTemplate } from '../api.js';
+import { saveExercise, saveLog, saveProgram, saveTemplate } from '../api.js';
 
 vi.mock('../api.js', () => ({
   saveTemplate: vi.fn(async (template) => [template]),
@@ -9,6 +9,7 @@ vi.mock('../api.js', () => ({
   saveProgram: vi.fn(async (program) => [program]),
   deleteProgram: vi.fn(async () => []),
   saveLog: vi.fn(async (log) => [log]),
+  saveExercise: vi.fn(async (exercise) => [exercise]),
   saveSettings: vi.fn(async (settings) => settings),
 }));
 
@@ -142,5 +143,29 @@ describe('Routines page', () => {
 
     expect(screen.getByLabelText(/4 week program adherence/i)).toBeTruthy();
     expect(screen.getByText(/4-week completion/i)).toBeTruthy();
+  });
+
+  it('opens new exercise from the program add menu', async () => {
+    const onExercisesUpdate = vi.fn();
+    render(
+      <Templates
+        templates={[]}
+        exercises={exercises}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onExercisesUpdate={onExercisesUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /new exercise/i }));
+    fireEvent.change(screen.getByPlaceholderText(/bench press/i), { target: { value: 'Incline Press' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /add exercise/i }).at(-1));
+
+    await waitFor(() => expect(saveExercise).toHaveBeenCalledOnce());
+    expect(saveExercise.mock.calls[0][0]).toMatchObject({ name: 'Incline Press' });
+    expect(onExercisesUpdate).toHaveBeenCalled();
   });
 });

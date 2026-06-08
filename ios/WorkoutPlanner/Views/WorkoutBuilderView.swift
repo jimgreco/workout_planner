@@ -48,8 +48,10 @@ struct WorkoutBuilderView: View {
     var planningMode = false
     var onSetCompleted: ((Int, Int) -> Void)?
     var onResetPersonalBest: ((Exercise) -> Void)?
+    var onEditExercise: ((Exercise) -> Void)?
     var onChanged: (() -> Void)?
     var onTextChanged: (() -> Void)?
+    @State private var exerciseSearch = ""
 
     var body: some View {
         VStack(spacing: 16) {
@@ -72,6 +74,7 @@ struct WorkoutBuilderView: View {
                         onRemove: { removeExercise(index) },
                         onSetCompleted: onSetCompleted,
                         onResetPersonalBest: onResetPersonalBest,
+                        onEditExercise: onEditExercise,
                         onChanged: onChanged,
                         onTextChanged: onTextChanged
                     )
@@ -79,26 +82,58 @@ struct WorkoutBuilderView: View {
             }
 
             if !readOnly {
-                Menu {
-                    let available = availableExercises
-                    if available.isEmpty {
-                        Text("No more exercises available")
-                    } else {
-                        ForEach(available) { exercise in
-                            Button("\(exercise.name) (\(exercise.muscleGroup))") {
-                                addExercise(exercise)
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                        TextField("Search exercises to add", text: $exerciseSearch)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.system(size: 15))
+                        if !exerciseSearch.isEmpty {
+                            Button {
+                                exerciseSearch = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Theme.muted)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear exercise search")
                         }
                     }
-                } label: {
-                    Label("Add Exercise", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12)
+                    .frame(height: 44)
+                    .background(Theme.background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                            .stroke(Theme.border, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+
+                    Menu {
+                        let available = availableExercises
+                        if available.isEmpty {
+                            Text(exerciseSearch.isEmpty ? "No more exercises available" : "No matching exercises")
+                        } else {
+                            ForEach(available) { exercise in
+                                Button("\(exercise.name) (\(exercise.muscleGroup))") {
+                                    addExercise(exercise)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Add Exercise", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .disabled(availableExercises.isEmpty)
                 }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .frame(maxWidth: .infinity)
             }
 
             if exercises.isEmpty && !readOnly {
-                Text("No exercises configured yet. Go to Library to add some first.")
+                Text("No exercises configured yet. Add exercises from the Program + menu first.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -110,6 +145,11 @@ struct WorkoutBuilderView: View {
         let used = Set(items.map(\.exerciseId))
         return exercises
             .filter { !used.contains($0.id) }
+            .filter { exercise in
+                exerciseSearch.isEmpty
+                    || exercise.name.localizedCaseInsensitiveContains(exerciseSearch)
+                    || exercise.muscleGroup.localizedCaseInsensitiveContains(exerciseSearch)
+            }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -146,6 +186,7 @@ struct WorkoutBuilderView: View {
             useIndividualReps: false,
             sets: sets
         ))
+        exerciseSearch = ""
         onChanged?()
     }
 
@@ -179,6 +220,7 @@ private struct ExerciseSetsCard: View {
     let onRemove: () -> Void
     let onSetCompleted: ((Int, Int) -> Void)?
     let onResetPersonalBest: ((Exercise) -> Void)?
+    let onEditExercise: ((Exercise) -> Void)?
     let onChanged: (() -> Void)?
     let onTextChanged: (() -> Void)?
 
@@ -192,6 +234,9 @@ private struct ExerciseSetsCard: View {
     }
     private var canResetPersonalBest: Bool {
         !readOnly && !planningMode && exercise.personalBest != nil && onResetPersonalBest != nil
+    }
+    private var canEditExercise: Bool {
+        !readOnly && planningMode && onEditExercise != nil
     }
 
     var body: some View {
@@ -320,6 +365,18 @@ private struct ExerciseSetsCard: View {
     private var headerButtons: some View {
         if !readOnly {
             HStack(spacing: 6) {
+                if canEditExercise {
+                    Button {
+                        onEditExercise?(exercise)
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 12, weight: .bold))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .fixedSize(horizontal: true, vertical: false)
+                }
                 IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp) { onMove(-1) }
                 IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown) { onMove(1) }
                 IconCircleButton(systemName: "xmark", tint: Theme.danger, action: onRemove)

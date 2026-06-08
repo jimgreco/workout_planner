@@ -1,5 +1,5 @@
-import { Fragment, useState, useEffect, useRef } from 'react';
-import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw } from 'lucide-react';
+import { Fragment, useId, useState, useEffect, useRef } from 'react';
+import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil } from 'lucide-react';
 import { personalBestLabel } from '../progress.js';
 
 /**
@@ -121,8 +121,11 @@ export default function WorkoutBuilder({
   onSetCompleted,
   onRestTargetReached,
   onResetPersonalBest,
+  onEditExercise,
   planningMode = false,
 }) {
+  const [exerciseSearch, setExerciseSearch] = useState('');
+  const exerciseListId = useId();
   function exById(id) {
     return exercises.find((e) => e.id === id);
   }
@@ -146,6 +149,7 @@ export default function WorkoutBuilder({
     };
     if (defaultRestTargetSeconds > 0) item.restTargetSeconds = defaultRestTargetSeconds;
     onChange([...items, item]);
+    setExerciseSearch('');
   }
 
   function removeExercise(idx) {
@@ -340,6 +344,15 @@ export default function WorkoutBuilder({
                   )}
                   {readOnly && item.restTargetSeconds > 0 && (
                     <span className="rest-target-chip">Rest {restTargetLabel(item.restTargetSeconds)}</span>
+                  )}
+                  {!readOnly && planningMode && onEditExercise && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => onEditExercise(ex)}
+                    >
+                      <Pencil size={13} /> Edit Exercise
+                    </button>
                   )}
                 </div>
                 {(item.description || (!readOnly && planningMode)) && (
@@ -619,28 +632,34 @@ export default function WorkoutBuilder({
           <label>Add Exercise</label>
           <div className="input-with-icon">
             <Plus className="input-icon" size={16} />
-            <select
-              value=""
-              onChange={(e) => addExercise(e.target.value)}
+            <input
+              type="text"
+              list={exerciseListId}
+              placeholder="Search exercises to add…"
+              value={exerciseSearch}
+              onChange={(e) => {
+                const value = e.target.value;
+                const selected = availableExercises.find((ex) => `${ex.name} (${ex.muscleGroup})` === value);
+                if (selected) {
+                  addExercise(selected.id);
+                } else {
+                  setExerciseSearch(value);
+                }
+              }}
               style={{ padding: '8px 12px 8px 36px', fontSize: 14 }}
-            >
-              <option value="" disabled>Select exercise to add…</option>
-              {availableExercises.length === 0 && (
-                <option disabled>No more exercises available</option>
-              )}
+            />
+            <datalist id={exerciseListId}>
               {availableExercises.map((ex) => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name} ({ex.muscleGroup})
-                </option>
+                <option key={ex.id} value={`${ex.name} (${ex.muscleGroup})`} />
               ))}
-            </select>
+            </datalist>
           </div>
         </div>
       )}
 
       {exercises.length === 0 && !readOnly && (
         <p className="text-muted" style={{ marginTop: 8 }}>
-          No exercises configured yet. Go to Exercise Library to add some first.
+          No exercises configured yet. Add exercises from the Program page first.
         </p>
       )}
     </div>

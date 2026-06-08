@@ -4,7 +4,6 @@ import {
   Dumbbell, 
   Calendar as CalendarIcon, 
   ClipboardList,
-  BicepsFlexed,
   TrendingUp,
   LogOut,
   ChevronRight,
@@ -37,7 +36,6 @@ import {
 } from './api.js';
 import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
-import Exercises from './pages/Exercises.jsx';
 import Templates from './pages/Templates.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
@@ -51,7 +49,6 @@ const PAGES = [
   { id: 'templates', label: 'Program',          icon: ClipboardList },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
-  { id: 'exercises', label: 'Exercise Library', icon: BicepsFlexed },
 ];
 const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';
 const CRASH_REPORT_KEY = 'forge.lastCrashReportAt.v1';
@@ -626,9 +623,6 @@ export default function App() {
             </button>
           </div>
         )}
-        {page === 'exercises' && (
-          <Exercises exercises={exercises} logs={logs} onUpdate={setExercises} />
-        )}
         {page === 'progress' && (
           <Progress logs={logs} exercises={exercises} />
         )}
@@ -643,6 +637,7 @@ export default function App() {
             onProgramsUpdate={setPrograms}
             onLogsChanged={setLogs}
             onSettingsUpdate={setSettings}
+            onExercisesUpdate={setExercises}
             onStartWorkout={handleStartWorkout}
           />
         )}
@@ -915,7 +910,7 @@ export default function App() {
                 <span>Build a Routine</span>
                 <ChevronRight size={16} />
               </button>
-              <button className="support-link" onClick={() => dismissOnboarding('exercises')}>
+              <button className="support-link" onClick={() => dismissOnboarding('templates')}>
                 <span>Browse Exercise Library</span>
                 <ChevronRight size={16} />
               </button>

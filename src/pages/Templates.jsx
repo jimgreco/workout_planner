@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
-import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog } from '../api.js';
+import Exercises, { ExerciseFormFields } from './Exercises.jsx';
+import { cleanExerciseForm } from '../exerciseForm.js';
+import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog, saveExercise } from '../api.js';
 
 const WEEKDAYS = [
   { value: 0, label: 'Sun', long: 'Sunday' },
@@ -431,12 +433,15 @@ export default function Templates({
   onProgramsUpdate = () => {},
   onLogsChanged = () => {},
   onSettingsUpdate,
+  onExercisesUpdate = () => {},
   onStartWorkout,
 }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view' | 'settings' | 'program'
   const [form, setForm]                 = useState(emptyTemplate());
   const [programForm, setProgramForm]   = useState(emptyProgram());
   const [settingsForm, setSettingsForm] = useState({ ...settings });
+  const [exerciseForm, setExerciseForm] = useState(null);
+  const [exerciseLibraryAction, setExerciseLibraryAction] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmProgramDelete, setConfirmProgramDelete] = useState(null);
   const [saving, setSaving]             = useState(false);
@@ -482,6 +487,11 @@ export default function Templates({
     setModal('program');
   }
 
+  function openExerciseAdd() {
+    setShowAddMenu(false);
+    setExerciseLibraryAction({ type: 'add', nonce: Date.now() });
+  }
+
   useEffect(() => {
     if (!showAddMenu) return undefined;
     const close = (event) => {
@@ -524,6 +534,18 @@ export default function Templates({
       onSettingsUpdate(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveExerciseEdit() {
+    if (!exerciseForm?.name?.trim() || saving) return;
+    setSaving(true);
+    try {
+      const updated = await saveExercise(cleanExerciseForm(exerciseForm));
+      onExercisesUpdate(updated);
+      setExerciseForm(null);
     } finally {
       setSaving(false);
     }
@@ -642,6 +664,9 @@ export default function Templates({
                 </button>
                 <button className="dropdown-item" role="menuitem" onClick={openAdd}>
                   <LayoutGrid size={16} /> New Routine
+                </button>
+                <button className="dropdown-item" role="menuitem" onClick={openExerciseAdd}>
+                  <Plus size={16} /> New Exercise
                 </button>
               </div>
             )}
@@ -850,6 +875,16 @@ export default function Templates({
         </div>
       </section>
 
+      <section className="exercise-library-section">
+        <Exercises
+          exercises={exercises}
+          logs={logs}
+          onUpdate={onExercisesUpdate}
+          actionRequest={exerciseLibraryAction}
+          embedded
+        />
+      </section>
+
       {(modal === 'add' || modal === 'edit') && (
         <Modal
           title={modal === 'add' ? 'New Routine' : 'Edit Routine'}
@@ -893,6 +928,7 @@ export default function Templates({
             defaultReps={settings.defaultReps}
             defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
             planningMode
+            onEditExercise={(exercise) => setExerciseForm({ ...exercise })}
           />
         </Modal>
       )}
@@ -1232,6 +1268,23 @@ export default function Templates({
           }
         >
           <p>Delete program <strong>{confirmProgramDelete.name}</strong>? Routines and logs stay untouched.</p>
+        </Modal>
+      )}
+
+      {exerciseForm && (
+        <Modal
+          title={`Edit Exercise — ${exerciseForm.name || 'Exercise'}`}
+          onClose={() => !saving && setExerciseForm(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setExerciseForm(null)} disabled={saving}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSaveExerciseEdit} disabled={!exerciseForm.name?.trim() || saving}>
+                {saving ? 'Saving…' : 'Save Exercise'}
+              </button>
+            </>
+          }
+        >
+          <ExerciseFormFields form={exerciseForm} setForm={setExerciseForm} autoFocus />
         </Modal>
       )}
     </div>

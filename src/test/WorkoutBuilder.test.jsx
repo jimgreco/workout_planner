@@ -92,12 +92,10 @@ describe('WorkoutBuilder', () => {
     expect(updated[0].sets[1].weight).toBe('135');
   });
 
-  it('adds an exercise from the dropdown', () => {
+  it('adds an exercise from the searchable exercise field', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={[]} onChange={onChange} />);
-    const selects = screen.getAllByRole('combobox');
-    const select = selects[selects.length - 1]; // "Add Exercise" select
-    fireEvent.change(select, { target: { value: 'ex2' } });
+    fireEvent.change(screen.getByPlaceholderText(/search exercises to add/i), { target: { value: 'Squat (Quads)' } });
     const updated = onChange.mock.calls[0][0];
     expect(updated).toHaveLength(1);
     expect(updated[0].exerciseId).toBe('ex2');
@@ -107,11 +105,25 @@ describe('WorkoutBuilder', () => {
   it('does not add a duplicate exercise', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
-    const selects = screen.getAllByRole('combobox');
-    const select = selects[selects.length - 1]; // "Add Exercise" select
-    fireEvent.change(select, { target: { value: 'ex1' } });
+    fireEvent.change(screen.getByPlaceholderText(/search exercises to add/i), { target: { value: 'Bench Press (Chest)' } });
     // onChange should not be called since ex1 is already in items
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('calls edit exercise from a planning routine card', () => {
+    const onEditExercise = vi.fn();
+    render(
+      <WorkoutBuilder
+        exercises={exercises}
+        items={oneItem}
+        onChange={() => {}}
+        planningMode
+        onEditExercise={onEditExercise}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /edit exercise/i }));
+    expect(onEditExercise).toHaveBeenCalledWith(exercises[0]);
   });
 
   it('removes an exercise when ✕ button is clicked', () => {
