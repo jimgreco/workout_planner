@@ -241,6 +241,18 @@ private struct ExerciseSetsCard: View {
     private var repUnitTitle: String {
         exercise.usesTime == true ? "Secs" : "Reps"
     }
+    private var repUnit: String {
+        exercise.usesTime == true ? "secs" : "reps"
+    }
+    private var sameTargetForEverySet: Binding<Bool> {
+        Binding(
+            get: { !(item.useIndividualReps ?? false) },
+            set: { value in
+                item.useIndividualReps = !value
+                onChanged?()
+            }
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -278,19 +290,29 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.accent)
             }
 
+            if planningMode && !readOnly {
+                Toggle("Same \(repUnit) target for every set", isOn: sameTargetForEverySet)
+                    .font(.system(size: 13, weight: .semibold))
+                    .tint(Theme.accent)
+            }
+
             if readOnly, item.supersetGroup?.isEmpty == false {
                 Label(supersetLabel(item.supersetGroup), systemImage: "link")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.success)
             }
 
-            setHeader
+            if planningMode && !(item.useIndividualReps ?? false) {
+                compactTargetControls
+            } else {
+                setHeader
 
-            ForEach(item.sets.indices, id: \.self) { setIndex in
-                setRow(setIndex)
+                ForEach(item.sets.indices, id: \.self) { setIndex in
+                    setRow(setIndex)
+                }
             }
 
-            if !readOnly {
+            if !readOnly && (!planningMode || (item.useIndividualReps ?? false)) {
                 Button {
                     addSet()
                 } label: {
@@ -467,6 +489,174 @@ private struct ExerciseSetsCard: View {
         case "none": return ""
         default: return "Weight"
         }
+    }
+
+    private var compactTargetControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Use \(repUnit) range", isOn: Binding(
+                get: { compactUsesRange },
+                set: { setCompactRangeMode($0) }
+            ))
+            .font(.system(size: 13, weight: .semibold))
+            .tint(Theme.accent)
+
+            if exercise.isUnilateral == true {
+                if compactUsesRange {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        compactField("Left min", value: rangeBinding(field: .left, side: .min))
+                        compactField("Left max", value: rangeBinding(field: .left, side: .max))
+                        compactField("Right min", value: rangeBinding(field: .right, side: .min))
+                        compactField("Right max", value: rangeBinding(field: .right, side: .max))
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        compactField("Left \(repUnit)", value: compactBinding(field: .left))
+                        compactField("Right \(repUnit)", value: compactBinding(field: .right))
+                    }
+                }
+            } else if compactUsesRange {
+                HStack(spacing: 8) {
+                    compactField("Min \(repUnit)", value: rangeBinding(field: .reps, side: .min))
+                    compactField("Max \(repUnit)", value: rangeBinding(field: .reps, side: .max))
+                }
+            } else {
+                compactField("\(repUnitTitle) for all sets", value: compactBinding(field: .reps))
+            }
+
+            HStack(spacing: 8) {
+                Text("\(item.sets.count) \(item.sets.count == 1 ? "set" : "sets")")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                Spacer()
+                Button {
+                    addSet()
+                } label: {
+                    Label("Add Set", systemImage: "plus")
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                Button(role: .destructive) {
+                    removeSet(item.sets.count - 1)
+                } label: {
+                    Label("Remove", systemImage: "xmark")
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(item.sets.count <= 1)
+            }
+        }
+        .padding(12)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private enum CompactRepField {
+        case reps
+        case left
+        case right
+    }
+
+    private enum CompactRangeSide {
+        case min
+        case max
+    }
+
+    private var compactUsesRange: Bool {
+        if exercise.isUnilateral == true {
+            return repRange(compactValue(field: .left)) != nil || repRange(compactValue(field: .right)) != nil
+        }
+        return repRange(compactValue(field: .reps)) != nil
+    }
+
+    private func compactField(_ label: String, value: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+            TextField("", text: value)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(height: 40)
+                .background(Theme.background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func compactBinding(field: CompactRepField) -> Binding<String> {
+        Binding(
+            get: { compactValue(field: field) },
+            set: { updateAllCompactValues(field: field, value: $0); onTextChanged?() }
+        )
+    }
+
+    private func rangeBinding(field: CompactRepField, side: CompactRangeSide) -> Binding<String> {
+        Binding(
+            get: {
+                let value = compactValue(field: field)
+                let range = repRange(value)
+                return side == .min ? (range?.min ?? value) : (range?.max ?? "")
+            },
+            set: { value in
+                let current = compactValue(field: field)
+                let range = repRange(current)
+                let next = repRangeValue(
+                    min: side == .min ? value : (range?.min ?? current),
+                    max: side == .max ? value : (range?.max ?? "")
+                )
+                updateAllCompactValues(field: field, value: next)
+                onTextChanged?()
+            }
+        )
+    }
+
+    private func compactValue(field: CompactRepField) -> String {
+        guard let first = item.sets.first else { return "" }
+        switch field {
+        case .reps:
+            return first.placeholderReps ?? first.reps ?? ""
+        case .left:
+            return first.placeholderRepsLeft ?? first.repsLeft ?? first.placeholderReps ?? first.reps ?? ""
+        case .right:
+            return first.placeholderRepsRight ?? first.repsRight ?? first.placeholderReps ?? first.reps ?? ""
+        }
+    }
+
+    private func updateAllCompactValues(field: CompactRepField, value: String) {
+        for index in item.sets.indices {
+            switch field {
+            case .reps:
+                item.sets[index].placeholderReps = value
+            case .left:
+                item.sets[index].placeholderRepsLeft = value
+            case .right:
+                item.sets[index].placeholderRepsRight = value
+            }
+        }
+    }
+
+    private func setCompactRangeMode(_ enabled: Bool) {
+        let fields: [CompactRepField] = exercise.isUnilateral == true ? [.left, .right] : [.reps]
+        for field in fields {
+            let current = compactValue(field: field)
+            let range = repRange(current)
+            updateAllCompactValues(
+                field: field,
+                value: enabled
+                    ? repRangeValue(min: range?.min ?? current, max: range?.max ?? current)
+                    : (range?.min ?? current)
+            )
+        }
+        onChanged?()
     }
 
     @ViewBuilder
@@ -752,6 +942,27 @@ private struct ExerciseSetsCard: View {
 private enum SetNumericFieldPlaceholderRole: Equatable {
     case plain
     case reps
+}
+
+private struct CompactRepRange {
+    let min: String
+    let max: String
+}
+
+private func repRange(_ value: String) -> CompactRepRange? {
+    let parts = value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .split(maxSplits: 1, whereSeparator: { $0 == "-" || $0 == "–" })
+        .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+    guard parts.count == 2, !parts[0].isEmpty || !parts[1].isEmpty else { return nil }
+    return CompactRepRange(min: parts[0], max: parts[1])
+}
+
+private func repRangeValue(min: String, max: String) -> String {
+    let cleanMin = min.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanMax = max.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !cleanMin.isEmpty, !cleanMax.isEmpty { return "\(cleanMin)-\(cleanMax)" }
+    return cleanMin.isEmpty ? cleanMax : cleanMin
 }
 
 private struct SetNumericField: View {

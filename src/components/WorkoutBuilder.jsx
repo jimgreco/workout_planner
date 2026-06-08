@@ -65,6 +65,20 @@ function weightTypeLabel(weightType) {
   return 'Weight';
 }
 
+function repRange(value) {
+  const text = String(value ?? '').trim();
+  const match = text.match(/^(.+?)\s*[-–]\s*(.+)$/);
+  if (!match) return null;
+  return { min: match[1], max: match[2] };
+}
+
+function repRangeValue(min, max) {
+  const cleanMin = String(min ?? '').trim();
+  const cleanMax = String(max ?? '').trim();
+  if (cleanMin && cleanMax) return `${cleanMin}-${cleanMax}`;
+  return cleanMin || cleanMax;
+}
+
 function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
   const [now, setNow] = useState(() => Date.now());
   const alertedRef = useRef(false);
@@ -248,6 +262,36 @@ export default function WorkoutBuilder({
     onChange(copy);
   }
 
+  function updateAllSetRepRange(itemIdx, field, side, value) {
+    const item = items[itemIdx];
+    const current = repRange(item?.sets?.[0]?.[field]) ?? { min: item?.sets?.[0]?.[field] ?? '', max: '' };
+    updateAllSetReps(itemIdx, field, repRangeValue(
+      side === 'min' ? value : current.min,
+      side === 'max' ? value : current.max,
+    ));
+  }
+
+  function setCompactRangeMode(itemIdx, fields, enabled) {
+    const copy = items.map((item, i) => {
+      if (i !== itemIdx) return item;
+      const nextValues = Object.fromEntries(fields.map((field) => {
+        const current = item.sets[0]?.[field] ?? '';
+        const range = repRange(current);
+        return [
+          field,
+          enabled
+            ? repRangeValue(range?.min ?? current, range?.max ?? current)
+            : (range?.min ?? current),
+        ];
+      }));
+      return {
+        ...item,
+        sets: item.sets.map((set) => ({ ...set, ...nextValues })),
+      };
+    });
+    onChange(copy);
+  }
+
   function moveItem(idx, dir) {
     const copy = [...items];
     const swapIdx = idx + dir;
@@ -285,9 +329,13 @@ export default function WorkoutBuilder({
         const leftRepsField = planningMode ? 'placeholderRepsLeft' : 'repsLeft';
         const rightRepsField = planningMode ? 'placeholderRepsRight' : 'repsRight';
         const firstSet = item.sets[0] || {};
-        const compactLeftValue = firstSet[leftRepsField] ?? firstSet[repsField] ?? '';
-        const compactRightValue = firstSet[rightRepsField] ?? firstSet[repsField] ?? '';
-        const compactRepsValue = firstSet[repsField] ?? '';
+        const compactLeftValue = firstSet[leftRepsField] ?? firstSet[repsField] ?? firstSet.repsLeft ?? firstSet.reps ?? '';
+        const compactRightValue = firstSet[rightRepsField] ?? firstSet[repsField] ?? firstSet.repsRight ?? firstSet.reps ?? '';
+        const compactRepsValue = firstSet[repsField] ?? firstSet.reps ?? '';
+        const compactLeftRange = repRange(compactLeftValue);
+        const compactRightRange = repRange(compactRightValue);
+        const compactRepsRange = repRange(compactRepsValue);
+        const compactUsesRange = Boolean(isUnilateral ? (compactLeftRange || compactRightRange) : compactRepsRange);
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
           + (!readOnly && !planningMode ? 1 : 0)
@@ -372,10 +420,10 @@ export default function WorkoutBuilder({
                   <label className="checkbox-row compact-toggle">
                     <input
                       type="checkbox"
-                      checked={Boolean(item.useIndividualReps)}
-                      onChange={(e) => updateItem(idx, { useIndividualReps: e.target.checked })}
+                      checked={!item.useIndividualReps}
+                      onChange={(e) => updateItem(idx, { useIndividualReps: !e.target.checked })}
                     />
-                    <span>Advanced {repUnit} per set</span>
+                    <span>Same {repUnit} target for every set</span>
                   </label>
                 )}
               </div>
@@ -395,8 +443,57 @@ export default function WorkoutBuilder({
             </div>
             {planningMode && !item.useIndividualReps ? (
               <div className="routine-compact-reps">
+                <label className="checkbox-row compact-range-toggle">
+                  <input
+                    type="checkbox"
+                    checked={compactUsesRange}
+                    onChange={(e) => {
+                      setCompactRangeMode(idx, isUnilateral ? [leftRepsField, rightRepsField] : [repsField], e.target.checked);
+                    }}
+                  />
+                  <span>Use {repUnit} range</span>
+                </label>
                 <div className="form-row">
-                  {isUnilateral ? (
+                  {isUnilateral && compactUsesRange ? (
+                    <>
+                      <label className="form-group">
+                        <span>Left min</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactLeftRange?.min ?? compactLeftValue}
+                          onChange={(e) => updateAllSetRepRange(idx, leftRepsField, 'min', e.target.value)}
+                        />
+                      </label>
+                      <label className="form-group">
+                        <span>Left max</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactLeftRange?.max ?? ''}
+                          onChange={(e) => updateAllSetRepRange(idx, leftRepsField, 'max', e.target.value)}
+                        />
+                      </label>
+                      <label className="form-group">
+                        <span>Right min</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactRightRange?.min ?? compactRightValue}
+                          onChange={(e) => updateAllSetRepRange(idx, rightRepsField, 'min', e.target.value)}
+                        />
+                      </label>
+                      <label className="form-group">
+                        <span>Right max</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactRightRange?.max ?? ''}
+                          onChange={(e) => updateAllSetRepRange(idx, rightRepsField, 'max', e.target.value)}
+                        />
+                      </label>
+                    </>
+                  ) : isUnilateral ? (
                     <>
                       <label className="form-group">
                         <span>Left {repUnit} for all sets</span>
@@ -414,6 +511,27 @@ export default function WorkoutBuilder({
                           inputMode="numeric"
                           value={compactRightValue}
                           onChange={(e) => updateAllSetReps(idx, rightRepsField, e.target.value)}
+                        />
+                      </label>
+                    </>
+                  ) : compactUsesRange ? (
+                    <>
+                      <label className="form-group">
+                        <span>Min {repUnit}</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactRepsRange?.min ?? compactRepsValue}
+                          onChange={(e) => updateAllSetRepRange(idx, repsField, 'min', e.target.value)}
+                        />
+                      </label>
+                      <label className="form-group">
+                        <span>Max {repUnit}</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactRepsRange?.max ?? ''}
+                          onChange={(e) => updateAllSetRepRange(idx, repsField, 'max', e.target.value)}
                         />
                       </label>
                     </>

@@ -139,6 +139,31 @@ describe('WorkoutBuilder', () => {
     expect(onEditExercise).toHaveBeenCalledWith(exercises[0]);
   });
 
+  it('updates every planned set from the same-target control', () => {
+    const onChange = vi.fn();
+    const items = [{ exerciseId: 'ex1', sets: [{ placeholderReps: '8', weight: '' }, { placeholderReps: '8', weight: '' }] }];
+    render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} planningMode />);
+
+    fireEvent.change(screen.getByLabelText(/reps for all sets/i), { target: { value: '10' } });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange.mock.calls[0][0][0].sets.map((set) => set.placeholderReps)).toEqual(['10', '10']);
+  });
+
+  it('stores a planned rep range for every set', () => {
+    const onChange = vi.fn();
+    const items = [{ exerciseId: 'ex1', sets: [{ placeholderReps: '8', weight: '' }, { placeholderReps: '8', weight: '' }] }];
+    const { rerender } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} planningMode />);
+
+    fireEvent.click(screen.getByLabelText(/use reps range/i));
+    const rangedItems = onChange.mock.calls[0][0];
+    rerender(<WorkoutBuilder exercises={exercises} items={rangedItems} onChange={onChange} planningMode />);
+    fireEvent.change(screen.getByLabelText(/max reps/i), { target: { value: '12' } });
+
+    const updated = onChange.mock.calls.at(-1)[0];
+    expect(updated[0].sets.map((set) => set.placeholderReps)).toEqual(['8-12', '8-12']);
+  });
+
   it('removes an exercise when ✕ button is clicked', () => {
     const onChange = vi.fn();
     const items = [

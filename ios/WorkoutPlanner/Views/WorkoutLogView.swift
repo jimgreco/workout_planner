@@ -540,7 +540,11 @@ struct WorkoutLogView: View {
     private func prepopulated(_ item: ExerciseItem) -> ExerciseItem {
         let last = lastFinishedItem(for: item.exerciseId)
         let sets = item.sets.enumerated().map { offset, set in
-            let targetReps = set.reps?.isEmpty == false ? set.reps ?? String(store.settings.defaultReps) : String(store.settings.defaultReps)
+            let plannedReps = set.reps?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let placeholderReps = set.placeholderReps?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let targetReps = plannedReps?.isEmpty == false
+                ? plannedReps ?? String(store.settings.defaultReps)
+                : (placeholderReps?.isEmpty == false ? placeholderReps ?? String(store.settings.defaultReps) : String(store.settings.defaultReps))
             if let last, last.sets.indices.contains(offset) {
                 let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return WorkoutSet(

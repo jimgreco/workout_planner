@@ -106,7 +106,7 @@ export default function WorkoutLog({
         restTargetSeconds: item.restTargetSeconds,
         supersetGroup: item.supersetGroup,
         sets: item.sets.map((s, si) => {
-          const targetReps = s.reps || String(settings.defaultReps);
+          const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
             return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
           }
@@ -187,7 +187,7 @@ export default function WorkoutLog({
         if (i !== newItems.length - 1) return item;
         
         const merged = item.sets.map((s, si) => {
-          const targetReps = s.reps || String(settings.defaultReps);
+          const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
             return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
           }
@@ -297,7 +297,7 @@ export default function WorkoutLog({
           description: item.description,
           useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
-            const targetReps = s.reps || String(settings.defaultReps);
+            const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
             const targetLeft = s.repsLeft || s.placeholderRepsLeft || targetReps;
             const targetRight = s.repsRight || s.placeholderRepsRight || targetReps;
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
