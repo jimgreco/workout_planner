@@ -2,6 +2,8 @@ import SwiftUI
 
 enum WorkoutBuilderFocusedField: Hashable {
     case reps(itemIndex: Int, setIndex: Int)
+    case repsLeft(itemIndex: Int, setIndex: Int)
+    case repsRight(itemIndex: Int, setIndex: Int)
     case weight(itemIndex: Int, setIndex: Int)
     case rpe(itemIndex: Int, setIndex: Int)
     case rir(itemIndex: Int, setIndex: Int)
@@ -40,6 +42,7 @@ struct WorkoutBuilderView: View {
     var showWeight = true
     var defaultSets = 4
     var defaultReps = 8
+    var defaultRestTargetSeconds: Int?
     var activeExerciseIndex: Int?
     var activeSetIndex: Int?
     var planningMode = false
@@ -64,7 +67,7 @@ struct WorkoutBuilderView: View {
                         planningMode: planningMode,
                         canMoveUp: index > 0,
                         canMoveDown: index < items.count - 1,
-                        defaultReps: defaultReps,
+                        defaultReps: exercise.defaultReps ?? defaultReps,
                         onMove: { direction in move(index, direction) },
                         onRemove: { removeExercise(index) },
                         onSetCompleted: onSetCompleted,
@@ -115,12 +118,34 @@ struct WorkoutBuilderView: View {
     }
 
     private func addExercise(_ exercise: Exercise) {
-        let sets = (0..<defaultSets).map { _ in
+        let setCount = exercise.defaultSets ?? defaultSets
+        let repCount = exercise.defaultReps ?? defaultReps
+        let sets = (0..<setCount).map { _ in
             planningMode
-                ? WorkoutSet(reps: "", weight: "", placeholderReps: String(defaultReps))
-                : WorkoutSet(reps: String(defaultReps), weight: "")
+                ? WorkoutSet(
+                    reps: "",
+                    repsLeft: exercise.isUnilateral == true ? "" : nil,
+                    repsRight: exercise.isUnilateral == true ? "" : nil,
+                    weight: "",
+                    placeholderReps: String(repCount),
+                    placeholderRepsLeft: exercise.isUnilateral == true ? String(repCount) : nil,
+                    placeholderRepsRight: exercise.isUnilateral == true ? String(repCount) : nil
+                )
+                : WorkoutSet(
+                    reps: String(repCount),
+                    repsLeft: exercise.isUnilateral == true ? String(repCount) : nil,
+                    repsRight: exercise.isUnilateral == true ? String(repCount) : nil,
+                    weight: ""
+                )
         }
-        items.append(ExerciseItem(exerciseId: exercise.id, weightType: "weight", sets: sets))
+        items.append(ExerciseItem(
+            exerciseId: exercise.id,
+            weightType: "weight",
+            restTargetSeconds: (defaultRestTargetSeconds ?? 0) > 0 ? defaultRestTargetSeconds : nil,
+            description: exercise.description ?? "",
+            useIndividualReps: false,
+            sets: sets
+        ))
         onChanged?()
     }
 
@@ -312,7 +337,7 @@ private struct ExerciseSetsCard: View {
         HStack(spacing: rowSpacing) {
             Text("Set")
                 .frame(width: setColumnWidth)
-            Text("Reps")
+            Text(exercise.isUnilateral == true ? "Reps L/R" : "Reps")
                 .frame(maxWidth: .infinity)
             if showsWeightColumn {
                 Text(weightHeaderLabel)
@@ -350,22 +375,60 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.muted)
                     .frame(width: setColumnWidth)
 
-                SetNumericField(
-                    placeholder: repsPlaceholderForField(setIndex),
-                    text: Binding(
-                        get: { item.sets[setIndex].reps ?? "" },
-                        set: { value in
-                            item.sets[setIndex].reps = value
-                            onTextChanged?()
-                        }
-                    ),
-                    keyboard: .numberPad,
-                    focus: .reps(itemIndex: itemIndex, setIndex: setIndex),
-                    focusedField: $focusedField,
-                    isActive: active,
-                    isDisabled: readOnly,
-                    placeholderRole: .reps
-                )
+                if exercise.isUnilateral == true {
+                    HStack(spacing: 4) {
+                        SetNumericField(
+                            placeholder: sideRepsPlaceholderForField(setIndex, side: .left),
+                            text: Binding(
+                                get: { item.sets[setIndex].repsLeft ?? "" },
+                                set: { value in
+                                    item.sets[setIndex].repsLeft = value
+                                    onTextChanged?()
+                                }
+                            ),
+                            keyboard: .numberPad,
+                            focus: .repsLeft(itemIndex: itemIndex, setIndex: setIndex),
+                            focusedField: $focusedField,
+                            isActive: active,
+                            isDisabled: readOnly,
+                            placeholderRole: .reps
+                        )
+                        SetNumericField(
+                            placeholder: sideRepsPlaceholderForField(setIndex, side: .right),
+                            text: Binding(
+                                get: { item.sets[setIndex].repsRight ?? "" },
+                                set: { value in
+                                    item.sets[setIndex].repsRight = value
+                                    onTextChanged?()
+                                }
+                            ),
+                            keyboard: .numberPad,
+                            focus: .repsRight(itemIndex: itemIndex, setIndex: setIndex),
+                            focusedField: $focusedField,
+                            isActive: active,
+                            isDisabled: readOnly,
+                            placeholderRole: .reps
+                        )
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    SetNumericField(
+                        placeholder: repsPlaceholderForField(setIndex),
+                        text: Binding(
+                            get: { item.sets[setIndex].reps ?? "" },
+                            set: { value in
+                                item.sets[setIndex].reps = value
+                                onTextChanged?()
+                            }
+                        ),
+                        keyboard: .numberPad,
+                        focus: .reps(itemIndex: itemIndex, setIndex: setIndex),
+                        focusedField: $focusedField,
+                        isActive: active,
+                        isDisabled: readOnly,
+                        placeholderRole: .reps
+                    )
+                }
 
                 if showsWeightColumn {
                     SetNumericField(
@@ -503,8 +566,12 @@ private struct ExerciseSetsCard: View {
         let last = item.sets.last ?? WorkoutSet(reps: String(defaultReps), weight: "")
         item.sets.append(WorkoutSet(
             reps: last.reps ?? (planningMode ? "" : String(defaultReps)),
+            repsLeft: last.repsLeft,
+            repsRight: last.repsRight,
             weight: last.weight ?? "",
             placeholderReps: last.placeholderReps,
+            placeholderRepsLeft: last.placeholderRepsLeft,
+            placeholderRepsRight: last.placeholderRepsRight,
             placeholderWeight: last.placeholderWeight
         ))
         onChanged?()
@@ -528,6 +595,31 @@ private struct ExerciseSetsCard: View {
         return ""
     }
 
+    private enum RepSide {
+        case left
+        case right
+    }
+
+    private func sideRepsPlaceholderForField(_ setIndex: Int, side: RepSide) -> String {
+        let set = item.sets[setIndex]
+        let placeholder: String
+        switch side {
+        case .left:
+            placeholder = set.placeholderRepsLeft?.isEmpty == false ? (set.placeholderRepsLeft ?? "") : "L"
+        case .right:
+            placeholder = set.placeholderRepsRight?.isEmpty == false ? (set.placeholderRepsRight ?? "") : "R"
+        }
+        let isFocused: Bool
+        switch side {
+        case .left:
+            isFocused = focusedField == .repsLeft(itemIndex: itemIndex, setIndex: setIndex)
+        case .right:
+            isFocused = focusedField == .repsRight(itemIndex: itemIndex, setIndex: setIndex)
+        }
+        guard planningMode, isFocused else { return placeholder }
+        return RepsFieldPlaceholder(rawValue: placeholder)?.last == nil ? "" : placeholder
+    }
+
     private func setCanComplete(_ setIndex: Int) -> Bool {
         guard item.sets.indices.contains(setIndex),
               item.sets[setIndex].restStartTime == nil,
@@ -535,6 +627,8 @@ private struct ExerciseSetsCard: View {
         else { return false }
         if item.weightType == "none" {
             return !(item.sets[setIndex].reps ?? "").isEmpty
+                || !(item.sets[setIndex].repsLeft ?? "").isEmpty
+                || !(item.sets[setIndex].repsRight ?? "").isEmpty
         }
         return !(item.sets[setIndex].weight ?? "").isEmpty
     }

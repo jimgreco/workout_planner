@@ -46,7 +46,9 @@ test('validates nested workout log limits and statuses', () => {
       weightType: 'bar_double',
       restTargetSeconds: 90,
       supersetGroup: 'A',
-      sets: [{ reps: '', weight: '', placeholderReps: '8', rpe: '8.5', rir: '2', setType: 'warmup' }],
+      description: 'Keep elbows tucked',
+      useIndividualReps: true,
+      sets: [{ reps: '', repsLeft: '8', repsRight: '8', weight: '', placeholderReps: '8', placeholderRepsLeft: '8', placeholderRepsRight: '8', rpe: '8.5', rir: '2', setType: 'warmup' }],
     }],
   }, 'log-1');
 
@@ -54,7 +56,11 @@ test('validates nested workout log limits and statuses', () => {
   assert.equal(log.exerciseItems[0].weightType, 'bar_double');
   assert.equal(log.exerciseItems[0].restTargetSeconds, 90);
   assert.equal(log.exerciseItems[0].supersetGroup, 'A');
+  assert.equal(log.exerciseItems[0].description, 'Keep elbows tucked');
+  assert.equal(log.exerciseItems[0].useIndividualReps, true);
   assert.equal(log.exerciseItems[0].sets[0].placeholderReps, '8');
+  assert.equal(log.exerciseItems[0].sets[0].repsLeft, '8');
+  assert.equal(log.exerciseItems[0].sets[0].placeholderRepsLeft, '8');
   assert.equal(log.exerciseItems[0].sets[0].rpe, '8.5');
   assert.equal(log.exerciseItems[0].sets[0].rir, '2');
   assert.equal(log.exerciseItems[0].sets[0].setType, 'warmup');
@@ -66,7 +72,7 @@ test('validates nested workout log limits and statuses', () => {
 
 test('validates template and settings boundaries', () => {
   assert.equal(validateTemplate({ id: 't-1', name: 'Push', exerciseItems: [] }, 't-1').name, 'Push');
-  assert.deepEqual(validateSettings({ defaultSets: 4, defaultReps: 8 }), { defaultSets: 4, defaultReps: 8 });
+  assert.deepEqual(validateSettings({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 90 }), { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 90 });
   assert.throws(() => validateSettings({ defaultSets: 0, defaultReps: 8 }), ValidationError);
 });
 
@@ -98,13 +104,13 @@ test('validates program weekly schedules', () => {
     ],
   }, 'program-1');
 
-  assert.deepEqual(program.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '1:pull', '5:legs']);
+  assert.deepEqual(program.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '5:legs']);
   assert.equal(program.active, true);
   assert.deepEqual(program.progression, { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 });
   assert.deepEqual(program.deload, { type: 'every_n_weeks', everyWeeks: 4, loadPercent: 85, repPercent: 100, startDate: '2026-05-25' });
-  assert.throws(
-    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'push' }] }, 'program-1'),
-    ValidationError,
+  assert.deepEqual(
+    validateProgram({ id: 'program-1', name: 'Backcompat', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'pull' }] }, 'program-1').schedule,
+    [{ weekday: 1, templateId: 'push' }],
   );
   assert.throws(
     () => validateProgram({ id: 'program-1', name: 'Bad', progression: { type: 'double_progression', minReps: 12, maxReps: 8 }, schedule: [] }, 'program-1'),

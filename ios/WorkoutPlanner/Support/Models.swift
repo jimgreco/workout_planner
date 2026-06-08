@@ -24,6 +24,10 @@ struct Exercise: Codable, Identifiable, Equatable {
     var name: String
     var muscleGroup: String
     var notes: String?
+    var description: String?
+    var isUnilateral: Bool?
+    var defaultSets: Int?
+    var defaultReps: Int?
     var personalBest: PersonalBest?
     var updatedAt: String?
     var revision: Int?
@@ -33,6 +37,10 @@ struct Exercise: Codable, Identifiable, Equatable {
         name: String,
         muscleGroup: String = "Other",
         notes: String? = nil,
+        description: String? = nil,
+        isUnilateral: Bool? = nil,
+        defaultSets: Int? = nil,
+        defaultReps: Int? = nil,
         personalBest: PersonalBest? = nil,
         updatedAt: String? = nil,
         revision: Int? = nil
@@ -41,6 +49,10 @@ struct Exercise: Codable, Identifiable, Equatable {
         self.name = name
         self.muscleGroup = muscleGroup
         self.notes = notes
+        self.description = description
+        self.isUnilateral = isUnilateral
+        self.defaultSets = defaultSets
+        self.defaultReps = defaultReps
         self.personalBest = personalBest
         self.updatedAt = updatedAt
         self.revision = revision
@@ -49,8 +61,12 @@ struct Exercise: Codable, Identifiable, Equatable {
 
 struct WorkoutSet: Codable, Equatable {
     var reps: String?
+    var repsLeft: String?
+    var repsRight: String?
     var weight: String?
     var placeholderReps: String?
+    var placeholderRepsLeft: String?
+    var placeholderRepsRight: String?
     var placeholderWeight: String?
     var restStartTime: Double?
     var restDuration: Int?
@@ -60,8 +76,12 @@ struct WorkoutSet: Codable, Equatable {
 
     init(
         reps: String? = "",
+        repsLeft: String? = nil,
+        repsRight: String? = nil,
         weight: String? = "",
         placeholderReps: String? = nil,
+        placeholderRepsLeft: String? = nil,
+        placeholderRepsRight: String? = nil,
         placeholderWeight: String? = nil,
         restStartTime: Double? = nil,
         restDuration: Int? = nil,
@@ -70,8 +90,12 @@ struct WorkoutSet: Codable, Equatable {
         setType: String? = nil
     ) {
         self.reps = reps
+        self.repsLeft = repsLeft
+        self.repsRight = repsRight
         self.weight = weight
         self.placeholderReps = placeholderReps
+        self.placeholderRepsLeft = placeholderRepsLeft
+        self.placeholderRepsRight = placeholderRepsRight
         self.placeholderWeight = placeholderWeight
         self.restStartTime = restStartTime
         self.restDuration = restDuration
@@ -87,13 +111,17 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var weightType: String?
     var restTargetSeconds: Int?
     var supersetGroup: String?
+    var description: String?
+    var useIndividualReps: Bool?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, sets: [WorkoutSet]) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet]) {
         self.exerciseId = exerciseId
         self.weightType = weightType
         self.restTargetSeconds = restTargetSeconds
         self.supersetGroup = supersetGroup
+        self.description = description
+        self.useIndividualReps = useIndividualReps
         self.sets = sets
     }
 }
@@ -257,8 +285,9 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
 struct WorkoutSettings: Codable, Equatable {
     var defaultSets: Int
     var defaultReps: Int
+    var defaultRestTargetSeconds: Int?
 
-    static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8)
+    static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0)
 }
 
 enum SyncConflictResource: String, Codable, CaseIterable {

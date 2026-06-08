@@ -405,6 +405,31 @@ private struct ExerciseFormSheet: View {
                     ), axis: .vertical)
                     .lineLimit(2...4)
                 }
+                Section {
+                    TextField("Setup, cues, or range of motion...", text: Binding(
+                        get: { form.description ?? "" },
+                        set: { form.description = $0 }
+                    ), axis: .vertical)
+                    .lineLimit(2...5)
+                    Toggle("Track left and right reps separately", isOn: Binding(
+                        get: { form.isUnilateral == true },
+                        set: { form.isUnilateral = $0 }
+                    ))
+                    Stepper("Default Sets: \(form.defaultSets.map(String.init) ?? "Workout default")", value: Binding(
+                        get: { form.defaultSets ?? store.settings.defaultSets },
+                        set: { form.defaultSets = $0 }
+                    ), in: 1...20)
+                    Stepper("Default Reps: \(form.defaultReps.map(String.init) ?? "Workout default")", value: Binding(
+                        get: { form.defaultReps ?? store.settings.defaultReps },
+                        set: { form.defaultReps = $0 }
+                    ), in: 1...100)
+                    Button("Use Workout Defaults") {
+                        form.defaultSets = nil
+                        form.defaultReps = nil
+                    }
+                } header: {
+                    Text("Routine Defaults")
+                }
             }
             .navigationTitle(form.name.isEmpty ? "Add Exercise" : "Edit Exercise")
             .toolbar {
@@ -426,6 +451,9 @@ private struct ExerciseFormSheet: View {
         isSaving = true
         defer { isSaving = false }
         do {
+            form.name = form.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            form.description = form.description?.trimmingCharacters(in: .whitespacesAndNewlines)
+            form.notes = form.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
             try await store.saveExercise(form)
             dismiss()
         } catch {

@@ -17,8 +17,18 @@ function effectiveWeight(weight, weightType = 'weight') {
   return value;
 }
 
+function setRepTotal(set) {
+  const reps = numeric(set.reps);
+  const sideTotal = numeric(set.repsLeft) + numeric(set.repsRight);
+  return sideTotal > 0 ? sideTotal : reps;
+}
+
+function setRepBest(set) {
+  return Math.max(numeric(set.reps), numeric(set.repsLeft), numeric(set.repsRight));
+}
+
 function setVolume(set, weightType) {
-  return effectiveWeight(set.weight, weightType) * numeric(set.reps);
+  return effectiveWeight(set.weight, weightType) * setRepTotal(set);
 }
 
 function formatNumber(value) {
@@ -59,7 +69,7 @@ export function bestPersonalBestSet(sets = [], weightType = 'weight') {
   return sets.reduce((best, set) => {
     const weightValue = effectiveWeight(set.weight, weightType);
     if (weightValue <= 0) return best;
-    const repsValue = numeric(set.reps);
+    const repsValue = setRepBest(set);
     if (!best || weightValue > best.weightValue || (weightValue === best.weightValue && repsValue > best.repsValue)) {
       return {
         weight: formatNumber(weightValue),
@@ -91,7 +101,9 @@ export function personalBestPayload(candidate, date) {
 }
 
 export function setLabel(set, weightType = 'weight') {
-  const reps = set.reps || '—';
+  const reps = set.repsLeft || set.repsRight
+    ? `${set.repsLeft || '—'}/${set.repsRight || '—'}`
+    : (set.reps || '—');
   const typePrefix = set.setType && set.setType !== 'working'
     ? `${set.setType.charAt(0).toUpperCase()}${set.setType.slice(1)} · `
     : '';

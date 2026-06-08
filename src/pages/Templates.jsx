@@ -97,7 +97,14 @@ function buildStarterTemplates(exercises, settings) {
     const exerciseItems = starter.exerciseNames
       .map((name) => byName.get(name.toLowerCase()))
       .filter(Boolean)
-      .map((exercise) => ({ exerciseId: exercise.id, weightType: 'weight', sets: starterSets(settings) }));
+      .map((exercise) => ({
+        exerciseId: exercise.id,
+        weightType: 'weight',
+        ...(settings.defaultRestTargetSeconds > 0 ? { restTargetSeconds: settings.defaultRestTargetSeconds } : {}),
+        description: exercise.description || '',
+        useIndividualReps: false,
+        sets: starterSets(settings),
+      }));
     return { name: starter.name, description: starter.description, exerciseItems };
   }).filter((template) => template.exerciseItems.length > 0);
 }
@@ -383,7 +390,7 @@ function programAdherence(program, templates, logs, weeks = 4) {
 }
 
 function cleanProgram(program) {
-  const seen = new Set();
+  const seenWeekdays = new Set();
   const cleaned = {
     ...program,
     name: program.name.trim(),
@@ -393,9 +400,8 @@ function cleanProgram(program) {
       .filter((item) => item.templateId)
       .map((item) => ({ weekday: Number(item.weekday), templateId: item.templateId, ...(item.notes ? { notes: item.notes } : {}) }))
       .filter((item) => {
-        const key = `${item.weekday}:${item.templateId}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
+        if (seenWeekdays.has(item.weekday)) return false;
+        seenWeekdays.add(item.weekday);
         return true;
       })
       .sort((a, b) => a.weekday - b.weekday),
@@ -576,16 +582,16 @@ export default function Templates({
     }
   }
 
-  function toggleScheduledTemplate(weekday, templateId, checked) {
+  function setScheduledTemplate(weekday, templateId) {
     setProgramForm((draft) => {
-      const schedule = (draft.schedule ?? []).filter((item) => !(item.weekday === weekday && item.templateId === templateId));
-      if (checked) schedule.push({ weekday, templateId });
+      const schedule = (draft.schedule ?? []).filter((item) => item.weekday !== weekday);
+      if (templateId) schedule.push({ weekday, templateId });
       return { ...draft, schedule: schedule.sort((a, b) => a.weekday - b.weekday) };
     });
   }
 
-  function scheduledTemplateIdsFor(weekday) {
-    return new Set((programForm.schedule ?? []).filter((item) => item.weekday === weekday).map((item) => item.templateId));
+  function scheduledTemplateIdFor(weekday) {
+    return (programForm.schedule ?? []).find((item) => item.weekday === weekday)?.templateId || '';
   }
 
   function updateProgramProgression(patch) {
@@ -608,7 +614,9 @@ export default function Templates({
     }));
   }
 
-  const settingsDirty = settingsForm.defaultSets !== settings.defaultSets || settingsForm.defaultReps !== settings.defaultReps;
+  const settingsDirty = settingsForm.defaultSets !== settings.defaultSets
+    || settingsForm.defaultReps !== settings.defaultReps
+    || (settingsForm.defaultRestTargetSeconds || 0) !== (settings.defaultRestTargetSeconds || 0);
 
   return (
     <div className="page">
@@ -883,6 +891,8 @@ export default function Templates({
             showWeight={false}
             defaultSets={settings.defaultSets}
             defaultReps={settings.defaultReps}
+            defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
+            planningMode
           />
         </Modal>
       )}
@@ -956,25 +966,23 @@ export default function Templates({
           <h3>Weekly Schedule</h3>
           <div className="program-schedule-editor">
             {WEEKDAYS.map((weekday) => {
-              const selectedTemplateIds = scheduledTemplateIdsFor(weekday.value);
+              const selectedTemplateId = scheduledTemplateIdFor(weekday.value);
               return (
                 <div key={weekday.value} className="program-schedule-row">
                   <span className="program-schedule-day">{weekday.long}</span>
                   {templates.length === 0 ? (
                     <span className="program-schedule-empty">Create a routine first</span>
                   ) : (
-                    <div className="program-schedule-options">
+                    <select
+                      aria-label={`${weekday.long} routine`}
+                      value={selectedTemplateId}
+                      onChange={(event) => setScheduledTemplate(weekday.value, event.target.value)}
+                    >
+                      <option value="">Rest day</option>
                       {templates.map((template) => (
-                        <label key={template.id} className="program-schedule-option">
-                          <input
-                            type="checkbox"
-                            checked={selectedTemplateIds.has(template.id)}
-                            onChange={(event) => toggleScheduledTemplate(weekday.value, template.id, event.target.checked)}
-                          />
-                          <span>{template.name}</span>
-                        </label>
+                        <option key={template.id} value={template.id}>{template.name}</option>
                       ))}
-                    </div>
+                    </select>
                   )}
                 </div>
               );
@@ -1171,9 +1179,24 @@ export default function Templates({
               type="number"
               min="1"
               max="100"
-              value={settingsForm.defaultReps}
-              onChange={(e) => setSettingsForm({ ...settingsForm, defaultReps: parseInt(e.target.value) || 1 })}
-            />
+            value={settingsForm.defaultReps}
+            onChange={(e) => setSettingsForm({ ...settingsForm, defaultReps: parseInt(e.target.value) || 1 })}
+          />
+          </div>
+          <div className="form-group">
+            <label>Default Rest</label>
+            <select
+              value={settingsForm.defaultRestTargetSeconds || 0}
+              onChange={(e) => setSettingsForm({ ...settingsForm, defaultRestTargetSeconds: parseInt(e.target.value, 10) || 0 })}
+            >
+              <option value={0}>No target</option>
+              <option value={30}>0:30</option>
+              <option value={60}>1:00</option>
+              <option value={90}>1:30</option>
+              <option value={120}>2:00</option>
+              <option value={180}>3:00</option>
+              <option value={300}>5:00</option>
+            </select>
           </div>
         </Modal>
       )}

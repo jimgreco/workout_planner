@@ -10,7 +10,7 @@ const MUSCLE_GROUPS = [
   'Calves', 'Full Body', 'Cardio', 'Other',
 ];
 
-const empty = () => ({ name: '', muscleGroup: 'Other', notes: '' });
+const empty = () => ({ name: '', muscleGroup: 'Other', notes: '', description: '', isUnilateral: false, defaultSets: '', defaultReps: '' });
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -148,7 +148,10 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
     if (!form.name.trim() || saving) return;
     setSaving(true);
     try {
-      const updated = await saveExercise(form);
+      const exercise = { ...form, name: form.name.trim() };
+      if (!exercise.defaultSets) delete exercise.defaultSets;
+      if (!exercise.defaultReps) delete exercise.defaultReps;
+      const updated = await saveExercise(exercise);
       onUpdate(updated);
       setModal(null);
     } finally {
@@ -232,6 +235,12 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
                     <Star size={12} fill="currentColor" /> {personalBestLabel(ex.personalBest)}
                   </span>
                 )}
+                {ex.isUnilateral && <span className="badge">Single side</span>}
+                {(ex.defaultSets || ex.defaultReps) && (
+                  <span className="text-muted" style={{ fontSize: 13 }}>
+                    • {ex.defaultSets || 'Default'} sets × {ex.defaultReps || 'default'} reps
+                  </span>
+                )}
                 {ex.notes && <span className="text-muted" style={{ fontSize: 13 }}>• {ex.notes}</span>}
               </div>
             </div>
@@ -281,6 +290,47 @@ export default function Exercises({ exercises, logs = [], onUpdate }) {
             <select value={form.muscleGroup} onChange={(e) => setForm({ ...form, muscleGroup: e.target.value })}>
               {MUSCLE_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
+          </div>
+          <div className="form-group">
+            <label>Description (shown in routines)</label>
+            <textarea
+              rows={2}
+              placeholder="Setup, cues, range of motion, or form notes…"
+              value={form.description || ''}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+          </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={Boolean(form.isUnilateral)}
+              onChange={(e) => setForm({ ...form, isUnilateral: e.target.checked })}
+            />
+            <span>Track left and right reps separately</span>
+          </label>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Default Sets (optional)</label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                placeholder="Use workout default"
+                value={form.defaultSets || ''}
+                onChange={(e) => setForm({ ...form, defaultSets: e.target.value ? parseInt(e.target.value, 10) : '' })}
+              />
+            </div>
+            <div className="form-group">
+              <label>Default Reps (optional)</label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                placeholder="Use workout default"
+                value={form.defaultReps || ''}
+                onChange={(e) => setForm({ ...form, defaultReps: e.target.value ? parseInt(e.target.value, 10) : '' })}
+              />
+            </div>
           </div>
           <div className="form-group">
             <label>Notes (optional)</label>

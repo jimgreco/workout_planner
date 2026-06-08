@@ -294,12 +294,34 @@ export default function WorkoutLog({
           exerciseId: item.exerciseId,
           weightType: item.weightType || lastItem?.weightType || 'weight',
           restTargetSeconds: item.restTargetSeconds,
+          description: item.description,
+          useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
             const targetReps = s.reps || String(settings.defaultReps);
+            const targetLeft = s.repsLeft || s.placeholderRepsLeft || targetReps;
+            const targetRight = s.repsRight || s.placeholderRepsRight || targetReps;
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
-              return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
+              return {
+                reps: '',
+                repsLeft: '',
+                repsRight: '',
+                weight: '',
+                placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`,
+                placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${targetLeft})`,
+                placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${targetRight})`,
+                placeholderWeight: lastItem.sets[si].weight,
+              };
             }
-            return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
+            return {
+              reps: '',
+              repsLeft: '',
+              repsRight: '',
+              weight: '',
+              placeholderReps: targetReps,
+              placeholderRepsLeft: targetLeft,
+              placeholderRepsRight: targetRight,
+              placeholderWeight: '',
+            };
           }),
         };
       });
@@ -559,6 +581,7 @@ export default function WorkoutLog({
         onResetPersonalBest={!isEditing.current && startTime ? handleResetPersonalBest : undefined}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
+        defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
         planningMode={isPlanningMode}
       />
 

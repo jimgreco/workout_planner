@@ -115,6 +115,7 @@ export default function WorkoutBuilder({
   showWeight = true,
   defaultSets = 4,
   defaultReps = 8,
+  defaultRestTargetSeconds = 0,
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetCompleted,
@@ -129,11 +130,22 @@ export default function WorkoutBuilder({
   function addExercise(exerciseId) {
     if (!exerciseId) return;
     if (items.some((i) => i.exerciseId === exerciseId)) return;
-    const sets = Array.from({ length: defaultSets }, () => ({
-      reps: String(defaultReps),
-      weight: '',
-    }));
-    onChange([...items, { exerciseId, sets, weightType: 'weight' }]);
+    const exercise = exById(exerciseId);
+    const setCount = exercise?.defaultSets || defaultSets;
+    const repCount = exercise?.defaultReps || defaultReps;
+    const item = {
+      exerciseId,
+      sets: Array.from({ length: setCount }, () => ({
+        reps: String(repCount),
+        ...(exercise?.isUnilateral ? { repsLeft: String(repCount), repsRight: String(repCount) } : {}),
+        weight: '',
+      })),
+      weightType: 'weight',
+      description: exercise?.description || '',
+      useIndividualReps: false,
+    };
+    if (defaultRestTargetSeconds > 0) item.restTargetSeconds = defaultRestTargetSeconds;
+    onChange([...items, item]);
   }
 
   function removeExercise(idx) {
@@ -178,7 +190,19 @@ export default function WorkoutBuilder({
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       const lastSet = item.sets[item.sets.length - 1] || { reps: String(defaultReps), weight: '' };
-      return { ...item, sets: [...item.sets, { reps: lastSet.reps, weight: lastSet.weight, placeholderReps: lastSet.placeholderReps, placeholderWeight: lastSet.placeholderWeight }] };
+      return {
+        ...item,
+        sets: [...item.sets, {
+          reps: lastSet.reps,
+          repsLeft: lastSet.repsLeft,
+          repsRight: lastSet.repsRight,
+          weight: lastSet.weight,
+          placeholderReps: lastSet.placeholderReps,
+          placeholderRepsLeft: lastSet.placeholderRepsLeft,
+          placeholderRepsRight: lastSet.placeholderRepsRight,
+          placeholderWeight: lastSet.placeholderWeight,
+        }],
+      };
     });
     onChange(copy);
   }
@@ -205,6 +229,21 @@ export default function WorkoutBuilder({
     onChange(copy);
   }
 
+  function updateItem(itemIdx, patch) {
+    onChange(items.map((item, i) => (i === itemIdx ? { ...item, ...patch } : item)));
+  }
+
+  function updateAllSetReps(itemIdx, field, value) {
+    const copy = items.map((item, i) => {
+      if (i !== itemIdx) return item;
+      return {
+        ...item,
+        sets: item.sets.map((set) => ({ ...set, [field]: value })),
+      };
+    });
+    onChange(copy);
+  }
+
   function moveItem(idx, dir) {
     const copy = [...items];
     const swapIdx = idx + dir;
@@ -215,7 +254,7 @@ export default function WorkoutBuilder({
 
   function setCanComplete(item, set) {
     if (planningMode || readOnly || set.restStartTime || set.restDuration) return false;
-    if (item.weightType === 'none') return Boolean(set.reps);
+    if (item.weightType === 'none') return Boolean(set.reps || set.repsLeft || set.repsRight);
     return Boolean(set.weight);
   }
 
@@ -234,6 +273,14 @@ export default function WorkoutBuilder({
         const ex = exById(item.exerciseId);
         if (!ex) return null;
         const hasWeightColumn = showWeight && (!readOnly || item.weightType !== 'none');
+        const isUnilateral = Boolean(ex.isUnilateral);
+        const repsField = planningMode ? 'placeholderReps' : 'reps';
+        const leftRepsField = planningMode ? 'placeholderRepsLeft' : 'repsLeft';
+        const rightRepsField = planningMode ? 'placeholderRepsRight' : 'repsRight';
+        const firstSet = item.sets[0] || {};
+        const compactLeftValue = firstSet[leftRepsField] ?? firstSet[repsField] ?? '';
+        const compactRightValue = firstSet[rightRepsField] ?? firstSet[repsField] ?? '';
+        const compactRepsValue = firstSet[repsField] ?? '';
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
           + (!readOnly && !planningMode ? 1 : 0)
@@ -295,6 +342,26 @@ export default function WorkoutBuilder({
                     <span className="rest-target-chip">Rest {restTargetLabel(item.restTargetSeconds)}</span>
                   )}
                 </div>
+                {(item.description || (!readOnly && planningMode)) && (
+                  <textarea
+                    className="exercise-description-input"
+                    rows={2}
+                    placeholder={ex.description ? 'Exercise description' : 'Add routine description or cues'}
+                    value={item.description ?? ex.description ?? ''}
+                    onChange={(e) => updateItem(idx, { description: e.target.value })}
+                    disabled={readOnly}
+                  />
+                )}
+                {!readOnly && planningMode && (
+                  <label className="checkbox-row compact-toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.useIndividualReps)}
+                      onChange={(e) => updateItem(idx, { useIndividualReps: e.target.checked })}
+                    />
+                    <span>Advanced reps per set</span>
+                  </label>
+                )}
               </div>
               {!readOnly && (
                 <div className="action-buttons-group">
@@ -310,11 +377,58 @@ export default function WorkoutBuilder({
                 </div>
               )}
             </div>
+            {planningMode && !item.useIndividualReps ? (
+              <div className="routine-compact-reps">
+                <div className="form-row">
+                  {isUnilateral ? (
+                    <>
+                      <label className="form-group">
+                        <span>Left reps for all sets</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactLeftValue}
+                          onChange={(e) => updateAllSetReps(idx, leftRepsField, e.target.value)}
+                        />
+                      </label>
+                      <label className="form-group">
+                        <span>Right reps for all sets</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={compactRightValue}
+                          onChange={(e) => updateAllSetReps(idx, rightRepsField, e.target.value)}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <label className="form-group">
+                      <span>Reps for all sets</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={compactRepsValue}
+                        onChange={(e) => updateAllSetReps(idx, repsField, e.target.value)}
+                      />
+                    </label>
+                  )}
+                </div>
+                <div className="form-row compact-set-controls">
+                  <span>{item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'}</span>
+                  <button className="btn btn-secondary btn-sm" onClick={() => addSet(idx)}>
+                    <Plus size={12} /> Add Set
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => removeSet(idx, item.sets.length - 1)} disabled={item.sets.length <= 1}>
+                    <X size={14} /> Remove Set
+                  </button>
+                </div>
+              </div>
+            ) : (
             <table className="sets-table">
               <thead>
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
-                  <th>Reps</th>
+                  <th>{isUnilateral ? 'Reps L/R' : 'Reps'}</th>
                   {hasWeightColumn && (
                     <th style={{ paddingTop: 0, paddingBottom: 0 }}>
                       {!readOnly ? (
@@ -345,15 +459,40 @@ export default function WorkoutBuilder({
                   <tr className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
                     <td>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
-                        value={planningMode ? (set.placeholderReps || '') : set.reps}
-                        onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value)}
-                        disabled={readOnly}
-                        style={planningMode ? { color: 'var(--text-muted)' } : undefined}
-                      />
+                      {isUnilateral ? (
+                        <div className="side-reps-inputs">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder={planningMode ? "L" : (set.placeholderRepsLeft || "L")}
+                            value={planningMode ? (set.placeholderRepsLeft || '') : (set.repsLeft ?? '')}
+                            onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft', e.target.value)}
+                            disabled={readOnly}
+                            aria-label={`Left reps for set ${si + 1} of ${ex.name}`}
+                            style={planningMode ? { color: 'var(--text-muted)' } : undefined}
+                          />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder={planningMode ? "R" : (set.placeholderRepsRight || "R")}
+                            value={planningMode ? (set.placeholderRepsRight || '') : (set.repsRight ?? '')}
+                            onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight', e.target.value)}
+                            disabled={readOnly}
+                            aria-label={`Right reps for set ${si + 1} of ${ex.name}`}
+                            style={planningMode ? { color: 'var(--text-muted)' } : undefined}
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
+                          value={planningMode ? (set.placeholderReps || '') : set.reps}
+                          onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value)}
+                          disabled={readOnly}
+                          style={planningMode ? { color: 'var(--text-muted)' } : undefined}
+                        />
+                      )}
                     </td>
                     {hasWeightColumn && (
                       <td>
@@ -460,8 +599,9 @@ export default function WorkoutBuilder({
                 ))}
               </tbody>
             </table>
+            )}
 
-            {!readOnly && (
+            {!readOnly && (!planningMode || item.useIndividualReps) && (
               <button
                 className="btn btn-secondary btn-sm"
                 style={{ marginTop: 8, width: '100%', background: 'transparent', padding: '4px 8px' }}

@@ -71,7 +71,7 @@ const SK_PREFIX = {
   programs: 'PROGRAM',
 };
 
-const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
+const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0 };
 const ADMIN_SCAN_LIMIT = 1000;
 const IS_LOCAL = process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test';
 const DEV_BYPASS_TOKEN = 'dev-bypass-token';

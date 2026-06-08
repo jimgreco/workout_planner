@@ -140,11 +140,11 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'weight', 'placeholderReps', 'placeholderWeight', 'restStartTime', 'restDuration', 'rpe', 'rir', 'setType']),
+    new Set(['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'restStartTime', 'restDuration', 'rpe', 'rir', 'setType']),
     `set ${index + 1}`,
   );
   const set = {};
-  for (const field of ['reps', 'weight', 'placeholderReps', 'placeholderWeight']) {
+  for (const field of ['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight']) {
     const str = stringValue(value[field], `set.${field}`, { max: 64 });
     if (str !== undefined) set[field] = str;
   }
@@ -166,7 +166,7 @@ function workoutSet(value, index) {
 
 function exerciseItem(value, index) {
   assertObject(value, `exerciseItems[${index}]`);
-  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup']), `exerciseItems[${index}]`);
+  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps']), `exerciseItems[${index}]`);
   const exerciseId = validateId(value.exerciseId, `exerciseItems[${index}].exerciseId`);
   const weightType = stringValue(value.weightType, `exerciseItems[${index}].weightType`, { max: 16 }) ?? 'weight';
   if (!WEIGHT_TYPES.has(weightType)) fail(`exerciseItems[${index}].weightType is invalid`);
@@ -178,6 +178,10 @@ function exerciseItem(value, index) {
     weightType,
     sets: value.sets.map(workoutSet),
   };
+  const description = stringValue(value.description, `exerciseItems[${index}].description`, { max: 1000 });
+  if (description !== undefined) item.description = description;
+  const useIndividualReps = boolValue(value.useIndividualReps, `exerciseItems[${index}].useIndividualReps`);
+  if (useIndividualReps !== undefined) item.useIndividualReps = useIndividualReps;
   const restTargetSeconds = optionalIntValue(value.restTargetSeconds, `exerciseItems[${index}].restTargetSeconds`, 0, 3600);
   if (restTargetSeconds > 0) item.restTargetSeconds = restTargetSeconds;
   const supersetGroup = stringValue(value.supersetGroup, `exerciseItems[${index}].supersetGroup`, { max: 8 });
@@ -201,16 +205,17 @@ function requireMatchingId(body, pathId) {
 
 export function validateSettings(body) {
   assertObject(body, 'settings');
-  assertAllowedKeys(body, new Set(['defaultSets', 'defaultReps']), 'settings');
+  assertAllowedKeys(body, new Set(['defaultSets', 'defaultReps', 'defaultRestTargetSeconds']), 'settings');
   return {
     defaultSets: intValue(body.defaultSets, 'defaultSets', 1, 20),
     defaultReps: intValue(body.defaultReps, 'defaultReps', 1, 100),
+    defaultRestTargetSeconds: optionalIntValue(body.defaultRestTargetSeconds, 'defaultRestTargetSeconds', 0, 3600) ?? 0,
   };
 }
 
 export function validateExercise(body, pathId) {
   assertObject(body, 'exercise');
-  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'personalBest', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
+  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'defaultSets', 'defaultReps', 'personalBest', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
   requireMatchingId(body, pathId);
   optionalRevision(body.expectedRevision, 'expectedRevision');
   const muscleGroup = stringValue(body.muscleGroup, 'muscleGroup', { max: 60 }) ?? 'Other';
@@ -222,6 +227,14 @@ export function validateExercise(body, pathId) {
   };
   const notes = stringValue(body.notes, 'notes', { max: 1000 });
   if (notes !== undefined) exercise.notes = notes;
+  const description = stringValue(body.description, 'description', { max: 1000 });
+  if (description !== undefined) exercise.description = description;
+  const isUnilateral = boolValue(body.isUnilateral, 'isUnilateral');
+  if (isUnilateral !== undefined) exercise.isUnilateral = isUnilateral;
+  const defaultSets = optionalIntValue(body.defaultSets, 'defaultSets', 1, 20);
+  if (defaultSets !== undefined) exercise.defaultSets = defaultSets;
+  const defaultReps = optionalIntValue(body.defaultReps, 'defaultReps', 1, 100);
+  if (defaultReps !== undefined) exercise.defaultReps = defaultReps;
   const best = personalBest(body.personalBest);
   if (best !== undefined) exercise.personalBest = best;
   return exercise;
@@ -258,13 +271,16 @@ function programSchedule(value) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 70) fail('schedule must contain at most 70 items');
   const seen = new Set();
+  const seenWeekdays = new Set();
   return value.map((item, index) => {
     const scheduleItem = programScheduleItem(item, index);
     const key = `${scheduleItem.weekday}:${scheduleItem.templateId}`;
     if (seen.has(key)) fail('schedule can contain each routine once per weekday');
     seen.add(key);
+    if (seenWeekdays.has(scheduleItem.weekday)) return null;
+    seenWeekdays.add(scheduleItem.weekday);
     return scheduleItem;
-  }).sort((a, b) => a.weekday - b.weekday);
+  }).filter(Boolean).sort((a, b) => a.weekday - b.weekday);
 }
 
 function programProgression(value) {

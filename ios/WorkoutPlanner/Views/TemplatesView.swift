@@ -480,9 +480,8 @@ private enum ProgramPlanner {
     }
 
     private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
-        program.schedule
-            .filter { $0.weekday == weekday }
-            .compactMap { templatesById[$0.templateId] }
+        guard let item = program.schedule.first(where: { $0.weekday == weekday }) else { return [] }
+        return templatesById[item.templateId].map { [$0] } ?? []
     }
 }
 
@@ -919,7 +918,9 @@ private struct TemplateFormSheet: View {
                         focusedField: $focusedBuilderField,
                         showWeight: false,
                         defaultSets: store.settings.defaultSets,
-                        defaultReps: store.settings.defaultReps
+                        defaultReps: store.settings.defaultReps,
+                        defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
+                        planningMode: true
                     )
                 }
                 .padding(16)
@@ -1018,9 +1019,11 @@ private struct ProgramFormSheet: View {
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.muted)
                             } else {
-                                ForEach(templates) { template in
-                                    Toggle(template.name, isOn: scheduleToggleBinding(for: weekday.value, templateId: template.id))
-                                        .font(.system(size: 14))
+                                Picker("Routine", selection: scheduleSelectionBinding(for: weekday.value)) {
+                                    Text("Rest day").tag("")
+                                    ForEach(templates) { template in
+                                        Text(template.name).tag(template.id)
+                                    }
                                 }
                             }
                         }
@@ -1197,14 +1200,14 @@ private struct ProgramFormSheet: View {
         )
     }
 
-    private func scheduleToggleBinding(for weekday: Int, templateId: String) -> Binding<Bool> {
+    private func scheduleSelectionBinding(for weekday: Int) -> Binding<String> {
         Binding(
             get: {
-                form.schedule.contains { $0.weekday == weekday && $0.templateId == templateId }
+                form.schedule.first { $0.weekday == weekday }?.templateId ?? ""
             },
-            set: { isScheduled in
-                form.schedule.removeAll { $0.weekday == weekday && $0.templateId == templateId }
-                if isScheduled {
+            set: { templateId in
+                form.schedule.removeAll { $0.weekday == weekday }
+                if !templateId.isEmpty {
                     form.schedule.append(ProgramScheduleItem(weekday: weekday, templateId: templateId))
                 }
                 form.schedule = cleanedSchedule(form.schedule)
@@ -1213,17 +1216,17 @@ private struct ProgramFormSheet: View {
     }
 
     private func scheduleSummary(for weekday: Int) -> String {
-        let count = form.schedule.filter { $0.weekday == weekday && !$0.templateId.isEmpty }.count
-        if count == 0 { return "Rest" }
-        return count == 1 ? "1 routine" : "\(count) routines"
+        guard let templateId = form.schedule.first(where: { $0.weekday == weekday && !$0.templateId.isEmpty })?.templateId else {
+            return "Rest"
+        }
+        return templates.first(where: { $0.id == templateId })?.name ?? "1 routine"
     }
 
     private func cleanedSchedule(_ schedule: [ProgramScheduleItem]) -> [ProgramScheduleItem] {
-        var seen = Set<String>()
+        var seenWeekdays = Set<Int>()
         return schedule.enumerated().compactMap { index, item -> (Int, ProgramScheduleItem)? in
             guard !item.templateId.isEmpty else { return nil }
-            let key = "\(item.weekday):\(item.templateId)"
-            guard seen.insert(key).inserted else { return nil }
+            guard seenWeekdays.insert(item.weekday).inserted else { return nil }
             return (index, item)
         }
         .sorted { left, right in
@@ -1348,6 +1351,18 @@ private struct TemplateSettingsSheet: View {
                 Section {
                     Stepper("Default Sets: \(form.defaultSets)", value: $form.defaultSets, in: 1...20)
                     Stepper("Default Reps: \(form.defaultReps)", value: $form.defaultReps, in: 1...100)
+                    Picker("Default Rest", selection: Binding(
+                        get: { form.defaultRestTargetSeconds ?? 0 },
+                        set: { form.defaultRestTargetSeconds = $0 }
+                    )) {
+                        Text("No target").tag(0)
+                        Text("0:30").tag(30)
+                        Text("1:00").tag(60)
+                        Text("1:30").tag(90)
+                        Text("2:00").tag(120)
+                        Text("3:00").tag(180)
+                        Text("5:00").tag(300)
+                    }
                 } footer: {
                     Text("These values are used when adding a new exercise to a workout or routine.")
                 }

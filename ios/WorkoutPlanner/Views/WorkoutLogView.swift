@@ -72,6 +72,7 @@ struct WorkoutLogView: View {
                         focusedField: $focusedBuilderField,
                         defaultSets: store.settings.defaultSets,
                         defaultReps: store.settings.defaultReps,
+                        defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
                         activeExerciseIndex: activeExerciseIndex,
                         activeSetIndex: activeSetIndex,
                         planningMode: isPlanningMode,

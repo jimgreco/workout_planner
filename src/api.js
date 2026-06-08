@@ -29,7 +29,7 @@ const cache = {
   settings:  /** @type {any|null} */ (null),
 };
 
-const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8 };
+const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0 };
 const PENDING_LOG_QUEUE_KEY = 'forge.pendingLogSaves.v1';
 const PENDING_RESOURCE_QUEUE_KEY = 'forge.pendingResourceChanges.v1';
 const PENDING_CONFLICTS_KEY = 'forge.pendingConflicts.v1';

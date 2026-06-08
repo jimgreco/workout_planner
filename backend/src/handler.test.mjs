@@ -350,7 +350,7 @@ test('program routes persist weekly routine schedules', async () => {
   assert.equal(savedBody.id, 'strength');
   assert.equal(savedBody.revision, 1);
   assert.deepEqual(savedBody.progression, { type: 'linear_weight', weightIncrement: 5 });
-  assert.deepEqual(savedBody.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '1:pull', '3:push']);
+  assert.deepEqual(savedBody.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '3:push']);
 
   const listed = await handler(event('GET', '/programs', undefined, headers));
   const listBody = JSON.parse(listed.body);

@@ -1773,6 +1773,18 @@ input:focus, select:focus, textarea:focus {
   gap: 8px;
 }
 
+.exercise-description-input {
+  width: 100%;
+  margin-top: 6px;
+  resize: vertical;
+  font-size: 13px;
+}
+
+.compact-toggle {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
 .pb-label {
   display: inline-flex;
   align-items: center;
@@ -1839,6 +1851,32 @@ input:focus, select:focus, textarea:focus {
   background: var(--bg);
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+.side-reps-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+}
+.routine-compact-reps {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.routine-compact-reps .form-row {
+  margin-bottom: 0;
+}
+.compact-set-controls {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.compact-set-controls span {
+  margin-right: auto;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 .weight-cell {
   display: flex;
