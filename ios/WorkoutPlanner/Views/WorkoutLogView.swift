@@ -225,6 +225,7 @@ struct WorkoutLogView: View {
             focusedField: $focusedBuilderField,
             onSetCompleted: markSetCompleted,
             onEndRest: endRest,
+            onExtendRest: extendRest,
             onChanged: liveCardChanged,
             onTextChanged: builderTextChanged
         )
@@ -740,6 +741,22 @@ struct WorkoutLogView: View {
         saveNow(status: currentStatus())
     }
 
+    private func extendRest(exerciseIndex: Int, setIndex: Int, seconds: Int = 30) {
+        guard items.indices.contains(exerciseIndex),
+              items[exerciseIndex].sets.indices.contains(setIndex),
+              let start = items[exerciseIndex].sets[setIndex].restStartTime,
+              items[exerciseIndex].sets[setIndex].restDuration == nil
+        else { return }
+
+        let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - start) / 1000))
+        let currentTarget = items[exerciseIndex].sets[setIndex].restTargetSeconds ?? items[exerciseIndex].restTargetSeconds ?? 0
+        items[exerciseIndex].sets[setIndex].restTargetSeconds = min(3600, max(currentTarget, elapsed) + seconds)
+        restAlert = nil
+        scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: start)
+        updateExternalLiveActivityNow()
+        saveNow(status: currentStatus())
+    }
+
     private func scheduleExternalLiveActivityUpdate() {
         liveActivityUpdateTask?.cancel()
         liveActivityUpdateGeneration += 1
@@ -781,8 +798,9 @@ struct WorkoutLogView: View {
         let completed = liveCompletedSets
         let startedAt = startTime.flatMap { ISO8601DateFormatter().date(from: $0) }
         let restStartedAt = resting?.set.restStartTime.map { Date(timeIntervalSince1970: $0 / 1000) }
+        let restTargetSeconds = resting?.set.restTargetSeconds ?? resting?.item.restTargetSeconds
         let restTargetEnd = restStartedAt.flatMap { start in
-            resting?.item.restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
+            restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
         }
 
         return WorkoutLiveActivityAttributes.ContentState(
@@ -800,7 +818,7 @@ struct WorkoutLogView: View {
             startedAt: startedAt,
             restStartedAt: restStartedAt,
             restTargetEnd: restTargetEnd,
-            restTargetSeconds: resting?.item.restTargetSeconds,
+            restTargetSeconds: restTargetSeconds,
             restExerciseName: resting?.exercise.name,
             isComplete: isCompleteOverride || (total > 0 && completed >= total)
         )
@@ -886,7 +904,7 @@ struct WorkoutLogView: View {
         restAlertTask?.cancel()
         guard items.indices.contains(exerciseIndex),
               items[exerciseIndex].sets.indices.contains(setIndex),
-              let targetSeconds = items[exerciseIndex].restTargetSeconds,
+              let targetSeconds = items[exerciseIndex].sets[setIndex].restTargetSeconds ?? items[exerciseIndex].restTargetSeconds,
               targetSeconds > 0
         else { return }
 
@@ -1023,6 +1041,7 @@ private struct WorkoutLiveActivityCard: View {
     @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
     let onSetCompleted: (Int, Int) -> Void
     let onEndRest: (Int, Int) -> Void
+    let onExtendRest: (Int, Int, Int) -> Void
     let onChanged: () -> Void
     let onTextChanged: () -> Void
 
@@ -1180,6 +1199,7 @@ private struct WorkoutLiveActivityCard: View {
                     }
                     HStack(spacing: 8) {
                         restTargetMenu(context)
+                        extendRestButton(context)
                         endRestButton(context)
                     }
                 }
@@ -1192,6 +1212,7 @@ private struct WorkoutLiveActivityCard: View {
                     }
                     Spacer()
                     restTargetMenu(context)
+                    extendRestButton(context)
                     endRestButton(context)
                 }
             }
@@ -1209,7 +1230,7 @@ private struct WorkoutLiveActivityCard: View {
 
     private func restClock(_ context: WorkoutLiveSetContext) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: context.item.restTargetSeconds))
+            Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: restTargetSeconds(for: context)))
                 .font(.system(size: 28, weight: .heavy, design: .rounded))
                 .foregroundStyle(restTint(for: context))
                 .monospacedDigit()
@@ -1232,6 +1253,27 @@ private struct WorkoutLiveActivityCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("End rest")
+    }
+
+    private func extendRestButton(_ context: WorkoutLiveSetContext) -> some View {
+        Button {
+            onExtendRest(context.exerciseIndex, context.setIndex, 30)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .heavy))
+                Text("30s")
+                    .font(.system(size: 12, weight: .heavy))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 9)
+            .frame(height: 30)
+            .background(Theme.background.opacity(0.78))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add 30 seconds to rest")
     }
 
     private var completionSection: some View {
@@ -1453,8 +1495,14 @@ private struct WorkoutLiveActivityCard: View {
         Menu {
             ForEach(liveRestTargetOptions, id: \.label) { option in
                 Button(option.label) {
-                    guard items.indices.contains(context.exerciseIndex) else { return }
+                    guard items.indices.contains(context.exerciseIndex),
+                          items[context.exerciseIndex].sets.indices.contains(context.setIndex)
+                    else { return }
                     items[context.exerciseIndex].restTargetSeconds = option.seconds
+                    if items[context.exerciseIndex].sets[context.setIndex].restStartTime != nil,
+                       items[context.exerciseIndex].sets[context.setIndex].restDuration == nil {
+                        items[context.exerciseIndex].sets[context.setIndex].restTargetSeconds = option.seconds
+                    }
                     onChanged()
                 }
             }
@@ -1462,7 +1510,7 @@ private struct WorkoutLiveActivityCard: View {
             HStack(spacing: 5) {
                 Image(systemName: "timer")
                     .font(.system(size: 11, weight: .bold))
-                Text(restTargetLabel(context.item.restTargetSeconds))
+                Text(restTargetLabel(restTargetSeconds(for: context)))
                     .font(.system(size: 12, weight: .heavy))
                     .monospacedDigit()
                     .lineLimit(1)
@@ -1539,8 +1587,12 @@ private struct WorkoutLiveActivityCard: View {
         }
     }
 
+    private func restTargetSeconds(for context: WorkoutLiveSetContext) -> Int? {
+        context.set.restTargetSeconds ?? context.item.restTargetSeconds
+    }
+
     private func restTint(for context: WorkoutLiveSetContext) -> Color {
-        guard let targetSeconds = context.item.restTargetSeconds,
+        guard let targetSeconds = restTargetSeconds(for: context),
               targetSeconds > 0,
               let startTime = context.set.restStartTime
         else { return Theme.success }

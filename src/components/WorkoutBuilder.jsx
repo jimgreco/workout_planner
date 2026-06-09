@@ -136,6 +136,8 @@ export default function WorkoutBuilder({
   activeSetIdx = null,
   onSetCompleted,
   onRestTargetReached,
+  onRestExtended,
+  onEndRest,
   onResetPersonalBest,
   onEditExercise,
   planningMode = false,
@@ -671,12 +673,36 @@ export default function WorkoutBuilder({
                       </td>
                     )}
                     <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
-                      <RestTimer
-                        startTime={set.restStartTime}
-                        duration={set.restDuration}
-                        targetSeconds={item.restTargetSeconds}
-                        onTargetReached={() => onRestTargetReached?.(idx, si)}
-                      />
+                      <div className="rest-cell-content">
+                        <RestTimer
+                          startTime={set.restStartTime}
+                          duration={set.restDuration}
+                          targetSeconds={set.restTargetSeconds || item.restTargetSeconds}
+                          onTargetReached={() => onRestTargetReached?.(idx, si)}
+                        />
+                        {set.restStartTime && !set.restDuration && (
+                          <div className="rest-actions">
+                            <button
+                              type="button"
+                              className="rest-action-btn"
+                              onClick={() => onRestExtended?.(idx, si, 30)}
+                              title="Add 30 seconds"
+                              aria-label={`Add 30 seconds to rest for set ${si + 1} of ${ex.name}`}
+                            >
+                              <Plus size={11} />30s
+                            </button>
+                            <button
+                              type="button"
+                              className="rest-action-btn"
+                              onClick={() => onEndRest?.(idx, si)}
+                              title="End rest"
+                              aria-label={`End rest for set ${si + 1} of ${ex.name}`}
+                            >
+                              <Check size={11} />Ready
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     {!readOnly && !planningMode && (
                       <td style={{ textAlign: 'center' }}>

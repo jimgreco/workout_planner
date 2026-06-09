@@ -73,6 +73,7 @@ struct WorkoutSet: Codable, Equatable {
     var placeholderWeight: String?
     var restStartTime: Double?
     var restDuration: Int?
+    var restTargetSeconds: Int?
     var rpe: String?
     var rir: String?
     var setType: String?
@@ -88,6 +89,7 @@ struct WorkoutSet: Codable, Equatable {
         placeholderWeight: String? = nil,
         restStartTime: Double? = nil,
         restDuration: Int? = nil,
+        restTargetSeconds: Int? = nil,
         rpe: String? = nil,
         rir: String? = nil,
         setType: String? = nil
@@ -102,6 +104,7 @@ struct WorkoutSet: Codable, Equatable {
         self.placeholderWeight = placeholderWeight
         self.restStartTime = restStartTime
         self.restDuration = restDuration
+        self.restTargetSeconds = restTargetSeconds
         self.rpe = rpe
         self.rir = rir
         self.setType = setType

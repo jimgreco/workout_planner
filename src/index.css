@@ -2232,6 +2232,39 @@ input:focus, select:focus, textarea:focus {
 .rest-time.over-target {
   color: var(--danger);
 }
+.rest-cell-content {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  min-width: 78px;
+}
+.rest-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.rest-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rest-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .rest-target-control,
 .rest-target-chip,
 .superset-control,

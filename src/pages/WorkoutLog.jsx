@@ -326,7 +326,7 @@ export default function WorkoutLog({
 
   function handleRestTargetReached(exIdx, setIdx) {
     const item = items[exIdx];
-    if (!item?.restTargetSeconds) return;
+    if (!item?.sets?.[setIdx]?.restTargetSeconds && !item?.restTargetSeconds) return;
     const exercise = exercises.find((ex) => ex.id === item.exerciseId);
     setRestAlert({
       id: `${Date.now()}-${exIdx}-${setIdx}`,
@@ -337,6 +337,57 @@ export default function WorkoutLog({
     }
     clearTimeout(restAlertTimer.current);
     restAlertTimer.current = setTimeout(() => setRestAlert(null), 5000);
+  }
+
+  function handleExtendRest(exIdx, setIdx, seconds = 30) {
+    if (!workoutId) return;
+    const targetItem = items[exIdx];
+    const targetSet = targetItem?.sets?.[setIdx];
+    if (!targetSet?.restStartTime || targetSet.restDuration) return;
+
+    const elapsed = Math.max(0, Math.floor((Date.now() - targetSet.restStartTime) / 1000));
+    const currentTarget = targetSet.restTargetSeconds || targetItem.restTargetSeconds || 0;
+    const nextTarget = Math.min(3600, Math.max(currentTarget, elapsed) + seconds);
+    const newItems = items.map((item, itemIdx) => {
+      if (itemIdx !== exIdx) return item;
+      return {
+        ...item,
+        sets: item.sets.map((set, currentSetIdx) => (
+          currentSetIdx === setIdx ? { ...set, restTargetSeconds: nextTarget } : set
+        )),
+      };
+    });
+
+    setRestAlert(null);
+    clearTimeout(restAlertTimer.current);
+    setItems(newItems);
+    const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
+  }
+
+  function handleEndRest(exIdx, setIdx) {
+    if (!workoutId) return;
+    const targetSet = items[exIdx]?.sets?.[setIdx];
+    if (!targetSet?.restStartTime || targetSet.restDuration) return;
+
+    const now = Date.now();
+    const newItems = items.map((item, itemIdx) => {
+      if (itemIdx !== exIdx) return item;
+      return {
+        ...item,
+        sets: item.sets.map((set, currentSetIdx) => (
+          currentSetIdx === setIdx
+            ? { ...set, restDuration: Math.max(0, Math.floor((now - set.restStartTime) / 1000)), restStartTime: null }
+            : set
+        )),
+      };
+    });
+
+    setRestAlert(null);
+    clearTimeout(restAlertTimer.current);
+    setItems(newItems);
+    const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
   }
 
   function handleFieldChange(field, value) {
@@ -690,6 +741,8 @@ export default function WorkoutLog({
         activeSetIdx={activeSetIdx}
         onSetCompleted={handleSetCompleted}
         onRestTargetReached={handleRestTargetReached}
+        onRestExtended={handleExtendRest}
+        onEndRest={handleEndRest}
         onResetPersonalBest={!isEditing.current && startTime ? handleResetPersonalBest : undefined}
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}

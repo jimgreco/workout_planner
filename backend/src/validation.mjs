@@ -140,7 +140,7 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'restStartTime', 'restDuration', 'rpe', 'rir', 'setType']),
+    new Set(['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType']),
     `set ${index + 1}`,
   );
   const set = {};
@@ -161,6 +161,8 @@ function workoutSet(value, index) {
   if (restStartTime !== undefined) set.restStartTime = restStartTime;
   const restDuration = optionalNumber(value.restDuration, 'set.restDuration', 0, 24 * 60 * 60);
   if (restDuration !== undefined) set.restDuration = restDuration;
+  const restTargetSeconds = optionalIntValue(value.restTargetSeconds, 'set.restTargetSeconds', 0, 3600);
+  if (restTargetSeconds > 0) set.restTargetSeconds = restTargetSeconds;
   return set;
 }
 

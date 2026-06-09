@@ -804,7 +804,7 @@ private struct ExerciseSetsCard: View {
                     .frame(maxWidth: .infinity)
                 }
 
-                RestTimerText(set: item.sets[setIndex], targetSeconds: item.restTargetSeconds)
+                RestTimerText(set: item.sets[setIndex], targetSeconds: item.sets[setIndex].restTargetSeconds ?? item.restTargetSeconds)
                     .frame(width: restColumnWidth, alignment: .trailing)
 
                 if !readOnly && !planningMode {

@@ -311,6 +311,32 @@ describe('WorkoutBuilder', () => {
       await waitFor(() => expect(onRestTargetReached).toHaveBeenCalledWith(0, 0));
     });
 
+    it('shows controls for an active rest interval', () => {
+      const onRestExtended = vi.fn();
+      const onEndRest = vi.fn();
+      const items = [{
+        exerciseId: 'ex1',
+        weightType: 'weight',
+        restTargetSeconds: 90,
+        sets: [{ reps: '10', weight: '100', restStartTime: Date.now() - 20_000 }],
+      }];
+      render(
+        <WorkoutBuilder
+          exercises={exercises}
+          items={items}
+          onChange={() => {}}
+          onRestExtended={onRestExtended}
+          onEndRest={onEndRest}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /add 30 seconds to rest for set 1 of bench press/i }));
+      fireEvent.click(screen.getByRole('button', { name: /end rest for set 1 of bench press/i }));
+
+      expect(onRestExtended).toHaveBeenCalledWith(0, 0, 30);
+      expect(onEndRest).toHaveBeenCalledWith(0, 0);
+    });
+
     it('changes weightType when selector is changed', () => {
       const onChange = vi.fn();
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
