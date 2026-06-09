@@ -233,6 +233,27 @@ describe('Routines page', () => {
     expect(screen.getByText(/4-week completion/i)).toBeTruthy();
   });
 
+  it('shows the upcoming active program schedule', () => {
+    render(
+      <Templates
+        templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{ id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }] }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={() => {}}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText(/upcoming program schedule/i)).toBeTruthy();
+    expect(screen.getByText(/next 3 weeks/i)).toBeTruthy();
+    expect(screen.getAllByText(/push day/i).length).toBeGreaterThan(1);
+    expect(screen.getAllByText(/rest/i).length).toBeGreaterThan(0);
+  });
+
   it('opens new exercise from the program add menu', async () => {
     const onExercisesUpdate = vi.fn();
     render(

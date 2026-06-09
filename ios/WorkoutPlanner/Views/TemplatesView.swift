@@ -375,6 +375,16 @@ private struct PlannedProgramDay: Identifiable {
     var id: Int { weekday.value }
 }
 
+private struct UpcomingProgramDay: Identifiable {
+    let date: Date
+    let templates: [WorkoutTemplate]
+    let completedCount: Int
+    let skippedCount: Int
+    let status: ProgramDayStatus
+
+    var id: String { DateHelpers.dayString(from: date) }
+}
+
 private struct NextProgramWorkout {
     let date: Date
     let weekday: Int
@@ -463,6 +473,36 @@ private enum ProgramPlanner {
         }
 
         return scheduleByDay.values.sorted { $0.weekday < $1.weekday }
+    }
+
+    static func upcomingSchedule(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], days: Int = 21) -> [UpcomingProgramDay] {
+        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let today = Calendar.current.startOfDay(for: Date())
+
+        return (0..<days).compactMap { offset in
+            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { return nil }
+            let weekday = Calendar.current.component(.weekday, from: date) - 1
+            let scheduled = program.map { scheduledTemplates(for: weekday, program: $0, templatesById: templatesById) } ?? []
+            let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
+            let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
+            let handledCount = completedCount + skippedCount
+            let isPast = date < today
+            let status: ProgramDayStatus
+
+            if scheduled.isEmpty {
+                status = .rest
+            } else if completedCount == scheduled.count {
+                status = .done
+            } else if handledCount == scheduled.count {
+                status = .skipped
+            } else if isPast {
+                status = .missed
+            } else {
+                status = .planned
+            }
+
+            return UpcomingProgramDay(date: date, templates: scheduled, completedCount: completedCount, skippedCount: skippedCount, status: status)
+        }
     }
 
     static func weekPlan(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> [PlannedProgramDay] {
@@ -679,6 +719,10 @@ private struct ProgramSummaryCard: View {
         ProgramPlanner.weekPlan(program: program, templates: templates, logs: logs)
     }
 
+    private var upcoming: [UpcomingProgramDay] {
+        ProgramPlanner.upcomingSchedule(program: program, templates: templates, logs: logs)
+    }
+
     private var deload: ProgramDeloadWeekInfo? {
         ProgramPlanner.deloadInfo(program: program)
     }
@@ -727,6 +771,8 @@ private struct ProgramSummaryCard: View {
                     )
 
                     ProgramWeekGrid(week: week)
+
+                    ProgramUpcomingList(days: upcoming)
 
                     if adherence.scheduled > 0 {
                         ProgramAdherenceRow(summary: adherence)
@@ -871,6 +917,111 @@ private struct ProgramWeekGrid: View {
             ForEach(week) { day in
                 ProgramDayChip(day: day)
             }
+        }
+    }
+}
+
+private struct ProgramUpcomingList: View {
+    let days: [UpcomingProgramDay]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Upcoming")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Text("Next 3 weeks")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+            }
+
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(days) { day in
+                        ProgramUpcomingRow(day: day)
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Upcoming program schedule")
+    }
+}
+
+private struct ProgramUpcomingRow: View {
+    let day: UpcomingProgramDay
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(ProgramPlanner.displayDate(day.date))
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                Text(summary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(statusLabel)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(statusColor)
+                .textCase(.uppercase)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(statusBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(statusBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var summary: String {
+        guard !day.templates.isEmpty else { return "Rest" }
+        return day.templates.map(\.name).joined(separator: ", ")
+    }
+
+    private var statusLabel: String {
+        switch day.status {
+        case .rest: return "Rest"
+        case .planned: return "Planned"
+        case .done: return "Done"
+        case .skipped: return "Skipped"
+        case .missed: return "Missed"
+        }
+    }
+
+    private var statusColor: Color {
+        switch day.status {
+        case .done: return Theme.success
+        case .skipped: return Theme.accent
+        case .missed: return Theme.warning
+        case .planned: return Theme.text
+        case .rest: return Theme.muted
+        }
+    }
+
+    private var statusBorder: Color {
+        switch day.status {
+        case .done: return Theme.success.opacity(0.45)
+        case .skipped: return Theme.accent.opacity(0.45)
+        case .missed: return Theme.warning.opacity(0.55)
+        case .planned, .rest: return Theme.border
+        }
+    }
+
+    private var statusBackground: Color {
+        switch day.status {
+        case .done: return Theme.success.opacity(0.08)
+        case .skipped: return Theme.accent.opacity(0.08)
+        case .missed: return Theme.warning.opacity(0.08)
+        case .planned, .rest: return Theme.background
         }
     }
 }

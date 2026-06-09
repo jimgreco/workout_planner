@@ -378,6 +378,44 @@ function weekPlan(program, templates, logs) {
   });
 }
 
+function upcomingProgramSchedule(program, templates, logs, days = 21) {
+  const byId = templateById(templates);
+  const today = startOfToday();
+
+  return Array.from({ length: days }, (_, offset) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + offset);
+    const dayKey = localDateKey(date);
+    const scheduled = scheduledTemplatesForWeekday(program, date.getDay(), byId);
+    const templatesForDay = scheduled.map((item) => item.template);
+    const completedCount = templatesForDay.filter((template) => isCompletedOn(logs, template, dayKey)).length;
+    const skippedCount = templatesForDay.filter((template) => isSkippedOn(logs, template, dayKey)).length;
+    const handledCount = completedCount + skippedCount;
+    const isPast = date < today;
+    let status = 'rest';
+
+    if (templatesForDay.length > 0 && completedCount === templatesForDay.length) {
+      status = 'done';
+    } else if (templatesForDay.length > 0 && handledCount === templatesForDay.length) {
+      status = 'skipped';
+    } else if (templatesForDay.length > 0 && isPast) {
+      status = 'missed';
+    } else if (templatesForDay.length > 0) {
+      status = 'planned';
+    }
+
+    return {
+      id: `${dayKey}-${offset}`,
+      date,
+      dayKey,
+      templates: templatesForDay,
+      completedCount,
+      skippedCount,
+      status,
+    };
+  });
+}
+
 function programAdherence(program, templates, logs, weeks = 4) {
   const byId = templateById(templates);
   const today = startOfToday();
@@ -492,6 +530,10 @@ export default function Templates({
   );
   const currentWeek = useMemo(
     () => weekPlan(activeProgram, templates, logs),
+    [activeProgram, templates, logs],
+  );
+  const upcomingSchedule = useMemo(
+    () => upcomingProgramSchedule(activeProgram, templates, logs),
     [activeProgram, templates, logs],
   );
   const adherence = useMemo(
@@ -830,6 +872,26 @@ export default function Templates({
                 </div>
               ))}
             </div>
+
+            {upcomingSchedule.length > 0 && (
+              <div className="program-upcoming" aria-label="Upcoming program schedule">
+                <div className="program-upcoming-heading">
+                  <strong>Upcoming</strong>
+                  <span>Next 3 weeks</span>
+                </div>
+                <div className="program-upcoming-list">
+                  {upcomingSchedule.map((day) => (
+                    <div key={day.id} className={`program-upcoming-day ${day.status}`}>
+                      <div>
+                        <strong>{dateLabel(day.date)}</strong>
+                        <span>{day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}</span>
+                      </div>
+                      <em>{day.status}</em>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {adherence.scheduled > 0 && (
               <div className="program-adherence" aria-label={`${adherence.weeks} week program adherence`}>

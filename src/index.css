@@ -579,6 +579,88 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .program-day.rest .program-day-routines strong {
   color: var(--text-muted);
 }
+.program-upcoming {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+.program-upcoming-heading,
+.program-upcoming-day {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.program-upcoming-heading strong {
+  font-size: 14px;
+}
+.program-upcoming-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.program-upcoming-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.program-upcoming-day {
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.program-upcoming-day div {
+  min-width: 0;
+}
+.program-upcoming-day strong,
+.program-upcoming-day span {
+  display: block;
+}
+.program-upcoming-day strong {
+  font-size: 13px;
+}
+.program-upcoming-day span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-upcoming-day em {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.program-upcoming-day.done {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+  background: color-mix(in srgb, var(--success) 7%, var(--bg));
+}
+.program-upcoming-day.done em {
+  color: var(--success);
+}
+.program-upcoming-day.skipped {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.program-upcoming-day.skipped em {
+  color: var(--accent);
+}
+.program-upcoming-day.missed {
+  border-color: color-mix(in srgb, var(--warn) 50%, var(--border));
+}
+.program-upcoming-day.planned em {
+  color: var(--text);
+}
 .program-adherence {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
