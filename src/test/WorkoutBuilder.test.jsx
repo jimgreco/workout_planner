@@ -201,6 +201,20 @@ describe('WorkoutBuilder', () => {
     expect(screen.getByLabelText(/max reps/i)).toHaveValue('8');
   });
 
+  it('keeps range fields visible when clearing max reps', () => {
+    const onChange = vi.fn();
+    const items = [{ exerciseId: 'ex1', sets: [{ placeholderReps: '8-12', weight: '' }, { placeholderReps: '8-12', weight: '' }] }];
+    const { rerender } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} planningMode />);
+
+    fireEvent.change(screen.getByLabelText(/max reps/i), { target: { value: '' } });
+    const updatedItems = onChange.mock.calls[0][0];
+    expect(updatedItems[0].sets.map((set) => set.placeholderReps)).toEqual(['8-', '8-']);
+
+    rerender(<WorkoutBuilder exercises={exercises} items={updatedItems} onChange={onChange} planningMode />);
+    expect(screen.getByLabelText(/min reps/i)).toHaveValue('8');
+    expect(screen.getByLabelText(/max reps/i)).toHaveValue('');
+  });
+
   it('removes an exercise when ✕ button is clicked', () => {
     const onChange = vi.fn();
     const items = [

@@ -67,14 +67,15 @@ function weightTypeLabel(weightType) {
 
 function repRange(value) {
   const text = String(value ?? '').trim();
-  const match = text.match(/^(.+?)\s*[-–]\s*(.+)$/);
+  const match = text.match(/^(.*?)\s*[-–]\s*(.*?)$/);
   if (!match) return null;
   return { min: match[1], max: match[2] };
 }
 
-function repRangeValue(min, max) {
+function repRangeValue(min, max, { preserveRange = false } = {}) {
   const cleanMin = String(min ?? '').trim();
   const cleanMax = String(max ?? '').trim();
+  if (preserveRange) return `${cleanMin}-${cleanMax}`;
   if (cleanMin && cleanMax) return `${cleanMin}-${cleanMax}`;
   return cleanMin || cleanMax;
 }
@@ -312,6 +313,7 @@ export default function WorkoutBuilder({
     updateAllSetReps(itemIdx, field, repRangeValue(
       side === 'min' ? value : current.min,
       side === 'max' ? value : current.max,
+      { preserveRange: true },
     ));
   }
 
@@ -324,7 +326,7 @@ export default function WorkoutBuilder({
         return [
           field,
           enabled
-            ? repRangeValue(range?.min ?? current, range?.max ?? current)
+            ? repRangeValue(range?.min ?? current, range?.max ?? current, { preserveRange: true })
             : (range?.min ?? current),
         ];
       }));
