@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   RefreshCcw,
+  Rewind,
   Settings,
   SkipForward,
   Target,
@@ -309,6 +310,33 @@ function nextProgramWorkout(program, templates, logs) {
     }
   }
   return null;
+}
+
+function moveScheduledWorkout(schedule, startWeekday, direction) {
+  const normalized = (schedule ?? [])
+    .filter((item) => item.templateId)
+    .map((item) => ({ ...item, weekday: Number(item.weekday) }));
+  if (!normalized.length) return normalized;
+
+  const scheduleByDay = new Map(normalized.map((item) => [item.weekday, item]));
+  const fallbackStart = normalized
+    .map((item) => item.weekday)
+    .sort((a, b) => a - b)[0];
+  const start = Number.isInteger(startWeekday) ? startWeekday : fallbackStart;
+  if (!scheduleByDay.has(start)) return normalized.sort((a, b) => a.weekday - b.weekday);
+
+  let carry = scheduleByDay.get(start);
+  scheduleByDay.delete(start);
+
+  for (let step = 1; step <= 7; step += 1) {
+    const targetDay = (start + (direction * step) + 7) % 7;
+    const displaced = scheduleByDay.get(targetDay);
+    scheduleByDay.set(targetDay, { ...carry, weekday: targetDay });
+    if (!displaced) break;
+    carry = displaced;
+  }
+
+  return [...scheduleByDay.values()].sort((a, b) => a.weekday - b.weekday);
 }
 
 function weekPlan(program, templates, logs) {
@@ -615,11 +643,24 @@ export default function Templates({
     try {
       const delayed = {
         ...activeProgram,
-        schedule: activeProgram.schedule
-          .map((item) => ({ ...item, weekday: (Number(item.weekday) + 1) % 7 }))
-          .sort((a, b) => a.weekday - b.weekday),
+        schedule: moveScheduledWorkout(activeProgram.schedule, nextWorkout?.entry?.weekday, 1),
       };
       const updated = await saveProgram(cleanProgram(delayed));
+      onProgramsUpdate(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handlePullForwardProgram() {
+    if (!activeProgram?.schedule?.length || saving) return;
+    setSaving(true);
+    try {
+      const pulled = {
+        ...activeProgram,
+        schedule: moveScheduledWorkout(activeProgram.schedule, nextWorkout?.entry?.weekday, -1),
+      };
+      const updated = await saveProgram(cleanProgram(pulled));
       onProgramsUpdate(updated);
     } finally {
       setSaving(false);
@@ -753,6 +794,9 @@ export default function Templates({
                 </button>
                 <button className="btn btn-secondary btn-sm" onClick={handleDelayProgram} disabled={!activeProgram?.schedule?.length || saving}>
                   <RefreshCcw size={14} /> Delay
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handlePullForwardProgram} disabled={!activeProgram?.schedule?.length || saving}>
+                  <Rewind size={14} /> Pull Forward
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(nextWorkout.template)} disabled={!nextWorkout}>
                   <Play size={14} fill="currentColor" /> Start

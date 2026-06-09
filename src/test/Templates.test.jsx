@@ -126,8 +126,11 @@ describe('Routines page', () => {
     expect(onLogsChanged).toHaveBeenCalled();
   });
 
-  it('delays the active program schedule by one day with week wraparound', async () => {
+  it('delays the next active program workout into a rest day before wrapping', async () => {
     const onProgramsUpdate = vi.fn();
+    const today = new Date().getDay();
+    const restDay = (today + 1) % 7;
+    const laterWorkoutDay = (today + 2) % 7;
     render(
       <Templates
         templates={[
@@ -141,8 +144,8 @@ describe('Routines page', () => {
           name: 'Strength Plan',
           active: true,
           schedule: [
-            { weekday: 1, templateId: 'tmpl-1' },
-            { weekday: 6, templateId: 'tmpl-2' },
+            { weekday: today, templateId: 'tmpl-1' },
+            { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
           ],
         }]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
@@ -156,12 +159,57 @@ describe('Routines page', () => {
     fireEvent.click(screen.getByRole('button', { name: /delay/i }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    const expectedSchedule = [
+      { weekday: restDay, templateId: 'tmpl-1' },
+      { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
+    ].sort((a, b) => a.weekday - b.weekday);
     expect(saveProgram.mock.calls[0][0]).toMatchObject({
       id: 'program-1',
-      schedule: [
-        { weekday: 0, templateId: 'tmpl-2' },
-        { weekday: 2, templateId: 'tmpl-1' },
-      ],
+      schedule: expectedSchedule,
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
+  });
+
+  it('pulls the next active program workout forward and adds a rest day after it', async () => {
+    const onProgramsUpdate = vi.fn();
+    const today = new Date().getDay();
+    const nextWorkoutDay = (today + 1) % 7;
+    const laterWorkoutDay = (today + 3) % 7;
+    render(
+      <Templates
+        templates={[
+          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
+          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [
+            { weekday: nextWorkoutDay, templateId: 'tmpl-1' },
+            { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
+          ],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /pull forward/i }));
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    const expectedSchedule = [
+      { weekday: today, templateId: 'tmpl-1' },
+      { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
+    ].sort((a, b) => a.weekday - b.weekday);
+    expect(saveProgram.mock.calls[0][0]).toMatchObject({
+      id: 'program-1',
+      schedule: expectedSchedule,
     });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });

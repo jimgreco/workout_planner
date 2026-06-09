@@ -177,6 +177,9 @@ struct TemplatesView: View {
                 },
                 onDelay: { program in
                     Task { await delay(program) }
+                },
+                onPullForward: { program in
+                    Task { await pullForward(program) }
                 }
             )
             ProgramList(
@@ -267,14 +270,25 @@ struct TemplatesView: View {
         defer { isSaving = false }
         do {
             var delayed = program
-            delayed.schedule = program.schedule
-                .map { item in
-                    var delayedItem = item
-                    delayedItem.weekday = (item.weekday + 1) % 7
-                    return delayedItem
-                }
-                .sorted { $0.weekday < $1.weekday }
+            let nextWorkout = ProgramPlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs)
+            delayed.schedule = ProgramPlanner.movedSchedule(program.schedule, startingAt: nextWorkout?.weekday, direction: 1)
             try await store.saveProgram(delayed)
+        } catch {
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func pullForward(_ program: TrainingProgram) async {
+        guard !isSaving, !program.schedule.isEmpty else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            var pulled = program
+            let nextWorkout = ProgramPlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs)
+            pulled.schedule = ProgramPlanner.movedSchedule(program.schedule, startingAt: nextWorkout?.weekday, direction: -1)
+            try await store.saveProgram(pulled)
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
@@ -363,6 +377,7 @@ private struct PlannedProgramDay: Identifiable {
 
 private struct NextProgramWorkout {
     let date: Date
+    let weekday: Int
     let template: WorkoutTemplate
     let position: Int
     let total: Int
@@ -414,10 +429,40 @@ private enum ProgramPlanner {
             let weekday = Calendar.current.component(.weekday, from: date) - 1
             let scheduled = scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
             for (index, template) in scheduled.enumerated() where !handledOn(logs: logs, template: template, date: date) {
-                return NextProgramWorkout(date: date, template: template, position: index + 1, total: scheduled.count)
+                return NextProgramWorkout(date: date, weekday: weekday, template: template, position: index + 1, total: scheduled.count)
             }
         }
         return nil
+    }
+
+    static func movedSchedule(_ schedule: [ProgramScheduleItem], startingAt startWeekday: Int?, direction: Int) -> [ProgramScheduleItem] {
+        let normalized = schedule
+            .filter { !$0.templateId.isEmpty }
+            .map { item -> ProgramScheduleItem in
+                var copy = item
+                copy.weekday = ((copy.weekday % 7) + 7) % 7
+                return copy
+            }
+        guard !normalized.isEmpty else { return normalized }
+
+        var scheduleByDay = Dictionary(uniqueKeysWithValues: normalized.map { ($0.weekday, $0) })
+        let fallbackStart = normalized.map(\.weekday).min() ?? 0
+        let start = startWeekday ?? fallbackStart
+        guard var carry = scheduleByDay[start] else {
+            return normalized.sorted { $0.weekday < $1.weekday }
+        }
+
+        scheduleByDay.removeValue(forKey: start)
+        for step in 1...7 {
+            let targetDay = (start + (direction * step) + 7) % 7
+            let displaced = scheduleByDay[targetDay]
+            carry.weekday = targetDay
+            scheduleByDay[targetDay] = carry
+            guard let displaced else { break }
+            carry = displaced
+        }
+
+        return scheduleByDay.values.sorted { $0.weekday < $1.weekday }
     }
 
     static func weekPlan(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> [PlannedProgramDay] {
@@ -624,6 +669,7 @@ private struct ProgramSummaryCard: View {
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
     let onDelay: (TrainingProgram) -> Void
+    let onPullForward: (TrainingProgram) -> Void
 
     private var nextWorkout: NextProgramWorkout? {
         ProgramPlanner.nextWorkout(program: program, templates: templates, logs: logs)
@@ -676,7 +722,8 @@ private struct ProgramSummaryCard: View {
                         nextWorkout: nextWorkout,
                         onStart: onStart,
                         onSkip: onSkip,
-                        onDelay: onDelay
+                        onDelay: onDelay,
+                        onPullForward: onPullForward
                     )
 
                     ProgramWeekGrid(week: week)
@@ -723,6 +770,7 @@ private struct ProgramNextWorkoutPanel: View {
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
     let onDelay: (TrainingProgram) -> Void
+    let onPullForward: (TrainingProgram) -> Void
 
     private var title: String {
         guard let nextWorkout else { return "No scheduled workout" }
@@ -752,7 +800,10 @@ private struct ProgramNextWorkoutPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 10) {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ], spacing: 10) {
                 Button {
                     if let nextWorkout {
                         onSkip(nextWorkout)
@@ -773,6 +824,17 @@ private struct ProgramNextWorkoutPanel: View {
                         .frame(maxWidth: .infinity)
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(program.schedule.isEmpty)
+
+                Button {
+                    onPullForward(program)
+                } label: {
+                    Label("Pull Forward", systemImage: "backward.end.fill")
+                        .frame(maxWidth: .infinity)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))
                 .disabled(program.schedule.isEmpty)
