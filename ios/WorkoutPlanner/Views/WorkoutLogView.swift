@@ -43,6 +43,9 @@ struct WorkoutLogView: View {
     private var pageTitle: String {
         isEditing ? "Edit Workout" : startTime == nil ? "Plan Workout" : "Log Workout"
     }
+    private var hasStartingPointOptions: Bool {
+        (!isActive && !activeProgramWorkouts.isEmpty) || !store.templates.isEmpty
+    }
     private var activeProgramWorkouts: [WorkoutProgramStart] {
         store.programs
             .filter { $0.active == true }
@@ -52,7 +55,7 @@ struct WorkoutLogView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 24) {
                     if isActive {
                         activeHeader
                     }
@@ -64,47 +67,20 @@ struct WorkoutLogView: View {
                     }
 
                     workoutFields
-                    programMenu
-                    templateMenu
-
-                    Divider().opacity(0.3)
-
-                    Text("Exercises")
-                        .font(.system(size: 18, weight: .heavy))
-                        .foregroundStyle(Theme.text)
-
-                    WorkoutBuilderView(
-                        exercises: store.exercises,
-                        items: $items,
-                        focusedField: $focusedBuilderField,
-                        defaultSets: store.settings.defaultSets,
-                        defaultReps: store.settings.defaultReps,
-                        defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
-                        activeExerciseIndex: activeExerciseIndex,
-                        activeSetIndex: activeSetIndex,
-                        planningMode: isPlanningMode,
-                        onSetCompleted: markSetCompleted,
-                        onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
-                        onChanged: builderChanged,
-                        onTextChanged: builderTextChanged,
-                        onEditingDone: commitBuilderFieldsIfNeeded
-                    )
-
-                    Divider().opacity(0.3)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        FormLabel(text: "Session Notes")
-                        TextField("How did it go? Any PRs, fatigue notes...", text: $notes, axis: .vertical)
-                            .lineLimit(2...5)
-                            .focused($focusedTextField, equals: .notes)
-                            .fieldStyle()
-                            .onChange(of: notes) { _, _ in hasPendingTextCommit = true }
+                    if hasStartingPointOptions {
+                        startingPointSection
                     }
+                    exercisesSection
+                    notesSection
                 }
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
             }
+            .background(Theme.background)
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(pageTitle)
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .keyboard) {
                     KeyboardDoneToolbar {
@@ -165,24 +141,24 @@ struct WorkoutLogView: View {
     }
 
     private var activeHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                if isActive, let startTime, !isEditing {
-                    TimelineView(.periodic(from: Date(), by: 30)) { _ in
-                        Label("In progress · \(formatDuration(startTime: startTime))", systemImage: "clock")
-                            .font(.system(size: 13))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if isActive, let startTime, !isEditing {
+                        TimelineView(.periodic(from: Date(), by: 30)) { _ in
+                            Label("In progress · \(formatDuration(startTime: startTime))", systemImage: "clock")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.muted)
+                        }
+                    } else {
+                        Label(isEditing ? "Editing saved workout" : "Planning workout", systemImage: isEditing ? "pencil" : "list.clipboard")
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.muted)
                     }
-                } else {
-                    Label(isEditing ? "Editing saved workout" : "Planning workout", systemImage: isEditing ? "pencil" : "list.clipboard")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.muted)
                 }
-            }
 
-            Spacer()
+                Spacer()
 
-            VStack(alignment: .trailing, spacing: 8) {
                 if isActive {
                     Button {
                         showDiscardConfirm = true
@@ -194,26 +170,38 @@ struct WorkoutLogView: View {
                     .buttonStyle(SecondaryButtonStyle(compact: true))
                     .disabled(isSaving)
                 }
+            }
 
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
                 if isActive, !items.isEmpty, isPlanningMode {
                     Button {
                         startWorkout()
                     } label: {
                         Label("Start Workout", systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(PrimaryButtonStyle(compact: true))
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } else if isActive, !items.isEmpty {
                     Button {
                         Task { await finishWorkout() }
                     } label: {
                         Label(isSaving ? "Saving..." : isEditing ? "Save Changes" : "Finish Workout", systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(PrimaryButtonStyle(compact: true))
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
             }
         }
+        .padding(14)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
     private var liveActivityCard: some View {
@@ -233,85 +221,191 @@ struct WorkoutLogView: View {
     }
 
     private var workoutFields: some View {
-        VStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                FormLabel(text: "Workout Name")
-                TextField("e.g. Monday Push Day", text: $name)
-                    .focused($focusedTextField, equals: .name)
-                    .fieldStyle()
-                    .onChange(of: name) { _, _ in hasPendingTextCommit = true }
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            WorkoutSectionHeader(title: "Workout Setup", systemImage: "square.and.pencil")
 
-            VStack(alignment: .leading, spacing: 6) {
-                FormLabel(text: "Date")
-                DatePicker("", selection: $date, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fieldStyle()
-                    .onChange(of: date) { _, _ in scheduleSave() }
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                FormLabel(text: "Readiness")
-                Picker("", selection: Binding(
-                    get: { readiness },
-                    set: { value in
-                        readiness = value
-                        scheduleSave()
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 7) {
+                    FormLabel(text: "Name")
+                    HStack(spacing: 10) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                        TextField("e.g. Monday Push Day", text: $name)
+                            .focused($focusedTextField, equals: .name)
+                            .font(.system(size: 16, weight: .medium))
+                            .onChange(of: name) { _, _ in hasPendingTextCommit = true }
                     }
-                )) {
-                    Text("Not set").tag(0)
-                    Text("1 - Low").tag(1)
-                    Text("2").tag(2)
-                    Text("3 - Okay").tag(3)
-                    Text("4").tag(4)
-                    Text("5 - High").tag(5)
+                    .controlFieldStyle()
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fieldStyle()
+
+                VStack(alignment: .leading, spacing: 7) {
+                    FormLabel(text: "Date")
+                    HStack(spacing: 10) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                        DatePicker("", selection: $date, displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                            .onChange(of: date) { _, _ in scheduleSave() }
+                        Spacer(minLength: 0)
+                    }
+                    .controlFieldStyle()
+                }
+
+                readinessSelector
+            }
+            .padding(12)
+            .background(Theme.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        }
+    }
+
+    @ViewBuilder
+    private var startingPointSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            WorkoutSectionHeader(title: isActive ? "Add From Template" : "Starting Point", systemImage: "rectangle.stack")
+
+            VStack(spacing: 8) {
+                if !isActive, !activeProgramWorkouts.isEmpty {
+                    programMenu
+                }
+                if !store.templates.isEmpty {
+                    templateMenu
+                }
             }
         }
     }
 
     @ViewBuilder
     private var programMenu: some View {
-        if !isActive, !activeProgramWorkouts.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                FormLabel(text: "Start from Active Program")
-                Menu {
-                    ForEach(activeProgramWorkouts) { workout in
-                        Button("\(workout.program.name) - \(displayProgramDate(workout.date)) - \(workout.template.name)") {
-                            applyTemplate(workout.template, replace: true, program: workout.program)
-                        }
-                    }
-                } label: {
-                    Label("Select a program workout...", systemImage: "target")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        Menu {
+            ForEach(activeProgramWorkouts) { workout in
+                Button("\(workout.program.name) - \(displayProgramDate(workout.date)) - \(workout.template.name)") {
+                    applyTemplate(workout.template, replace: true, program: workout.program)
                 }
-                .buttonStyle(SecondaryButtonStyle())
             }
+        } label: {
+            SourceMenuRow(
+                systemImage: "target",
+                title: "Active Program",
+                subtitle: "Select a program workout"
+            )
         }
     }
 
     @ViewBuilder
     private var templateMenu: some View {
-        if !store.templates.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                FormLabel(text: isActive ? "Add from Template" : "Start from Template")
-                Menu {
-                    ForEach(store.templates) { template in
-                        Button(template.name) {
-                            applyTemplate(template, replace: !isActive)
-                        }
-                    }
-                } label: {
-                    Label(isActive ? "Add exercises from template..." : "Select a template...", systemImage: "clipboard")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        Menu {
+            ForEach(store.templates) { template in
+                Button(template.name) {
+                    applyTemplate(template, replace: !isActive)
                 }
-                .buttonStyle(SecondaryButtonStyle())
             }
+        } label: {
+            SourceMenuRow(
+                systemImage: "clipboard",
+                title: isActive ? "Template" : "Saved Template",
+                subtitle: isActive ? "Add exercises from template" : "Select a template"
+            )
+        }
+    }
+
+    private var readinessSelector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                FormLabel(text: "Readiness")
+                Spacer()
+                Text(readinessText(readiness))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(readiness > 0 ? Theme.accent : Theme.muted)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(1...5, id: \.self) { value in
+                    Button {
+                        readiness = readiness == value ? 0 : value
+                        scheduleSave()
+                    } label: {
+                        Text("\(value)")
+                            .font(.system(size: 14, weight: .heavy))
+                            .foregroundStyle(readiness == value ? .white : Theme.text)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 34)
+                            .background(readiness == value ? Theme.accent : Theme.background)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                    .stroke(readiness == value ? Theme.accent : Theme.border, lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Readiness \(value)")
+                }
+            }
+        }
+    }
+
+    private var exercisesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                WorkoutSectionHeader(title: "Exercises", systemImage: "dumbbell")
+                Spacer()
+                if !items.isEmpty {
+                    Text("\(items.count)")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.accent.opacity(0.1))
+                        .clipShape(Capsule())
+                        .accessibilityLabel("\(items.count) exercises")
+                }
+            }
+
+            WorkoutBuilderView(
+                exercises: store.exercises,
+                items: $items,
+                focusedField: $focusedBuilderField,
+                defaultSets: store.settings.defaultSets,
+                defaultReps: store.settings.defaultReps,
+                defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
+                activeExerciseIndex: activeExerciseIndex,
+                activeSetIndex: activeSetIndex,
+                planningMode: isPlanningMode,
+                onSetCompleted: markSetCompleted,
+                onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
+                onChanged: builderChanged,
+                onTextChanged: builderTextChanged,
+                onEditingDone: commitBuilderFieldsIfNeeded
+            )
+        }
+    }
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            WorkoutSectionHeader(title: "Session Notes", systemImage: "note.text")
+            TextField("How did it go? Any PRs, fatigue notes...", text: $notes, axis: .vertical)
+                .lineLimit(3...6)
+                .focused($focusedTextField, equals: .notes)
+                .fieldStyle()
+                .onChange(of: notes) { _, _ in hasPendingTextCommit = true }
+        }
+    }
+
+    private func readinessText(_ value: Int) -> String {
+        switch value {
+        case 1: return "Low"
+        case 2: return "Fair"
+        case 3: return "Okay"
+        case 4: return "Good"
+        case 5: return "High"
+        default: return "Not set"
         }
     }
 
@@ -1765,6 +1859,91 @@ private struct WorkoutProgramStart: Identifiable {
     let date: Date
 
     var id: String { "\(program.id)-\(template.id)" }
+}
+
+private struct WorkoutSectionHeader: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 20, height: 20)
+                .background(Theme.accent.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            Text(title)
+                .font(.system(size: 17, weight: .heavy))
+                .foregroundStyle(Theme.text)
+        }
+    }
+}
+
+private struct SourceMenuRow: View {
+    let systemImage: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 30, height: 30)
+                .background(Theme.accent.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private struct ControlFieldStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(Theme.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+private extension View {
+    func controlFieldStyle() -> some View {
+        modifier(ControlFieldStyle())
+    }
 }
 
 private struct WorkoutLiveMenuMetric: View {

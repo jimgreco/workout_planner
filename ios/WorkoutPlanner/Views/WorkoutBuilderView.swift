@@ -86,54 +86,7 @@ struct WorkoutBuilderView: View {
             }
 
             if !readOnly {
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Theme.muted)
-                        TextField("Search exercises to add", text: $exerciseSearch)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .font(.system(size: 15))
-                        if !exerciseSearch.isEmpty {
-                            Button {
-                                exerciseSearch = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(Theme.muted)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Clear exercise search")
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 44)
-                    .background(Theme.background)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                            .stroke(Theme.border, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-
-                    Menu {
-                        let available = availableExercises
-                        if available.isEmpty {
-                            Text(exerciseSearch.isEmpty ? "No more exercises available" : "No matching exercises")
-                        } else {
-                            ForEach(available) { exercise in
-                                Button("\(exercise.name) (\(exercise.muscleGroup))") {
-                                    addExercise(exercise)
-                                }
-                            }
-                        }
-                    } label: {
-                        Label("Add Exercise", systemImage: "plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(SecondaryButtonStyle(compact: true))
-                    .disabled(availableExercises.isEmpty)
-                }
-                .frame(maxWidth: .infinity)
+                addExercisePanel
             }
 
             if exercises.isEmpty && !readOnly {
@@ -143,6 +96,98 @@ struct WorkoutBuilderView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private var addExercisePanel: some View {
+        VStack(alignment: .leading, spacing: items.isEmpty ? 10 : 8) {
+            if items.isEmpty && !exercises.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 28, height: 28)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("No exercises yet")
+                            .font(.system(size: 16, weight: .heavy))
+                            .foregroundStyle(Theme.text)
+                    }
+                }
+            }
+
+            exerciseSearchField
+            addExerciseMenu
+        }
+        .padding(items.isEmpty ? 12 : 0)
+        .frame(maxWidth: .infinity)
+        .background(items.isEmpty ? Theme.surface : Color.clear)
+        .overlay {
+            if items.isEmpty {
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var exerciseSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.muted)
+            TextField("Search exercises to add", text: $exerciseSearch)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(size: 15))
+            if !exerciseSearch.isEmpty {
+                Button {
+                    exerciseSearch = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.muted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear exercise search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(Theme.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var addExerciseMenu: some View {
+        Menu {
+            let available = availableExercises
+            if available.isEmpty {
+                Text(exerciseSearch.isEmpty ? "No more exercises available" : "No matching exercises")
+            } else {
+                ForEach(available) { exercise in
+                    Button("\(exercise.name) (\(exercise.muscleGroup))") {
+                        addExercise(exercise)
+                    }
+                }
+            }
+        } label: {
+            Label("Add Exercise", systemImage: "plus")
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(items.isEmpty ? Color.white : Theme.text)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(items.isEmpty ? Theme.accent : Theme.background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                        .stroke(items.isEmpty ? Theme.accent : Theme.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .opacity(availableExercises.isEmpty ? 0.55 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(availableExercises.isEmpty)
     }
 
     private var availableExercises: [Exercise] {
