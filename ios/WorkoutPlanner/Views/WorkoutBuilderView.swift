@@ -2,6 +2,8 @@ import SwiftUI
 
 enum WorkoutBuilderFocusedField: Hashable {
     case reps(itemIndex: Int, setIndex: Int)
+    case repsMin(itemIndex: Int, setIndex: Int)
+    case repsMax(itemIndex: Int, setIndex: Int)
     case repsLeft(itemIndex: Int, setIndex: Int)
     case repsRight(itemIndex: Int, setIndex: Int)
     case weight(itemIndex: Int, setIndex: Int)
@@ -434,6 +436,16 @@ private func displayMuscleGroup(_ value: String) -> String {
     return trimmed.isEmpty ? "Other" : trimmed
 }
 
+private extension View {
+    func compactSwitch() -> some View {
+        self
+            .labelsHidden()
+            .tint(Theme.accent)
+            .scaleEffect(0.82)
+            .frame(width: 48, height: 28, alignment: .trailing)
+    }
+}
+
 private struct ExerciseSetsCard: View {
     let exercise: Exercise
     @Binding var item: ExerciseItem
@@ -536,9 +548,14 @@ private struct ExerciseSetsCard: View {
             }
 
             if planningMode && !readOnly {
-                Toggle("Same \(repUnit) target for every set", isOn: sameTargetForEverySet)
-                    .font(.system(size: 13, weight: .semibold))
-                    .tint(Theme.accent)
+                HStack(spacing: 12) {
+                    Text("Same \(repUnit) target for every set")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Spacer()
+                    Toggle("", isOn: sameTargetForEverySet)
+                        .compactSwitch()
+                }
             }
 
             if readOnly, item.supersetGroup?.isEmpty == false {
@@ -550,10 +567,20 @@ private struct ExerciseSetsCard: View {
             if planningMode && !(item.useIndividualReps ?? false) {
                 compactTargetControls
             } else {
-                setHeader
+                if planningMode && !readOnly && !usesSideReps {
+                    individualTargetOptions
+                }
 
-                ForEach(item.sets.indices, id: \.self) { setIndex in
-                    setRow(setIndex)
+                if usesSideReps {
+                    ForEach(item.sets.indices, id: \.self) { setIndex in
+                        sideRepsSetRow(setIndex)
+                    }
+                } else {
+                    setHeader
+
+                    ForEach(item.sets.indices, id: \.self) { setIndex in
+                        setRow(setIndex)
+                    }
                 }
             }
 
@@ -745,7 +772,7 @@ private struct ExerciseSetsCard: View {
         HStack(spacing: rowSpacing) {
             Text("Set")
                 .frame(width: setColumnWidth)
-            Text(usesSideReps ? "\(repUnitTitle) L/R" : repUnitTitle)
+            Text(repsHeaderLabel)
                 .frame(maxWidth: .infinity)
             if showsWeightColumn {
                 Text(weightHeaderLabel)
@@ -762,6 +789,12 @@ private struct ExerciseSetsCard: View {
         .font(.system(size: 10, weight: .heavy))
         .foregroundStyle(Theme.muted)
         .textCase(.uppercase)
+    }
+
+    private var repsHeaderLabel: String {
+        if usesSideReps { return "\(repUnitTitle) L/R" }
+        if planningMode && individualUsesRange { return "\(repUnitTitle) Range" }
+        return repUnitTitle
     }
 
     private var weightHeaderLabel: String {
@@ -793,10 +826,7 @@ private struct ExerciseSetsCard: View {
                         get: { compactUsesRange },
                         set: { setCompactRangeMode($0) }
                     ))
-                    .labelsHidden()
-                    .tint(Theme.accent)
-                    .scaleEffect(0.82)
-                    .frame(width: 48, height: 28, alignment: .trailing)
+                    .compactSwitch()
                 }
                 .fixedSize(horizontal: true, vertical: false)
             }
@@ -851,6 +881,31 @@ private struct ExerciseSetsCard: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
+    private var individualTargetOptions: some View {
+        HStack(spacing: 10) {
+            Text("Set targets")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+
+            Spacer()
+
+            HStack(spacing: 0) {
+                Text("Range")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .padding(.trailing, 16)
+
+                Toggle("", isOn: Binding(
+                    get: { individualUsesRange },
+                    set: { setIndividualRangeMode($0) }
+                ))
+                .compactSwitch()
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
     private enum CompactRepField: Hashable {
         case reps
         case repsMin
@@ -866,6 +921,12 @@ private struct ExerciseSetsCard: View {
 
     private var compactUsesRange: Bool {
         return repRange(compactValue(field: .reps)) != nil
+    }
+
+    private var individualUsesRange: Bool {
+        item.sets.indices.contains { setIndex in
+            repRange(sharedRepsValue(for: setIndex)) != nil
+        }
     }
 
     private func compactField(
@@ -1072,6 +1133,52 @@ private struct ExerciseSetsCard: View {
         onChanged?()
     }
 
+    private func setIndividualRangeMode(_ enabled: Bool) {
+        for setIndex in item.sets.indices {
+            let current = sharedRepsValue(for: setIndex)
+            let range = repRange(current)
+            let next = enabled
+                ? repRangeValue(min: range?.min ?? current, max: range?.max ?? current)
+                : (range?.min ?? current)
+            updateSharedRepsValue(next, for: setIndex)
+        }
+        onChanged?()
+    }
+
+    private func individualRangeValue(for setIndex: Int, side: CompactRangeSide) -> String {
+        let current = sharedRepsValue(for: setIndex)
+        let range = repRange(current)
+        switch side {
+        case .min:
+            return range?.min ?? current
+        case .max:
+            return range?.max ?? ""
+        }
+    }
+
+    private func updateIndividualRangeValue(_ value: String, for setIndex: Int, side: CompactRangeSide) {
+        let current = sharedRepsValue(for: setIndex)
+        let range = repRange(current)
+        let next = repRangeValue(
+            min: side == .min ? value : (range?.min ?? current),
+            max: side == .max ? value : (range?.max ?? "")
+        )
+        updateSharedRepsValue(next, for: setIndex)
+    }
+
+    private func individualRangePlaceholder(for side: CompactRangeSide) -> String {
+        side == .min ? "Min" : "Max"
+    }
+
+    private func individualRangeFocus(_ side: CompactRangeSide, setIndex: Int) -> WorkoutBuilderFocusedField {
+        switch side {
+        case .min:
+            return .repsMin(itemIndex: itemIndex, setIndex: setIndex)
+        case .max:
+            return .repsMax(itemIndex: itemIndex, setIndex: setIndex)
+        }
+    }
+
     @ViewBuilder
     private func setRow(_ setIndex: Int) -> some View {
         let active = isActiveExercise && activeSetIndex == setIndex
@@ -1119,21 +1226,29 @@ private struct ExerciseSetsCard: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else {
-                    SetNumericField(
-                        placeholder: repsPlaceholderForField(setIndex),
-                        text: Binding(
-                            get: { sharedRepsValue(for: setIndex) },
-                            set: { value in
-                                updateSharedRepsValue(value, for: setIndex)
-                            }
-                        ),
-                        keyboard: .numberPad,
-                        focus: .reps(itemIndex: itemIndex, setIndex: setIndex),
-                        focusedField: $focusedField,
-                        isActive: active,
-                        isDisabled: readOnly,
-                        placeholderRole: .reps
-                    )
+                    if planningMode && individualUsesRange {
+                        HStack(spacing: 6) {
+                            individualRangeField(setIndex: setIndex, side: .min, active: active)
+                            individualRangeField(setIndex: setIndex, side: .max, active: active)
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        SetNumericField(
+                            placeholder: repsPlaceholderForField(setIndex),
+                            text: Binding(
+                                get: { sharedRepsValue(for: setIndex) },
+                                set: { value in
+                                    updateSharedRepsValue(value, for: setIndex)
+                                }
+                            ),
+                            keyboard: .numberPad,
+                            focus: .reps(itemIndex: itemIndex, setIndex: setIndex),
+                            focusedField: $focusedField,
+                            isActive: active,
+                            isDisabled: readOnly,
+                            placeholderRole: .reps
+                        )
+                    }
                 }
 
                 if showsWeightColumn {
@@ -1150,7 +1265,9 @@ private struct ExerciseSetsCard: View {
                         focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
                         focusedField: $focusedField,
                         isActive: active,
-                        isDisabled: readOnly
+                        isDisabled: readOnly,
+                        caption: calculatedWeightCaption(weight: item.sets[setIndex].weight, weightType: item.weightType),
+                        reservesCaptionSpace: reservesCalculatedWeightCaption(weightType: item.weightType)
                     )
                     .frame(maxWidth: .infinity)
                 }
@@ -1236,6 +1353,209 @@ private struct ExerciseSetsCard: View {
                 }
             }
         }
+    }
+
+    private func sideRepsSetRow(_ setIndex: Int) -> some View {
+        let active = isActiveExercise && activeSetIndex == setIndex
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Set \(setIndex + 1)")
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(active ? Theme.accent : Theme.muted)
+                    .textCase(.uppercase)
+
+                if setIsComplete(setIndex) {
+                    RestTimerText(set: item.sets[setIndex], targetSeconds: item.sets[setIndex].restTargetSeconds ?? item.restTargetSeconds)
+                        .frame(minWidth: 48, alignment: .leading)
+                }
+
+                Spacer(minLength: 8)
+
+                if !readOnly && !planningMode {
+                    SetCompleteButton(
+                        isComplete: setIsComplete(setIndex),
+                        isEnabled: setCanComplete(setIndex)
+                    ) {
+                        onSetCompleted?(itemIndex, setIndex)
+                    }
+                }
+
+                if !readOnly {
+                    IconCircleButton(
+                        systemName: "xmark",
+                        tint: Theme.muted,
+                        disabled: item.sets.count <= 1
+                    ) {
+                        removeSet(setIndex)
+                    }
+                }
+            }
+
+            LazyVGrid(columns: sideRepsInputColumns, alignment: .leading, spacing: 8) {
+                sideRepsInput(setIndex: setIndex, side: .left, title: "Left", active: active)
+                sideRepsInput(setIndex: setIndex, side: .right, title: "Right", active: active)
+
+                if showsWeightColumn {
+                    sideRepsWeightInput(setIndex: setIndex, active: active)
+                }
+            }
+
+            if !readOnly && !planningMode {
+                HStack(spacing: rowSpacing) {
+                    Menu {
+                        ForEach(setTypeOptions, id: \.value) { option in
+                            Button(option.label) {
+                                item.sets[setIndex].setType = option.value
+                                onChanged?()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Type")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                            Text(setTypeLabel(item.sets[setIndex].setType))
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(Theme.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                .stroke(Theme.border, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 116, maxWidth: .infinity)
+                    effortField(
+                        label: "RPE",
+                        value: Binding(
+                            get: { item.sets[setIndex].rpe ?? "" },
+                            set: { item.sets[setIndex].rpe = $0; onTextChanged?() }
+                        ),
+                        focus: .rpe(itemIndex: itemIndex, setIndex: setIndex),
+                        keyboard: .decimalPad
+                    )
+                    effortField(
+                        label: "RIR",
+                        value: Binding(
+                            get: { item.sets[setIndex].rir ?? "" },
+                            set: { item.sets[setIndex].rir = $0; onTextChanged?() }
+                        ),
+                        focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
+                        keyboard: .numberPad
+                    )
+                }
+            }
+        }
+        .padding(10)
+        .background(active ? Theme.accent.opacity(0.06) : Theme.surface.opacity(0.45))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(active ? Theme.accent.opacity(0.28) : Theme.border.opacity(0.75), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var sideRepsInputColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 76), spacing: 8, alignment: .top),
+            count: showsWeightColumn ? 3 : 2
+        )
+    }
+
+    private func sideRepsInput(setIndex: Int, side: RepSide, title: String, active: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+
+            SetNumericField(
+                placeholder: sideRepsPlaceholderForField(setIndex, side: side),
+                text: Binding(
+                    get: {
+                        switch side {
+                        case .left:
+                            return item.sets[setIndex].repsLeft ?? ""
+                        case .right:
+                            return item.sets[setIndex].repsRight ?? ""
+                        }
+                    },
+                    set: { value in
+                        switch side {
+                        case .left:
+                            item.sets[setIndex].repsLeft = value
+                        case .right:
+                            item.sets[setIndex].repsRight = value
+                        }
+                        onTextChanged?()
+                    }
+                ),
+                keyboard: .numberPad,
+                focus: side == .left
+                    ? .repsLeft(itemIndex: itemIndex, setIndex: setIndex)
+                    : .repsRight(itemIndex: itemIndex, setIndex: setIndex),
+                focusedField: $focusedField,
+                isActive: active,
+                isDisabled: readOnly,
+                placeholderRole: .reps
+            )
+        }
+    }
+
+    private func sideRepsWeightInput(setIndex: Int, active: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(weightHeaderLabel)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+
+            SetNumericField(
+                placeholder: item.sets[setIndex].placeholderWeight ?? "-",
+                text: Binding(
+                    get: { item.sets[setIndex].weight ?? "" },
+                    set: { value in
+                        item.sets[setIndex].weight = value
+                        onTextChanged?()
+                    }
+                ),
+                keyboard: .decimalPad,
+                focus: .weight(itemIndex: itemIndex, setIndex: setIndex),
+                focusedField: $focusedField,
+                isActive: active,
+                isDisabled: readOnly,
+                caption: calculatedWeightCaption(weight: item.sets[setIndex].weight, weightType: item.weightType),
+                reservesCaptionSpace: reservesCalculatedWeightCaption(weightType: item.weightType)
+            )
+        }
+    }
+
+    private func individualRangeField(setIndex: Int, side: CompactRangeSide, active: Bool) -> some View {
+        SetNumericField(
+            placeholder: individualRangePlaceholder(for: side),
+            text: Binding(
+                get: { individualRangeValue(for: setIndex, side: side) },
+                set: { value in
+                    updateIndividualRangeValue(value, for: setIndex, side: side)
+                }
+            ),
+            keyboard: .numberPad,
+            focus: individualRangeFocus(side, setIndex: setIndex),
+            focusedField: $focusedField,
+            isActive: active,
+            isDisabled: readOnly,
+            placeholderRole: .plain
+        )
     }
 
     private func effortField(
@@ -1396,12 +1716,17 @@ private struct CompactRepRange {
 }
 
 private func repRange(_ value: String) -> CompactRepRange? {
-    let parts = value
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let parts = rangeSourceText(value)
         .split(maxSplits: 1, omittingEmptySubsequences: false, whereSeparator: { $0 == "-" || $0 == "–" })
         .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
     guard parts.count == 2 else { return nil }
     return CompactRepRange(min: parts[0], max: parts[1])
+}
+
+private func rangeSourceText(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let context = RepsFieldPlaceholder(rawValue: trimmed) else { return trimmed }
+    return context.goal ?? context.last ?? trimmed
 }
 
 private func repRangeValue(min: String, max: String) -> String {
@@ -1419,15 +1744,21 @@ private struct SetNumericField: View {
     let isActive: Bool
     let isDisabled: Bool
     var placeholderRole: SetNumericFieldPlaceholderRole = .plain
+    var caption: String? = nil
+    var reservesCaptionSpace = false
 
     var body: some View {
+        let showsCaptionLine = reservesCaptionSpace || caption != nil
+        let fieldHeight: CGFloat = showsCaptionLine ? 58 : 44
+        let isFocused = focusedField == focus
+
         ZStack {
-            if let repsContext {
+            if let repsContext, !isFocused {
                 RepsFieldPlaceholderView(value: repsContext)
                     .padding(.horizontal, 4)
                     .frame(maxWidth: .infinity)
                     .allowsHitTesting(false)
-            } else if text.wrappedValue.isEmpty, !placeholder.isEmpty {
+            } else if text.wrappedValue.isEmpty, !placeholder.isEmpty, !isFocused {
                 Text(placeholder)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Theme.muted.opacity(0.58))
@@ -1439,17 +1770,32 @@ private struct SetNumericField: View {
                     .allowsHitTesting(false)
             }
 
-            TextField("", text: text)
-                .keyboardType(keyboard)
-                .multilineTextAlignment(.center)
-                .focused($focusedField, equals: focus)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(repsContext == nil ? (isDisabled ? Theme.muted : Theme.text) : .clear)
-                .padding(.horizontal, 6)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(isDisabled)
+            VStack(spacing: 1) {
+                TextField("", text: text)
+                    .keyboardType(keyboard)
+                    .multilineTextAlignment(.center)
+                    .focused($focusedField, equals: focus)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(isDisabled ? Theme.muted : Theme.text)
+                    .padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, minHeight: showsCaptionLine ? 32 : 44)
+                    .disabled(isDisabled)
+
+                if showsCaptionLine {
+                    Text(caption ?? " ")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(caption == nil ? .clear : Theme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .monospacedDigit()
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 5)
+                        .allowsHitTesting(false)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 44)
+        .frame(maxWidth: .infinity, minHeight: fieldHeight)
         .background(isActive ? Theme.accent.opacity(0.08) : Theme.background)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)

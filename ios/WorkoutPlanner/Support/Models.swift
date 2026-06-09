@@ -686,6 +686,28 @@ func formatProgressionNumber(_ value: Double) -> String {
     return String(format: "%.1f", value)
 }
 
+func reservesCalculatedWeightCaption(weightType: String?) -> Bool {
+    weightType == "double" || weightType == "bar_double"
+}
+
+func calculatedWeightTotal(weight: String?, weightType: String?) -> Double? {
+    let value = Double((weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    guard value > 0 else { return nil }
+    switch weightType {
+    case "double":
+        return value * 2
+    case "bar_double":
+        return (value * 2) + 45
+    default:
+        return nil
+    }
+}
+
+func calculatedWeightCaption(weight: String?, weightType: String?) -> String? {
+    guard let total = calculatedWeightTotal(weight: weight, weightType: weightType) else { return nil }
+    return "Total \(formatProgressionNumber(total)) lbs"
+}
+
 func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {
     let seconds: Int
     if let duration {

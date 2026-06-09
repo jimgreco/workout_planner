@@ -34,6 +34,7 @@ struct WorkoutLogView: View {
     @State private var liveActivityUpdateGeneration = 0
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
+    @FocusState private var focusedLiveActivityField: WorkoutBuilderFocusedField?
 
     private var isActive: Bool { workoutId != nil }
     private var isPlanningMode: Bool { workoutId != nil && startTime == nil && !isEditing }
@@ -86,6 +87,7 @@ struct WorkoutLogView: View {
                     KeyboardDoneToolbar {
                         focusedTextField = nil
                         focusedBuilderField = nil
+                        focusedLiveActivityField = nil
                     }
                 }
             }
@@ -121,6 +123,16 @@ struct WorkoutLogView: View {
                 commitBuilderFieldsIfNeeded()
             }
             if let newValue {
+                focusedLiveActivityField = nil
+                clearBuilderFieldForEntry(newValue)
+            }
+        }
+        .onChange(of: focusedLiveActivityField) { oldValue, newValue in
+            if oldValue != nil, newValue != oldValue {
+                commitBuilderFieldsIfNeeded()
+            }
+            if let newValue {
+                focusedBuilderField = nil
                 clearBuilderFieldForEntry(newValue)
             }
         }
@@ -211,7 +223,7 @@ struct WorkoutLogView: View {
             startTime: startTime,
             activeExerciseIndex: $activeExerciseIndex,
             activeSetIndex: $activeSetIndex,
-            focusedField: $focusedBuilderField,
+            focusedField: $focusedLiveActivityField,
             onSetCompleted: markSetCompleted,
             onEndRest: endRest,
             onExtendRest: extendRest,
@@ -728,6 +740,8 @@ struct WorkoutLogView: View {
             weightType: item.weightType ?? last?.weightType ?? "weight",
             restTargetSeconds: item.restTargetSeconds,
             supersetGroup: item.supersetGroup,
+            description: item.description,
+            useIndividualReps: item.useIndividualReps,
             sets: sets
         )
     }
@@ -939,18 +953,36 @@ struct WorkoutLogView: View {
         if items.indices.contains(nextExercise) {
             activeExerciseIndex = nextExercise
             activeSetIndex = nextSet
-            focusedBuilderField = repsFocusField(itemIndex: nextExercise, setIndex: nextSet)
+            focusLiveActivityReps(itemIndex: nextExercise, setIndex: nextSet)
         }
         scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: now)
         updateExternalLiveActivityNow()
         saveNow(status: currentStatus())
     }
 
+    private func focusLiveActivityReps(itemIndex: Int, setIndex: Int) {
+        let nextField = repsFocusField(itemIndex: itemIndex, setIndex: setIndex)
+        focusedTextField = nil
+        focusedBuilderField = nil
+        focusedLiveActivityField = nil
+
+        Task { @MainActor in
+            await Task.yield()
+            guard shouldShowLiveActivityCard,
+                  activeExerciseIndex == itemIndex,
+                  activeSetIndex == setIndex,
+                  items.indices.contains(itemIndex),
+                  items[itemIndex].sets.indices.contains(setIndex)
+            else { return }
+            focusedLiveActivityField = nextField
+        }
+    }
+
     private func clearBuilderFieldForEntry(_ field: WorkoutBuilderFocusedField) {
         let itemIndex: Int
         let setIndex: Int
         switch field {
-        case let .reps(i, s), let .repsLeft(i, s), let .repsRight(i, s), let .weight(i, s), let .rpe(i, s), let .rir(i, s):
+        case let .reps(i, s), let .repsMin(i, s), let .repsMax(i, s), let .repsLeft(i, s), let .repsRight(i, s), let .weight(i, s), let .rpe(i, s), let .rir(i, s):
             itemIndex = i
             setIndex = s
         }
@@ -958,7 +990,7 @@ struct WorkoutLogView: View {
         guard items.indices.contains(itemIndex), items[itemIndex].sets.indices.contains(setIndex) else { return }
 
         switch field {
-        case .reps:
+        case .reps, .repsMin, .repsMax:
             guard items[itemIndex].sets[setIndex].reps?.isEmpty == false else { return }
             items[itemIndex].sets[setIndex].reps = ""
         case .repsLeft:
@@ -1590,7 +1622,9 @@ private struct WorkoutLiveActivityCard: View {
                             title: "Weight",
                             text: stringBinding(set, \.weight),
                             placeholder: weightPlaceholder(for: context) ?? "0",
-                            keyboard: .decimalPad
+                            keyboard: .decimalPad,
+                            caption: calculatedWeightCaption(weight: set.wrappedValue.weight, weightType: context.item.weightType),
+                            reservesCaptionSpace: reservesCalculatedWeightCaption(weightType: context.item.weightType)
                         )
                         .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
                     }
@@ -2030,8 +2064,12 @@ private struct WorkoutLiveInput: View {
     @Binding var text: String
     let placeholder: String
     let keyboard: UIKeyboardType
+    var caption: String? = nil
+    var reservesCaptionSpace = false
 
     var body: some View {
+        let showsCaptionLine = reservesCaptionSpace || caption != nil
+
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 10, weight: .heavy))
@@ -2045,6 +2083,15 @@ private struct WorkoutLiveInput: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
+
+            if showsCaptionLine {
+                Text(caption ?? " ")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(caption == nil ? .clear : Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .monospacedDigit()
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
