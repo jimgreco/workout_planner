@@ -56,11 +56,11 @@ struct WorkoutBuilderView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            ForEach(items.indices, id: \.self) { index in
-                if let exercise = exercise(for: items[index].exerciseId) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                if let exercise = exercise(for: item.exerciseId) {
                     ExerciseSetsCard(
                         exercise: exercise,
-                        item: $items[index],
+                        item: bindingForItem(at: index, fallback: item),
                         focusedField: $focusedField,
                         itemIndex: index,
                         isActiveExercise: activeExerciseIndex == index,
@@ -168,6 +168,21 @@ struct WorkoutBuilderView: View {
 
     private func exercise(for id: String) -> Exercise? {
         exercises.first { $0.id == id }
+    }
+
+    private func bindingForItem(at index: Int, fallback: ExerciseItem) -> Binding<ExerciseItem> {
+        Binding(
+            get: {
+                guard items.indices.contains(index), items[index].exerciseId == fallback.exerciseId else {
+                    return fallback
+                }
+                return items[index]
+            },
+            set: { value in
+                guard items.indices.contains(index), items[index].exerciseId == fallback.exerciseId else { return }
+                items[index] = value
+            }
+        )
     }
 
     private func addExercise(_ exercise: Exercise) {
