@@ -215,6 +215,46 @@ describe('WorkoutBuilder', () => {
     expect(screen.getByLabelText(/max reps/i)).toHaveValue('');
   });
 
+  it('uses one routine target for unilateral exercises while planning', () => {
+    const onChange = vi.fn();
+    const unilateralExercises = [{ ...exercises[0], isUnilateral: true }];
+    const items = [{
+      exerciseId: 'ex1',
+      sets: [{ reps: '6', placeholderRepsLeft: '8', placeholderRepsRight: '8', repsLeft: '7', repsRight: '7', weight: '' }],
+    }];
+    render(<WorkoutBuilder exercises={unilateralExercises} items={items} onChange={onChange} planningMode />);
+
+    expect(screen.queryByLabelText(/left reps/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/right reps/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/reps for all sets/i)).toHaveValue('8');
+
+    fireEvent.change(screen.getByLabelText(/reps for all sets/i), { target: { value: '10' } });
+    expect(onChange.mock.calls[0][0][0].sets[0]).toEqual({
+      placeholderReps: '10',
+      weight: '',
+    });
+  });
+
+  it('uses one per-set routine target for unilateral exercises while planning', () => {
+    const onChange = vi.fn();
+    const unilateralExercises = [{ ...exercises[0], isUnilateral: true }];
+    const items = [{
+      exerciseId: 'ex1',
+      useIndividualReps: true,
+      sets: [{ reps: '6', placeholderRepsLeft: '8', placeholderRepsRight: '8', repsLeft: '7', repsRight: '7', weight: '' }],
+    }];
+    render(<WorkoutBuilder exercises={unilateralExercises} items={items} onChange={onChange} planningMode />);
+
+    expect(screen.queryByLabelText(/left reps/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/right reps/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('8'), { target: { value: '10' } });
+
+    expect(onChange.mock.calls[0][0][0].sets[0]).toEqual({
+      placeholderReps: '10',
+      weight: '',
+    });
+  });
+
   it('removes an exercise when ✕ button is clicked', () => {
     const onChange = vi.fn();
     const items = [

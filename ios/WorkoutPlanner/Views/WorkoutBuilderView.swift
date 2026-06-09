@@ -237,12 +237,8 @@ struct WorkoutBuilderView: View {
             planningMode
                 ? WorkoutSet(
                     reps: "",
-                    repsLeft: exercise.isUnilateral == true ? "" : nil,
-                    repsRight: exercise.isUnilateral == true ? "" : nil,
                     weight: "",
-                    placeholderReps: String(repCount),
-                    placeholderRepsLeft: exercise.isUnilateral == true ? String(repCount) : nil,
-                    placeholderRepsRight: exercise.isUnilateral == true ? String(repCount) : nil
+                    placeholderReps: String(repCount)
                 )
                 : WorkoutSet(
                     reps: String(repCount),
@@ -319,6 +315,9 @@ private struct ExerciseSetsCard: View {
     private let rowSpacing: CGFloat = 6
     private var showsWeightColumn: Bool {
         showWeight && item.weightType != "none" && !planningMode
+    }
+    private var usesSideReps: Bool {
+        exercise.isUnilateral == true && !planningMode
     }
     private var canResetPersonalBest: Bool {
         !readOnly && !planningMode && exercise.personalBest != nil && onResetPersonalBest != nil
@@ -605,7 +604,7 @@ private struct ExerciseSetsCard: View {
         HStack(spacing: rowSpacing) {
             Text("Set")
                 .frame(width: setColumnWidth)
-            Text(exercise.isUnilateral == true ? "\(repUnitTitle) L/R" : repUnitTitle)
+            Text(usesSideReps ? "\(repUnitTitle) L/R" : repUnitTitle)
                 .frame(maxWidth: .infinity)
             if showsWeightColumn {
                 Text(weightHeaderLabel)
@@ -642,21 +641,7 @@ private struct ExerciseSetsCard: View {
             .font(.system(size: 13, weight: .semibold))
             .tint(Theme.accent)
 
-            if exercise.isUnilateral == true {
-                if compactUsesRange {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        compactField("Left min", field: .left, value: rangeBinding(field: .left, side: .min))
-                        compactField("Left max", field: .left, value: rangeBinding(field: .left, side: .max))
-                        compactField("Right min", field: .right, value: rangeBinding(field: .right, side: .min))
-                        compactField("Right max", field: .right, value: rangeBinding(field: .right, side: .max))
-                    }
-                } else {
-                    HStack(spacing: 8) {
-                        compactField("Left \(repUnit)", field: .left, value: compactBinding(field: .left))
-                        compactField("Right \(repUnit)", field: .right, value: compactBinding(field: .right))
-                    }
-                }
-            } else if compactUsesRange {
+            if compactUsesRange {
                 HStack(spacing: 8) {
                     compactField("Min \(repUnit)", field: .reps, value: rangeBinding(field: .reps, side: .min))
                     compactField("Max \(repUnit)", field: .reps, value: rangeBinding(field: .reps, side: .max))
@@ -706,9 +691,6 @@ private struct ExerciseSetsCard: View {
     }
 
     private var compactUsesRange: Bool {
-        if exercise.isUnilateral == true {
-            return repRange(compactValue(field: .left)) != nil || repRange(compactValue(field: .right)) != nil
-        }
         return repRange(compactValue(field: .reps)) != nil
     }
 
@@ -794,12 +776,58 @@ private struct ExerciseSetsCard: View {
         guard let first = item.sets.first else { return "" }
         switch field {
         case .reps:
-            return first.placeholderReps ?? first.reps ?? ""
+            if let placeholderReps = first.placeholderReps {
+                return placeholderReps
+            }
+            return firstFilled([
+                first.placeholderRepsLeft,
+                first.repsLeft,
+                first.placeholderRepsRight,
+                first.repsRight,
+                first.reps
+            ]) ?? ""
         case .left:
             return first.placeholderRepsLeft ?? first.repsLeft ?? first.placeholderReps ?? first.reps ?? ""
         case .right:
             return first.placeholderRepsRight ?? first.repsRight ?? first.placeholderReps ?? first.reps ?? ""
         }
+    }
+
+    private func firstFilled(_ values: [String?]) -> String? {
+        values
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    private func sharedRepsValue(for setIndex: Int) -> String {
+        guard item.sets.indices.contains(setIndex) else { return "" }
+        let set = item.sets[setIndex]
+        guard planningMode else { return set.reps ?? "" }
+        if let placeholderReps = set.placeholderReps {
+            return placeholderReps
+        }
+        return firstFilled([
+            set.placeholderRepsLeft,
+            set.repsLeft,
+            set.placeholderRepsRight,
+            set.repsRight,
+            set.reps
+        ]) ?? ""
+    }
+
+    private func updateSharedRepsValue(_ value: String, for setIndex: Int) {
+        guard item.sets.indices.contains(setIndex) else { return }
+        if planningMode {
+            item.sets[setIndex].placeholderReps = value
+            item.sets[setIndex].reps = nil
+            item.sets[setIndex].repsLeft = nil
+            item.sets[setIndex].repsRight = nil
+            item.sets[setIndex].placeholderRepsLeft = nil
+            item.sets[setIndex].placeholderRepsRight = nil
+        } else {
+            item.sets[setIndex].reps = value
+        }
+        onTextChanged?()
     }
 
     private func compactTextValue(field: CompactRepField) -> String {
@@ -819,6 +847,11 @@ private struct ExerciseSetsCard: View {
             switch field {
             case .reps:
                 item.sets[index].placeholderReps = value
+                item.sets[index].reps = nil
+                item.sets[index].repsLeft = nil
+                item.sets[index].repsRight = nil
+                item.sets[index].placeholderRepsLeft = nil
+                item.sets[index].placeholderRepsRight = nil
             case .left:
                 item.sets[index].placeholderRepsLeft = value
             case .right:
@@ -828,7 +861,7 @@ private struct ExerciseSetsCard: View {
     }
 
     private func setCompactRangeMode(_ enabled: Bool) {
-        let fields: [CompactRepField] = exercise.isUnilateral == true ? [.left, .right] : [.reps]
+        let fields: [CompactRepField] = [.reps]
         for field in fields {
             let current = compactValue(field: field)
             let range = repRange(current)
@@ -852,7 +885,7 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.muted)
                     .frame(width: setColumnWidth)
 
-                if exercise.isUnilateral == true {
+                if usesSideReps {
                     HStack(spacing: 4) {
                         SetNumericField(
                             placeholder: sideRepsPlaceholderForField(setIndex, side: .left),
@@ -892,10 +925,9 @@ private struct ExerciseSetsCard: View {
                     SetNumericField(
                         placeholder: repsPlaceholderForField(setIndex),
                         text: Binding(
-                            get: { item.sets[setIndex].reps ?? "" },
+                            get: { sharedRepsValue(for: setIndex) },
                             set: { value in
-                                item.sets[setIndex].reps = value
-                                onTextChanged?()
+                                updateSharedRepsValue(value, for: setIndex)
                             }
                         ),
                         keyboard: .numberPad,
@@ -1043,12 +1075,12 @@ private struct ExerciseSetsCard: View {
         let last = item.sets.last ?? WorkoutSet(reps: String(defaultReps), weight: "")
         item.sets.append(WorkoutSet(
             reps: last.reps ?? (planningMode ? "" : String(defaultReps)),
-            repsLeft: last.repsLeft,
-            repsRight: last.repsRight,
+            repsLeft: planningMode ? nil : last.repsLeft,
+            repsRight: planningMode ? nil : last.repsRight,
             weight: last.weight ?? "",
             placeholderReps: last.placeholderReps,
-            placeholderRepsLeft: last.placeholderRepsLeft,
-            placeholderRepsRight: last.placeholderRepsRight,
+            placeholderRepsLeft: planningMode ? nil : last.placeholderRepsLeft,
+            placeholderRepsRight: planningMode ? nil : last.placeholderRepsRight,
             placeholderWeight: last.placeholderWeight
         ))
         onChanged?()

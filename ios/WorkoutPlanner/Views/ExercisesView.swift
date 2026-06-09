@@ -392,6 +392,13 @@ struct ExerciseFormSheet: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var form: Exercise
     @Binding var isSaving: Bool
+    @FocusState private var focusedField: FocusedField?
+
+    private enum FocusedField: Hashable {
+        case name
+        case notes
+        case description
+    }
 
     init(exercise: Exercise, isSaving: Binding<Bool>) {
         _form = State(initialValue: exercise)
@@ -406,6 +413,7 @@ struct ExerciseFormSheet: View {
                         get: { form.name },
                         set: { form.name = $0 }
                     ))
+                    .focused($focusedField, equals: .name)
                     Picker("Muscle Group", selection: Binding(
                         get: { form.muscleGroup },
                         set: { form.muscleGroup = $0 }
@@ -418,6 +426,7 @@ struct ExerciseFormSheet: View {
                         get: { form.notes ?? "" },
                         set: { form.notes = $0 }
                     ), axis: .vertical)
+                    .focused($focusedField, equals: .notes)
                     .lineLimit(2...4)
                 }
                 Section {
@@ -425,6 +434,7 @@ struct ExerciseFormSheet: View {
                         get: { form.description ?? "" },
                         set: { form.description = $0 }
                     ), axis: .vertical)
+                    .focused($focusedField, equals: .description)
                     .lineLimit(2...5)
                     Toggle("Track left and right reps separately", isOn: Binding(
                         get: { form.isUnilateral == true },
@@ -462,6 +472,11 @@ struct ExerciseFormSheet: View {
                     }
                     .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
+                ToolbarItem(placement: .keyboard) {
+                    KeyboardDoneToolbar {
+                        focusedField = nil
+                    }
+                }
             }
         }
     }
@@ -491,6 +506,12 @@ private struct PersonalBestSheet: View {
     @State private var reps: String
     @State private var date: Date
     @Binding var isSaving: Bool
+    @FocusState private var focusedField: FocusedField?
+
+    private enum FocusedField: Hashable {
+        case weight
+        case reps
+    }
 
     init(exercise: Exercise, isSaving: Binding<Bool>) {
         _exercise = State(initialValue: exercise)
@@ -506,8 +527,10 @@ private struct PersonalBestSheet: View {
                 Section("Personal Best") {
                     TextField("e.g. 225", text: $weight)
                         .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .weight)
                     TextField(exercise.usesTime == true ? "Secs (optional)" : "Reps (optional)", text: $reps)
                         .keyboardType(.numberPad)
+                        .focused($focusedField, equals: .reps)
                     DatePicker("Date Achieved", selection: $date, displayedComponents: .date)
                 }
                 Section {
@@ -526,6 +549,11 @@ private struct PersonalBestSheet: View {
                         Task { await save() }
                     }
                     .disabled(isSaving)
+                }
+                ToolbarItem(placement: .keyboard) {
+                    KeyboardDoneToolbar {
+                        focusedField = nil
+                    }
                 }
             }
         }

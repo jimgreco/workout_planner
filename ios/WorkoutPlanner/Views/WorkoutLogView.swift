@@ -688,25 +688,40 @@ struct WorkoutLogView: View {
 
     private func prepopulated(_ item: ExerciseItem, program: TrainingProgram? = nil) -> ExerciseItem {
         let last = lastFinishedItem(for: item.exerciseId)
+        let isUnilateral = store.exercise(id: item.exerciseId)?.isUnilateral == true
         let hitTarget = program != nil ? exerciseHitTarget(templateSets: item.sets, lastSets: last?.sets ?? []) : false
         let hitCap = program != nil ? exerciseHitRepCap(templateSets: item.sets, lastSets: last?.sets ?? [], cap: Double(program?.progression?.maxReps ?? 12)) : false
         let sets = item.sets.enumerated().map { offset, set in
-            let plannedReps = set.reps?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let placeholderReps = set.placeholderReps?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let targetReps = plannedReps?.isEmpty == false
-                ? plannedReps ?? String(store.settings.defaultReps)
-                : (placeholderReps?.isEmpty == false ? placeholderReps ?? String(store.settings.defaultReps) : String(store.settings.defaultReps))
+            let targetReps = plannedRepText(set, fallback: String(store.settings.defaultReps))
+            let targetLeft = plannedSideRepText(set, side: .left, fallback: targetReps)
+            let targetRight = plannedSideRepText(set, side: .right, fallback: targetReps)
             let targets = programTargets(for: set, lastSet: last?.sets.indices.contains(offset) == true ? last?.sets[offset] : nil, program: program, hitTarget: hitTarget, hitCap: hitCap)
+            let targetPlaceholder = targets.reps.isEmpty ? targetReps : targets.reps
             if let last, last.sets.indices.contains(offset) {
                 let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let lastLeft = last.sets[offset].repsLeft?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
+                let lastRight = last.sets[offset].repsRight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
                 return WorkoutSet(
                     reps: "",
+                    repsLeft: isUnilateral ? "" : nil,
+                    repsRight: isUnilateral ? "" : nil,
                     weight: "",
-                    placeholderReps: lastReps.isEmpty ? targets.reps : "\(lastReps) (\(targets.reps))",
+                    placeholderReps: lastReps.isEmpty ? targetPlaceholder : "\(lastReps) (\(targetPlaceholder))",
+                    placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? (targets.reps.isEmpty ? targetLeft : targets.reps) : "\(lastLeft) (\(targetPlaceholder))") : nil,
+                    placeholderRepsRight: isUnilateral ? (lastRight.isEmpty ? (targets.reps.isEmpty ? targetRight : targets.reps) : "\(lastRight) (\(targetPlaceholder))") : nil,
                     placeholderWeight: targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
                 )
             }
-            return WorkoutSet(reps: "", weight: "", placeholderReps: targets.reps.isEmpty ? targetReps : targets.reps, placeholderWeight: targets.weight)
+            return WorkoutSet(
+                reps: "",
+                repsLeft: isUnilateral ? "" : nil,
+                repsRight: isUnilateral ? "" : nil,
+                weight: "",
+                placeholderReps: targetPlaceholder,
+                placeholderRepsLeft: isUnilateral ? targetPlaceholder : nil,
+                placeholderRepsRight: isUnilateral ? targetPlaceholder : nil,
+                placeholderWeight: targets.weight
+            )
         }
         return ExerciseItem(
             exerciseId: item.exerciseId,
@@ -721,15 +736,48 @@ struct WorkoutLogView: View {
         Double(value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
     }
 
+    private enum RepSide {
+        case left
+        case right
+    }
+
+    private func firstFilled(_ values: [String?]) -> String? {
+        values
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    private func plannedRepText(_ set: WorkoutSet, fallback: String) -> String {
+        firstFilled([
+            set.placeholderReps,
+            set.placeholderRepsLeft,
+            set.repsLeft,
+            set.placeholderRepsRight,
+            set.repsRight,
+            set.reps,
+            fallback
+        ]) ?? fallback
+    }
+
+    private func plannedSideRepText(_ set: WorkoutSet, side: RepSide, fallback: String) -> String {
+        if let common = firstFilled([set.placeholderReps]) {
+            return common
+        }
+        switch side {
+        case .left:
+            return firstFilled([set.placeholderRepsLeft, set.repsLeft, set.reps, fallback]) ?? fallback
+        case .right:
+            return firstFilled([set.placeholderRepsRight, set.repsRight, set.reps, fallback]) ?? fallback
+        }
+    }
+
     private func repValue(_ set: WorkoutSet?) -> Double {
         max(numeric(set?.reps), numeric(set?.repsLeft), numeric(set?.repsRight))
     }
 
     private func plannedRepValue(_ set: WorkoutSet) -> Double {
-        let planned = numeric(set.reps)
-        if planned > 0 { return planned }
-        let placeholder = numeric(set.placeholderReps)
-        return placeholder > 0 ? placeholder : Double(store.settings.defaultReps)
+        let planned = numeric(plannedRepText(set, fallback: String(store.settings.defaultReps)))
+        return planned > 0 ? planned : Double(store.settings.defaultReps)
     }
 
     private func exerciseHitTarget(templateSets: [WorkoutSet], lastSets: [WorkoutSet]) -> Bool {

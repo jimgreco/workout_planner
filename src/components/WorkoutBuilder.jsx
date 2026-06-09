@@ -80,11 +80,37 @@ function repRangeValue(min, max, { preserveRange = false } = {}) {
   return cleanMin || cleanMax;
 }
 
+function firstFilledRepValue(values) {
+  const value = values.find((entry) => entry !== undefined && entry !== null && String(entry).trim() !== '');
+  return value ?? '';
+}
+
 function compactRepValue(set = {}, field) {
-  if (field === 'placeholderReps') return set.placeholderReps ?? set.reps ?? '';
+  if (field === 'placeholderReps') {
+    if (set.placeholderReps !== undefined && set.placeholderReps !== null) return set.placeholderReps;
+    return firstFilledRepValue([
+      set.placeholderRepsLeft,
+      set.repsLeft,
+      set.placeholderRepsRight,
+      set.repsRight,
+      set.reps,
+    ]);
+  }
   if (field === 'placeholderRepsLeft') return set.placeholderRepsLeft ?? set.repsLeft ?? set.placeholderReps ?? set.reps ?? '';
   if (field === 'placeholderRepsRight') return set.placeholderRepsRight ?? set.repsRight ?? set.placeholderReps ?? set.reps ?? '';
   return set[field] ?? '';
+}
+
+function setRepField(set, field, value) {
+  const next = { ...set, [field]: value };
+  if (field === 'placeholderReps') {
+    delete next.reps;
+    delete next.repsLeft;
+    delete next.repsRight;
+    delete next.placeholderRepsLeft;
+    delete next.placeholderRepsRight;
+  }
+  return next;
 }
 
 function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
@@ -162,11 +188,12 @@ export default function WorkoutBuilder({
     const exercise = exById(exerciseId);
     const setCount = exercise?.defaultSets || defaultSets;
     const repCount = exercise?.defaultReps || defaultReps;
+    const useSideReps = Boolean(exercise?.isUnilateral) && !planningMode;
     const item = {
       exerciseId,
       sets: Array.from({ length: setCount }, () => ({
         reps: String(repCount),
-        ...(exercise?.isUnilateral ? { repsLeft: String(repCount), repsRight: String(repCount) } : {}),
+        ...(useSideReps ? { repsLeft: String(repCount), repsRight: String(repCount) } : {}),
         weight: '',
       })),
       weightType: 'weight',
@@ -252,7 +279,7 @@ export default function WorkoutBuilder({
       return {
         ...item,
         sets: item.sets.map((s, si) =>
-          si === setIdx ? { ...s, [field]: value } : s,
+          si === setIdx ? setRepField(s, field, value) : s,
         ),
       };
     });
@@ -300,7 +327,7 @@ export default function WorkoutBuilder({
       if (i !== itemIdx) return item;
       return {
         ...item,
-        sets: item.sets.map((set) => ({ ...set, [field]: value })),
+        sets: item.sets.map((set) => setRepField(set, field, value)),
       };
     });
     onChange(copy);
@@ -368,20 +395,15 @@ export default function WorkoutBuilder({
         if (!ex) return null;
         const hasWeightColumn = showWeight && (!readOnly || item.weightType !== 'none');
         const isUnilateral = Boolean(ex.isUnilateral);
+        const usesSideReps = isUnilateral && !planningMode;
         const usesTime = Boolean(ex.usesTime);
         const repUnit = usesTime ? 'secs' : 'reps';
         const repUnitTitle = usesTime ? 'Secs' : 'Reps';
         const repsField = planningMode ? 'placeholderReps' : 'reps';
-        const leftRepsField = planningMode ? 'placeholderRepsLeft' : 'repsLeft';
-        const rightRepsField = planningMode ? 'placeholderRepsRight' : 'repsRight';
         const firstSet = item.sets[0] || {};
-        const compactLeftValue = firstSet[leftRepsField] ?? firstSet[repsField] ?? firstSet.repsLeft ?? firstSet.reps ?? '';
-        const compactRightValue = firstSet[rightRepsField] ?? firstSet[repsField] ?? firstSet.repsRight ?? firstSet.reps ?? '';
-        const compactRepsValue = firstSet[repsField] ?? firstSet.reps ?? '';
-        const compactLeftRange = repRange(compactLeftValue);
-        const compactRightRange = repRange(compactRightValue);
+        const compactRepsValue = compactRepValue(firstSet, repsField);
         const compactRepsRange = repRange(compactRepsValue);
-        const compactUsesRange = Boolean(isUnilateral ? (compactLeftRange || compactRightRange) : compactRepsRange);
+        const compactUsesRange = Boolean(compactRepsRange);
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
           + (!readOnly && !planningMode ? 1 : 0)
@@ -508,73 +530,13 @@ export default function WorkoutBuilder({
                     type="checkbox"
                     checked={compactUsesRange}
                     onChange={(e) => {
-                      setCompactRangeMode(idx, isUnilateral ? [leftRepsField, rightRepsField] : [repsField], e.target.checked);
+                      setCompactRangeMode(idx, [repsField], e.target.checked);
                     }}
                   />
                   <span>Use {repUnit} range</span>
                 </label>
                 <div className="form-row">
-                  {isUnilateral && compactUsesRange ? (
-                    <>
-                      <label className="form-group">
-                        <span>Left min</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={compactLeftRange?.min ?? compactLeftValue}
-                          onChange={(e) => updateAllSetRepRange(idx, leftRepsField, 'min', e.target.value)}
-                        />
-                      </label>
-                      <label className="form-group">
-                        <span>Left max</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={compactLeftRange?.max ?? ''}
-                          onChange={(e) => updateAllSetRepRange(idx, leftRepsField, 'max', e.target.value)}
-                        />
-                      </label>
-                      <label className="form-group">
-                        <span>Right min</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={compactRightRange?.min ?? compactRightValue}
-                          onChange={(e) => updateAllSetRepRange(idx, rightRepsField, 'min', e.target.value)}
-                        />
-                      </label>
-                      <label className="form-group">
-                        <span>Right max</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={compactRightRange?.max ?? ''}
-                          onChange={(e) => updateAllSetRepRange(idx, rightRepsField, 'max', e.target.value)}
-                        />
-                      </label>
-                    </>
-                  ) : isUnilateral ? (
-                    <>
-                      <label className="form-group">
-                        <span>Left {repUnit} for all sets</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={compactLeftValue}
-                          onChange={(e) => updateAllSetReps(idx, leftRepsField, e.target.value)}
-                        />
-                      </label>
-                      <label className="form-group">
-                        <span>Right {repUnit} for all sets</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={compactRightValue}
-                          onChange={(e) => updateAllSetReps(idx, rightRepsField, e.target.value)}
-                        />
-                      </label>
-                    </>
-                  ) : compactUsesRange ? (
+                  {compactUsesRange ? (
                     <>
                       <label className="form-group">
                         <span>Min {repUnit}</span>
@@ -622,7 +584,7 @@ export default function WorkoutBuilder({
               <thead>
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
-                  <th>{isUnilateral ? `${repUnitTitle} L/R` : repUnitTitle}</th>
+                  <th>{usesSideReps ? `${repUnitTitle} L/R` : repUnitTitle}</th>
                   {hasWeightColumn && (
                     <th style={{ paddingTop: 0, paddingBottom: 0 }}>
                       {!readOnly ? (
@@ -653,7 +615,7 @@ export default function WorkoutBuilder({
                   <tr className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
                     <td>
-                      {isUnilateral ? (
+                      {usesSideReps ? (
                         <div className="side-reps-inputs">
                           <input
                             type="text"
@@ -685,7 +647,7 @@ export default function WorkoutBuilder({
                           type="text"
                           inputMode="numeric"
                           placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
-                          value={planningMode ? (set.placeholderReps || '') : set.reps}
+                          value={planningMode ? compactRepValue(set, repsField) : (set.reps ?? '')}
                           onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderReps' : 'reps')}
                           onBlur={handleSetTextBlur}
                           onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value, { textEntry: true })}

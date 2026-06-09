@@ -98,8 +98,34 @@ function setRepValue(set) {
   return Math.max(numberValue(set?.reps), numberValue(set?.repsLeft), numberValue(set?.repsRight));
 }
 
+function firstFilledRepText(values) {
+  const value = values.find((entry) => entry !== undefined && entry !== null && String(entry).trim() !== '');
+  return value ?? '';
+}
+
+function plannedRepText(set, fallback) {
+  return String(
+    firstFilledRepText([
+      set?.placeholderReps,
+      set?.placeholderRepsLeft,
+      set?.repsLeft,
+      set?.placeholderRepsRight,
+      set?.repsRight,
+      set?.reps,
+      fallback,
+    ]),
+  );
+}
+
+function plannedSideRepText(set, side, fallback) {
+  const common = firstFilledRepText([set?.placeholderReps]);
+  if (common) return String(common);
+  if (side === 'left') return String(firstFilledRepText([set?.placeholderRepsLeft, set?.repsLeft, set?.reps, plannedRepText(set, fallback)]));
+  return String(firstFilledRepText([set?.placeholderRepsRight, set?.repsRight, set?.reps, plannedRepText(set, fallback)]));
+}
+
 function plannedRepValue(set, fallback) {
-  return numberValue(set?.reps || set?.placeholderReps || fallback);
+  return numberValue(plannedRepText(set, fallback));
 }
 
 function programDeloadActive(program, workoutDate) {
@@ -131,8 +157,8 @@ function programTargetsForSet(set, lastSet, program, hitTarget, hitCap, fallback
   const progression = program?.progression;
   const deload = programDeloadActive(program, workoutDate);
   let targetReps = plannedRepValue(set, fallbackReps) || fallbackReps;
-  let targetLeft = numberValue(set?.repsLeft || set?.placeholderRepsLeft) || targetReps;
-  let targetRight = numberValue(set?.repsRight || set?.placeholderRepsRight) || targetReps;
+  let targetLeft = numberValue(plannedSideRepText(set, 'left', targetReps)) || targetReps;
+  let targetRight = numberValue(plannedSideRepText(set, 'right', targetReps)) || targetReps;
   let targetWeight = numberValue(lastSet?.weight);
 
   if (progression && progression.type !== 'none' && hitTarget) {
@@ -544,9 +570,9 @@ export default function WorkoutLog({
           description: item.description,
           useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
-            const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
-            const targetLeft = s.repsLeft || s.placeholderRepsLeft || targetReps;
-            const targetRight = s.repsRight || s.placeholderRepsRight || targetReps;
+            const targetReps = plannedRepText(s, String(settings.defaultReps));
+            const targetLeft = plannedSideRepText(s, 'left', targetReps);
+            const targetRight = plannedSideRepText(s, 'right', targetReps);
             const programTargets = programTargetsForSet(s, lastItem?.sets?.[si], program, hitTarget, hitCap, settings.defaultReps, date);
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
               return {

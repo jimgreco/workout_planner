@@ -107,13 +107,22 @@ struct KeyboardDoneToolbar: View {
                 Text("Done")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Theme.accent)
-                    .padding(.trailing, 18)
+                    .padding(.trailing, 20)
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
+            .frame(width: UIScreen.main.bounds.width, height: 44, alignment: .trailing)
+            .background(toolbarBackground)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(.bar)
+        .accessibilityLabel("Done")
+    }
+
+    private var toolbarBackground: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 1)
+                : UIColor(red: 0.86, green: 0.86, blue: 0.88, alpha: 1)
+        })
     }
 }
 

@@ -99,4 +99,70 @@ describe('WorkoutLog', () => {
       placeholderWeight: '105',
     });
   });
+
+  it('uses a shared unilateral routine target when planning a workout', async () => {
+    render(
+      <WorkoutLog
+        exercises={[{ id: 'curl', name: 'Dumbbell Curl', muscleGroup: 'Biceps', isUnilateral: true }]}
+        templates={[{
+          id: 'tmpl-curl',
+          name: 'Arm Day',
+          description: '',
+          exerciseItems: [{
+            exerciseId: 'curl',
+            weightType: 'weight',
+            sets: [{ reps: '6', placeholderReps: '10', placeholderRepsLeft: '8', placeholderRepsRight: '9', weight: '' }],
+          }],
+        }]}
+        logs={[]}
+        programs={[]}
+        settings={settings}
+        onLogsChanged={() => {}}
+        onExercisesChanged={() => {}}
+      />,
+    );
+
+    const option = screen.getByRole('option', { name: /arm day/i });
+    fireEvent.change(option.closest('select'), { target: { value: 'tmpl-curl' } });
+
+    await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0].exerciseItems[0].sets[0]).toMatchObject({
+      placeholderReps: '10',
+      placeholderRepsLeft: '10',
+      placeholderRepsRight: '10',
+    });
+  });
+
+  it('uses legacy unilateral side targets before stale routine reps', async () => {
+    render(
+      <WorkoutLog
+        exercises={[{ id: 'curl', name: 'Dumbbell Curl', muscleGroup: 'Biceps', isUnilateral: true }]}
+        templates={[{
+          id: 'tmpl-curl',
+          name: 'Arm Day',
+          description: '',
+          exerciseItems: [{
+            exerciseId: 'curl',
+            weightType: 'weight',
+            sets: [{ reps: '6', placeholderRepsLeft: '8', placeholderRepsRight: '9', weight: '' }],
+          }],
+        }]}
+        logs={[]}
+        programs={[]}
+        settings={settings}
+        onLogsChanged={() => {}}
+        onExercisesChanged={() => {}}
+      />,
+    );
+
+    const option = screen.getByRole('option', { name: /arm day/i });
+    fireEvent.change(option.closest('select'), { target: { value: 'tmpl-curl' } });
+
+    await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0].exerciseItems[0].sets[0]).toMatchObject({
+      placeholderReps: '8',
+      placeholderRepsLeft: '8',
+      placeholderRepsRight: '9',
+    });
+  });
 });
