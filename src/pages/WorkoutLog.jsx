@@ -283,17 +283,18 @@ export default function WorkoutLog({
     if (!initialTemplate || isActive) return;
     const templateItems = (initialTemplate.exerciseItems || []).map((item) => {
       const lastItem = getLastItemForExercise(item.exerciseId, logs);
+      const weightType = item.weightType || lastItem?.weightType || 'weight';
       return {
         exerciseId: item.exerciseId,
-        weightType: item.weightType || (lastItem?.weightType) || 'weight',
+        weightType,
         restTargetSeconds: item.restTargetSeconds,
         supersetGroup: item.supersetGroup,
         sets: item.sets.map((s, si) => {
           const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
+            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType };
           }
-          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
+          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
         }),
       };
     });
@@ -374,9 +375,9 @@ export default function WorkoutLog({
         const merged = item.sets.map((s, si) => {
           const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight };
+            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType };
           }
-          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '' };
+          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: item.weightType || lastItem?.weightType || 'weight' };
         });
         return { ...item, sets: merged, weightType: item.weightType || lastItem?.weightType || 'weight' };
       });
@@ -563,9 +564,10 @@ export default function WorkoutLog({
         const lastItem = getLastItemForExercise(item.exerciseId, logs);
         const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
         const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
+        const weightType = item.weightType || lastItem?.weightType || 'weight';
         return {
           exerciseId: item.exerciseId,
-          weightType: item.weightType || lastItem?.weightType || 'weight',
+          weightType,
           restTargetSeconds: item.restTargetSeconds,
           description: item.description,
           useIndividualReps: item.useIndividualReps,
@@ -584,6 +586,7 @@ export default function WorkoutLog({
                 placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${program ? programTargets.repsLeft : targetLeft})`,
                 placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${program ? programTargets.repsRight : targetRight})`,
                 placeholderWeight: program ? programTargets.weight : lastItem.sets[si].weight,
+                placeholderWeightType: lastItem.weightType,
               };
             }
             return {
@@ -595,6 +598,7 @@ export default function WorkoutLog({
               placeholderRepsLeft: program ? programTargets.repsLeft : targetLeft,
               placeholderRepsRight: program ? programTargets.repsRight : targetRight,
               placeholderWeight: program ? programTargets.weight : '',
+              placeholderWeightType: weightType,
             };
           }),
         };

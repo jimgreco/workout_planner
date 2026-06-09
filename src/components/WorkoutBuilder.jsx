@@ -65,6 +65,28 @@ function weightTypeLabel(weightType) {
   return 'Weight';
 }
 
+function formatWeightNumber(value) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
+function contextualWeightPlaceholder(weight, sourceWeightType, targetWeightType) {
+  const raw = String(weight ?? '').trim();
+  if (!raw) return '';
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return raw;
+
+  const sourceType = sourceWeightType || targetWeightType || 'weight';
+  const targetType = targetWeightType || 'weight';
+  let total = value;
+  if (sourceType === 'double') total = value * 2;
+  if (sourceType === 'bar_double') total = (value * 2) + 45;
+
+  let contextualValue = total;
+  if (targetType === 'double') contextualValue = total / 2;
+  if (targetType === 'bar_double') contextualValue = Math.max(0, (total - 45) / 2);
+  return formatWeightNumber(contextualValue);
+}
+
 function repRange(value) {
   const text = String(value ?? '').trim();
   const match = text.match(/^(.*?)\s*[-–]\s*(.*?)$/);
@@ -210,9 +232,17 @@ export default function WorkoutBuilder({
   }
 
   function updateWeightType(itemIdx, weightType) {
-    const copy = items.map((item, i) =>
-      i === itemIdx ? { ...item, weightType } : item
-    );
+    const copy = items.map((item, i) => {
+      if (i !== itemIdx) return item;
+      const previousWeightType = item.weightType || 'weight';
+      const sets = previousWeightType === weightType
+        ? item.sets
+        : item.sets.map((set) => {
+          if (!String(set.placeholderWeight ?? '').trim() || set.placeholderWeightType) return set;
+          return { ...set, placeholderWeightType: previousWeightType };
+        });
+      return { ...item, weightType, sets };
+    });
     onChange(copy);
   }
 
@@ -258,6 +288,7 @@ export default function WorkoutBuilder({
           placeholderRepsLeft: lastSet.placeholderRepsLeft,
           placeholderRepsRight: lastSet.placeholderRepsRight,
           placeholderWeight: lastSet.placeholderWeight,
+          placeholderWeightType: lastSet.placeholderWeightType,
         }],
       };
     });
@@ -664,7 +695,7 @@ export default function WorkoutBuilder({
                               type="number"
                               min="0"
                               step="2.5"
-                              placeholder={set.placeholderWeight || "—"}
+                              placeholder={contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType) || "—"}
                               value={set.weight}
                               onFocus={() => handleSetTextFocus(idx, si, 'weight')}
                               onBlur={handleSetTextBlur}

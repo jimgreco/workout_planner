@@ -140,13 +140,18 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType']),
+    new Set(['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType']),
     `set ${index + 1}`,
   );
   const set = {};
   for (const field of ['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight']) {
     const str = stringValue(value[field], `set.${field}`, { max: 64 });
     if (str !== undefined) set[field] = str;
+  }
+  const placeholderWeightType = stringValue(value.placeholderWeightType, 'set.placeholderWeightType', { max: 16 });
+  if (placeholderWeightType !== undefined) {
+    if (!WEIGHT_TYPES.has(placeholderWeightType)) fail('set.placeholderWeightType is invalid');
+    set.placeholderWeightType = placeholderWeightType;
   }
   for (const field of ['rpe', 'rir']) {
     const str = stringValue(value[field], `set.${field}`, { max: 8 });

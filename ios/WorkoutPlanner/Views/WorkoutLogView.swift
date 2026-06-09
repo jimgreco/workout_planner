@@ -713,6 +713,10 @@ struct WorkoutLogView: View {
                 let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let lastLeft = last.sets[offset].repsLeft?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
                 let lastRight = last.sets[offset].repsRight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
+                let placeholderWeight = targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
+                let placeholderWeightType = targets.weight.isEmpty
+                    ? last.weightType
+                    : (last.weightType ?? item.weightType ?? "weight")
                 return WorkoutSet(
                     reps: "",
                     repsLeft: isUnilateral ? "" : nil,
@@ -721,7 +725,8 @@ struct WorkoutLogView: View {
                     placeholderReps: lastReps.isEmpty ? targetPlaceholder : "\(lastReps) (\(targetPlaceholder))",
                     placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? (targets.reps.isEmpty ? targetLeft : targets.reps) : "\(lastLeft) (\(targetPlaceholder))") : nil,
                     placeholderRepsRight: isUnilateral ? (lastRight.isEmpty ? (targets.reps.isEmpty ? targetRight : targets.reps) : "\(lastRight) (\(targetPlaceholder))") : nil,
-                    placeholderWeight: targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
+                    placeholderWeight: placeholderWeight,
+                    placeholderWeightType: placeholderWeightType
                 )
             }
             return WorkoutSet(
@@ -732,7 +737,8 @@ struct WorkoutLogView: View {
                 placeholderReps: targetPlaceholder,
                 placeholderRepsLeft: isUnilateral ? targetPlaceholder : nil,
                 placeholderRepsRight: isUnilateral ? targetPlaceholder : nil,
-                placeholderWeight: targets.weight
+                placeholderWeight: targets.weight,
+                placeholderWeightType: item.weightType ?? last?.weightType ?? "weight"
             )
         }
         return ExerciseItem(
@@ -1593,6 +1599,7 @@ private struct WorkoutLiveActivityCard: View {
 
     private func currentSetSection(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, isUpNext: Bool) -> some View {
         let showsWeight = context.item.weightType != "none"
+        let reservesWeightCaption = showsWeight && reservesCalculatedWeightCaption(weightType: context.item.weightType)
 
         return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
@@ -1613,7 +1620,8 @@ private struct WorkoutLiveActivityCard: View {
                         title: context.exercise.usesTime == true ? "Secs" : "Reps",
                         text: stringBinding(set, \.reps),
                         placeholder: repsLabel(for: context.set) ?? "0",
-                        keyboard: .numberPad
+                        keyboard: .numberPad,
+                        reservesCaptionSpace: reservesWeightCaption
                     )
                     .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
 
@@ -1779,8 +1787,7 @@ private struct WorkoutLiveActivityCard: View {
         Menu {
             ForEach(liveWeightTypeOptions, id: \.value) { option in
                 Button(option.label) {
-                    guard items.indices.contains(context.exerciseIndex) else { return }
-                    items[context.exerciseIndex].weightType = option.value
+                    updateWeightType(option.value, for: context)
                     onChanged()
                 }
             }
@@ -1788,6 +1795,20 @@ private struct WorkoutLiveActivityCard: View {
             WorkoutLiveMenuMetric(title: "Load", value: weightTypeLabel(context.item.weightType))
         }
         .buttonStyle(.plain)
+    }
+
+    private func updateWeightType(_ weightType: String, for context: WorkoutLiveSetContext) {
+        guard items.indices.contains(context.exerciseIndex) else { return }
+        let previousWeightType = items[context.exerciseIndex].weightType ?? "weight"
+        if previousWeightType != weightType {
+            for setIndex in items[context.exerciseIndex].sets.indices {
+                let placeholder = items[context.exerciseIndex].sets[setIndex].placeholderWeight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !placeholder.isEmpty, items[context.exerciseIndex].sets[setIndex].placeholderWeightType == nil {
+                    items[context.exerciseIndex].sets[setIndex].placeholderWeightType = previousWeightType
+                }
+            }
+        }
+        items[context.exerciseIndex].weightType = weightType
     }
 
     private func restTargetMenu(_ context: WorkoutLiveSetContext) -> some View {
@@ -1859,12 +1880,16 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func weightPlaceholder(for context: WorkoutLiveSetContext) -> String? {
-        cleaned(context.set.placeholderWeight)
+        contextualWeightPlaceholder(
+            weight: context.set.placeholderWeight,
+            sourceWeightType: context.set.placeholderWeightType ?? context.item.weightType,
+            targetWeightType: context.item.weightType
+        )
     }
 
     private func weightLabel(for context: WorkoutLiveSetContext) -> String? {
         guard context.item.weightType != "none" else { return nil }
-        guard let weight = cleaned(context.set.weight) ?? cleaned(context.set.placeholderWeight) else { return nil }
+        guard let weight = cleaned(context.set.weight) ?? weightPlaceholder(for: context) else { return nil }
         if context.item.weightType == "bar_double" { return "\(weight) lb each + bar" }
         return context.item.weightType == "double" ? "\(weight) lb each" : "\(weight) lb"
     }
@@ -2083,6 +2108,7 @@ private struct WorkoutLiveInput: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
+                .frame(height: 22, alignment: .leading)
 
             if showsCaptionLine {
                 Text(caption ?? " ")
@@ -2091,11 +2117,12 @@ private struct WorkoutLiveInput: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .monospacedDigit()
+                    .frame(height: 12, alignment: .leading)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: showsCaptionLine ? 82 : 70, alignment: .leading)
         .background(Theme.background.opacity(0.68))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }

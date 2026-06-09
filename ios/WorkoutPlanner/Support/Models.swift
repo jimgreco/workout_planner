@@ -71,6 +71,7 @@ struct WorkoutSet: Codable, Equatable {
     var placeholderRepsLeft: String?
     var placeholderRepsRight: String?
     var placeholderWeight: String?
+    var placeholderWeightType: String?
     var restStartTime: Double?
     var restDuration: Int?
     var restTargetSeconds: Int?
@@ -87,6 +88,7 @@ struct WorkoutSet: Codable, Equatable {
         placeholderRepsLeft: String? = nil,
         placeholderRepsRight: String? = nil,
         placeholderWeight: String? = nil,
+        placeholderWeightType: String? = nil,
         restStartTime: Double? = nil,
         restDuration: Int? = nil,
         restTargetSeconds: Int? = nil,
@@ -102,6 +104,7 @@ struct WorkoutSet: Codable, Equatable {
         self.placeholderRepsLeft = placeholderRepsLeft
         self.placeholderRepsRight = placeholderRepsRight
         self.placeholderWeight = placeholderWeight
+        self.placeholderWeightType = placeholderWeightType
         self.restStartTime = restStartTime
         self.restDuration = restDuration
         self.restTargetSeconds = restTargetSeconds
@@ -706,6 +709,35 @@ func calculatedWeightTotal(weight: String?, weightType: String?) -> Double? {
 func calculatedWeightCaption(weight: String?, weightType: String?) -> String? {
     guard let total = calculatedWeightTotal(weight: weight, weightType: weightType) else { return nil }
     return "Total \(formatProgressionNumber(total)) lbs"
+}
+
+func contextualWeightPlaceholder(weight: String?, sourceWeightType: String?, targetWeightType: String?) -> String? {
+    let raw = (weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !raw.isEmpty else { return nil }
+    guard let value = Double(raw) else { return raw }
+
+    let sourceType = sourceWeightType ?? targetWeightType ?? "weight"
+    let targetType = targetWeightType ?? "weight"
+    let total: Double
+    switch sourceType {
+    case "double":
+        total = value * 2
+    case "bar_double":
+        total = (value * 2) + 45
+    default:
+        total = value
+    }
+
+    let contextualValue: Double
+    switch targetType {
+    case "double":
+        contextualValue = total / 2
+    case "bar_double":
+        contextualValue = max(0, (total - 45) / 2)
+    default:
+        contextualValue = total
+    }
+    return formatProgressionNumber(contextualValue)
 }
 
 func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {

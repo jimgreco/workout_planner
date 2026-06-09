@@ -515,7 +515,7 @@ private struct ExerciseSetsCard: View {
             if showWeight && !readOnly {
                 Picker("Weight type", selection: Binding(
                     get: { item.weightType ?? "weight" },
-                    set: { item.weightType = $0; onChanged?() }
+                    set: { updateWeightType($0) }
                 )) {
                     Text("Weight").tag("weight")
                     Text("2x").tag("double")
@@ -1182,6 +1182,7 @@ private struct ExerciseSetsCard: View {
     @ViewBuilder
     private func setRow(_ setIndex: Int) -> some View {
         let active = isActiveExercise && activeSetIndex == setIndex
+        let reservesWeightCaption = showsWeightColumn && reservesCalculatedWeightCaption(weightType: item.weightType)
         VStack(spacing: 6) {
             HStack(spacing: rowSpacing) {
                 Text("\(setIndex + 1)")
@@ -1205,7 +1206,8 @@ private struct ExerciseSetsCard: View {
                             focusedField: $focusedField,
                             isActive: active,
                             isDisabled: readOnly,
-                            placeholderRole: .reps
+                            placeholderRole: .reps,
+                            reservesCaptionSpace: reservesWeightCaption
                         )
                         SetNumericField(
                             placeholder: sideRepsPlaceholderForField(setIndex, side: .right),
@@ -1221,7 +1223,8 @@ private struct ExerciseSetsCard: View {
                             focusedField: $focusedField,
                             isActive: active,
                             isDisabled: readOnly,
-                            placeholderRole: .reps
+                            placeholderRole: .reps,
+                            reservesCaptionSpace: reservesWeightCaption
                         )
                     }
                     .frame(maxWidth: .infinity)
@@ -1246,14 +1249,15 @@ private struct ExerciseSetsCard: View {
                             focusedField: $focusedField,
                             isActive: active,
                             isDisabled: readOnly,
-                            placeholderRole: .reps
+                            placeholderRole: .reps,
+                            reservesCaptionSpace: reservesWeightCaption
                         )
                     }
                 }
 
                 if showsWeightColumn {
                     SetNumericField(
-                        placeholder: item.sets[setIndex].placeholderWeight ?? "-",
+                        placeholder: weightPlaceholder(for: setIndex) ?? "-",
                         text: Binding(
                             get: { item.sets[setIndex].weight ?? "" },
                             set: { value in
@@ -1357,6 +1361,7 @@ private struct ExerciseSetsCard: View {
 
     private func sideRepsSetRow(_ setIndex: Int) -> some View {
         let active = isActiveExercise && activeSetIndex == setIndex
+        let reservesWeightCaption = showsWeightColumn && reservesCalculatedWeightCaption(weightType: item.weightType)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("Set \(setIndex + 1)")
@@ -1392,8 +1397,8 @@ private struct ExerciseSetsCard: View {
             }
 
             LazyVGrid(columns: sideRepsInputColumns, alignment: .leading, spacing: 8) {
-                sideRepsInput(setIndex: setIndex, side: .left, title: "Left", active: active)
-                sideRepsInput(setIndex: setIndex, side: .right, title: "Right", active: active)
+                sideRepsInput(setIndex: setIndex, side: .left, title: "Left", active: active, reservesCaptionSpace: reservesWeightCaption)
+                sideRepsInput(setIndex: setIndex, side: .right, title: "Right", active: active, reservesCaptionSpace: reservesWeightCaption)
 
                 if showsWeightColumn {
                     sideRepsWeightInput(setIndex: setIndex, active: active)
@@ -1471,7 +1476,7 @@ private struct ExerciseSetsCard: View {
         )
     }
 
-    private func sideRepsInput(setIndex: Int, side: RepSide, title: String, active: Bool) -> some View {
+    private func sideRepsInput(setIndex: Int, side: RepSide, title: String, active: Bool, reservesCaptionSpace: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 10, weight: .heavy))
@@ -1506,7 +1511,8 @@ private struct ExerciseSetsCard: View {
                 focusedField: $focusedField,
                 isActive: active,
                 isDisabled: readOnly,
-                placeholderRole: .reps
+                placeholderRole: .reps,
+                reservesCaptionSpace: reservesCaptionSpace
             )
         }
     }
@@ -1521,7 +1527,7 @@ private struct ExerciseSetsCard: View {
                 .minimumScaleFactor(0.78)
 
             SetNumericField(
-                placeholder: item.sets[setIndex].placeholderWeight ?? "-",
+                placeholder: weightPlaceholder(for: setIndex) ?? "-",
                 text: Binding(
                     get: { item.sets[setIndex].weight ?? "" },
                     set: { value in
@@ -1598,9 +1604,32 @@ private struct ExerciseSetsCard: View {
             placeholderReps: last.placeholderReps,
             placeholderRepsLeft: planningMode ? nil : last.placeholderRepsLeft,
             placeholderRepsRight: planningMode ? nil : last.placeholderRepsRight,
-            placeholderWeight: last.placeholderWeight
+            placeholderWeight: last.placeholderWeight,
+            placeholderWeightType: last.placeholderWeightType
         ))
         onChanged?()
+    }
+
+    private func updateWeightType(_ weightType: String) {
+        let previousWeightType = item.weightType ?? "weight"
+        if previousWeightType != weightType {
+            for setIndex in item.sets.indices {
+                let placeholder = item.sets[setIndex].placeholderWeight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !placeholder.isEmpty, item.sets[setIndex].placeholderWeightType == nil {
+                    item.sets[setIndex].placeholderWeightType = previousWeightType
+                }
+            }
+        }
+        item.weightType = weightType
+        onChanged?()
+    }
+
+    private func weightPlaceholder(for setIndex: Int) -> String? {
+        contextualWeightPlaceholder(
+            weight: item.sets[setIndex].placeholderWeight,
+            sourceWeightType: item.sets[setIndex].placeholderWeightType ?? item.weightType,
+            targetWeightType: item.weightType
+        )
     }
 
     private func repsPlaceholder(for setIndex: Int) -> String {
@@ -1752,25 +1781,25 @@ private struct SetNumericField: View {
         let fieldHeight: CGFloat = showsCaptionLine ? 58 : 44
         let isFocused = focusedField == focus
 
-        ZStack {
-            if let repsContext, !isFocused {
-                RepsFieldPlaceholderView(value: repsContext)
-                    .padding(.horizontal, 4)
-                    .frame(maxWidth: .infinity)
-                    .allowsHitTesting(false)
-            } else if text.wrappedValue.isEmpty, !placeholder.isEmpty, !isFocused {
-                Text(placeholder)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.muted.opacity(0.58))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 4)
-                    .frame(maxWidth: .infinity)
-                    .allowsHitTesting(false)
-            }
+        VStack(spacing: 0) {
+            ZStack {
+                if let repsContext, !isFocused {
+                    RepsFieldPlaceholderView(value: repsContext)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity)
+                        .allowsHitTesting(false)
+                } else if text.wrappedValue.isEmpty, !placeholder.isEmpty, !isFocused {
+                    Text(placeholder)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.muted.opacity(0.58))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity)
+                        .allowsHitTesting(false)
+                }
 
-            VStack(spacing: 1) {
                 TextField("", text: text)
                     .keyboardType(keyboard)
                     .multilineTextAlignment(.center)
@@ -1778,21 +1807,21 @@ private struct SetNumericField: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(isDisabled ? Theme.muted : Theme.text)
                     .padding(.horizontal, 6)
-                    .frame(maxWidth: .infinity, minHeight: showsCaptionLine ? 32 : 44)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .disabled(isDisabled)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
 
-                if showsCaptionLine {
-                    Text(caption ?? " ")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(caption == nil ? .clear : Theme.muted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 4)
-                        .padding(.bottom, 5)
-                        .allowsHitTesting(false)
-                }
+            if showsCaptionLine {
+                Text(caption ?? " ")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(caption == nil ? .clear : Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, minHeight: 14)
+                    .padding(.horizontal, 4)
+                    .allowsHitTesting(false)
             }
         }
         .frame(maxWidth: .infinity, minHeight: fieldHeight)
