@@ -675,6 +675,7 @@ export default function App() {
             exercises={exercises}
             templates={templates}
             logs={logs}
+            programs={programs}
             settings={settings}
             onLogsChanged={setLogs}
             onExercisesChanged={setExercises}

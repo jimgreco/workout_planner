@@ -36,10 +36,59 @@ function formatDuration(startTime, endTime) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function localDateKey(date) {
+  const d = new Date(date);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
+function formatProgramDate(date) {
+  const today = startOfToday();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  if (localDateKey(date) === localDateKey(today)) return 'Today';
+  if (localDateKey(date) === localDateKey(tomorrow)) return 'Tomorrow';
+  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function isHandledOn(logs, template, dayKey) {
+  return logs.some((log) => (
+    log.date === dayKey
+    && (log.status === 'finished' || log.status === 'skipped')
+    && String(log.name ?? '').trim().toLowerCase() === template.name.trim().toLowerCase()
+  ));
+}
+
+function nextProgramWorkout(program, templates, logs) {
+  if (!program?.schedule?.length) return null;
+  const byId = new Map(templates.map((template) => [template.id, template]));
+  const today = startOfToday();
+  for (let offset = 0; offset < 14; offset += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + offset);
+    const dayKey = localDateKey(date);
+    const scheduled = (program.schedule ?? [])
+      .filter((item) => item.weekday === date.getDay())
+      .map((entry) => byId.get(entry.templateId))
+      .filter(Boolean);
+    for (const template of scheduled) {
+      if (!isHandledOn(logs, template, dayKey)) return { program, template, date };
+    }
+  }
+  return null;
+}
+
 export default function WorkoutLog({
   exercises,
   templates,
   logs,
+  programs = [],
   settings,
   onLogsChanged,
   onExercisesChanged,
@@ -71,6 +120,10 @@ export default function WorkoutLog({
   const latestItemsRef = useRef(items);
   const isActive = !!workoutId;
   const isPlanningMode = !!workoutId && !startTime && !isEditing.current;
+  const activeProgramWorkouts = programs
+    .filter((program) => program.active)
+    .map((program) => nextProgramWorkout(program, templates, logs))
+    .filter(Boolean);
 
   useEffect(() => {
     latestItemsRef.current = items;
@@ -312,6 +365,16 @@ export default function WorkoutLog({
   function loadTemplate(templateId) {
     const t = templates.find((t) => t.id === templateId);
     if (!t) return;
+    applyTemplateToWorkout(t);
+  }
+
+  function loadProgramWorkout(value) {
+    const target = activeProgramWorkouts.find((workout) => `${workout.program.id}:${workout.template.id}` === value);
+    if (!target) return;
+    applyTemplateToWorkout(target.template);
+  }
+
+  function applyTemplateToWorkout(t) {
 
     const currentExerciseIds = new Set(items.map(item => item.exerciseId));
     
@@ -571,6 +634,23 @@ export default function WorkoutLog({
           <input type="date" value={date} onChange={(e) => handleFieldChange('date', e.target.value)} />
         </div>
       </div>
+
+      {!isActive && activeProgramWorkouts.length > 0 && (
+        <div className="form-group">
+          <label>Start from Active Program</label>
+          <div className="input-with-icon">
+            <Clipboard className="input-icon" size={16} />
+            <select value="" onChange={(e) => loadProgramWorkout(e.target.value)} style={{ paddingLeft: 36, fontSize: 14 }}>
+              <option value="" disabled>Select a program workout…</option>
+              {activeProgramWorkouts.map((workout) => (
+                <option key={`${workout.program.id}:${workout.template.id}`} value={`${workout.program.id}:${workout.template.id}`}>
+                  {workout.program.name} — {formatProgramDate(workout.date)} · {workout.template.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       {!isActive && templates.length > 0 && (
         <div className="form-group">
