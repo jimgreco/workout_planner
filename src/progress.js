@@ -212,6 +212,79 @@ function inRange(log, rangeDays) {
   return parseDay(log.date) >= cutoff;
 }
 
+function summarizeLogsForTrend(logs, exerciseById) {
+  let workouts = 0;
+  let volume = 0;
+  let sets = 0;
+
+  for (const log of logs) {
+    workouts += 1;
+    for (const item of log.exerciseItems || []) {
+      const itemSets = item.sets || [];
+      sets += itemSets.length;
+      volume += itemSets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
+      if (!exerciseById.has(item.exerciseId)) exerciseById.set(item.exerciseId, { id: item.exerciseId, name: 'Unknown', muscleGroup: 'Other' });
+    }
+  }
+
+  return { workouts, volume, sets };
+}
+
+function trendMetric(id, label, current, previous) {
+  const delta = current - previous;
+  const percent = previous > 0 ? (delta / previous) * 100 : (current > 0 ? 100 : 0);
+  return { id, label, current, previous, delta, percent };
+}
+
+function buildPeriodTrends(allFinished, scopedLogs, rangeDays, exerciseById) {
+  const days = Number(rangeDays);
+  if (!Number.isFinite(days)) return [];
+
+  const currentStart = new Date();
+  currentStart.setHours(0, 0, 0, 0);
+  currentStart.setDate(currentStart.getDate() - days + 1);
+  const previousStart = new Date(currentStart);
+  previousStart.setDate(currentStart.getDate() - days);
+
+  const previousLogs = allFinished.filter((log) => {
+    const date = parseDay(log.date);
+    return date >= previousStart && date < currentStart;
+  });
+
+  const current = summarizeLogsForTrend(scopedLogs, exerciseById);
+  const previous = summarizeLogsForTrend(previousLogs, exerciseById);
+
+  return [
+    trendMetric('workouts', 'Workouts', current.workouts, previous.workouts),
+    trendMetric('volume', 'Volume', current.volume, previous.volume),
+    trendMetric('sets', 'Sets', current.sets, previous.sets),
+  ];
+}
+
+function strongestExerciseImprovement(exercises, scopedLogs) {
+  return exercises
+    .map((exercise) => {
+      const history = getExerciseHistory(exercise.id, scopedLogs);
+      const latestEntry = history[0];
+      const latest = latestEntry?.bestSet;
+      if (!latest || !latestEntry) return null;
+      const previousEntry = history.slice(1)
+        .filter((entry) => entry.bestSet)
+        .sort((a, b) => b.bestSet.score - a.bestSet.score)[0];
+      const previous = previousEntry?.bestSet;
+      if (!previous || latest.score <= previous.score) return null;
+      return {
+        exercise,
+        latest: { ...latest, item: latestEntry.item, date: latestEntry.date },
+        previous: { ...previous, item: previousEntry.item, date: previousEntry.date },
+        delta: latest.score - previous.score,
+        percent: ((latest.score - previous.score) / previous.score) * 100,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.percent - a.percent)[0] ?? null;
+}
+
 export function buildProgress(logs = [], exercises = [], rangeDays = '90') {
   const allFinished = finishedLogs(logs);
   const scopedLogs = allFinished.filter((log) => inRange(log, rangeDays));
@@ -277,6 +350,8 @@ export function buildProgress(logs = [], exercises = [], rangeDays = '90') {
     muscleSplit: [...muscleMap.values()].sort((a, b) => b.sets - a.sets),
     topExercises,
     recentPBs,
+    trends: buildPeriodTrends(allFinished, scopedLogs, rangeDays, exerciseById),
+    strongestImprovement: strongestExerciseImprovement(exercises, scopedLogs),
   };
 }
 

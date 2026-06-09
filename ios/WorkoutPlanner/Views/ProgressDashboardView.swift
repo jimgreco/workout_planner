@@ -40,6 +40,8 @@ struct ProgressDashboardView: View {
                             ProgressCallout(summary: best)
                         }
 
+                        ProgressTrendPanel(metrics: stats.trendMetrics, improvement: stats.strongestImprovement)
+
                         ProgressPanel(title: "Weekly Volume") {
                             WeeklyVolumeBars(series: stats.weeklySeries)
                         }
@@ -113,6 +115,8 @@ private struct ProgressStats {
     let muscleSplit: [MuscleProgress]
     let topExercises: [ExerciseProgressSummary]
     let recentPBs: [RecentPR]
+    let trendMetrics: [ProgressTrendMetric]
+    let strongestImprovement: ExerciseImprovement?
 
     init(logs: [WorkoutLog], exercises: [Exercise], range: ProgressRange) {
         let finished = logs.finishedWorkoutLogs()
@@ -178,6 +182,8 @@ private struct ProgressStats {
         }
         .prefix(6)
         .map { $0 }
+        trendMetrics = periodTrendMetrics(finished: finished, scoped: scoped, range: range)
+        strongestImprovement = strongestExerciseImprovement(exercises: exercises, logs: scoped)
     }
 }
 
@@ -239,6 +245,30 @@ private struct RecentPR: Identifiable {
     let date: String
 }
 
+private struct ProgressTrendMetric: Identifiable {
+    let id: String
+    let label: String
+    let current: Double
+    let previous: Double
+
+    var delta: Double { current - previous }
+    var percent: Double {
+        if previous > 0 { return (delta / previous) * 100 }
+        return current > 0 ? 100 : 0
+    }
+}
+
+private struct ExerciseImprovement {
+    let exercise: Exercise
+    let latest: ExerciseBestSet
+    let previous: ExerciseBestSet
+
+    var percent: Double {
+        guard previous.score > 0 else { return 0 }
+        return ((latest.score - previous.score) / previous.score) * 100
+    }
+}
+
 private struct ProgressMetricCard: View {
     let title: String
     let value: String
@@ -273,6 +303,73 @@ private struct ProgressMetricCard: View {
             }
             .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
         }
+    }
+}
+
+private struct ProgressTrendPanel: View {
+    let metrics: [ProgressTrendMetric]
+    let improvement: ExerciseImprovement?
+
+    var body: some View {
+        if !metrics.isEmpty || improvement != nil {
+            ProgressPanel(title: "Performance Trends") {
+                if !metrics.isEmpty {
+                    LazyVGrid(columns: progressMetricColumns, alignment: .leading, spacing: 10) {
+                        ForEach(metrics) { metric in
+                            trendMetric(metric)
+                        }
+                    }
+                }
+
+                if let improvement {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Theme.success)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.success.opacity(0.1))
+                            .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(improvement.exercise.name)
+                                .font(.system(size: 14, weight: .heavy))
+                                .foregroundStyle(Theme.text)
+                            Text("Best set improved \(Int(improvement.percent.rounded()))% from \(setLabel(improvement.previous.set, weightType: improvement.previous.weightType, usesTime: improvement.exercise.usesTime == true)) to \(setLabel(improvement.latest.set, weightType: improvement.latest.weightType, usesTime: improvement.exercise.usesTime == true))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(12)
+                    .background(Theme.success.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                }
+            }
+        }
+    }
+
+    private func trendMetric(_ metric: ProgressTrendMetric) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(metric.label)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(Theme.muted)
+                .textCase(.uppercase)
+            Text(metricValue(metric.current, id: metric.id))
+                .font(.system(size: 18, weight: .heavy))
+                .foregroundStyle(Theme.text)
+            Text("\(metric.delta >= 0 ? "+" : "")\(metricValue(metric.delta, id: metric.id)) · \(metric.delta >= 0 ? "+" : "")\(Int(metric.percent.rounded()))%")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(metric.delta > 0 ? Theme.success : metric.delta < 0 ? Theme.danger : Theme.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private func metricValue(_ value: Double, id: String) -> String {
+        if id == "volume" { return formatVolume(value) }
+        return "\(Int(value.rounded()))"
     }
 }
 
@@ -523,6 +620,51 @@ private func workoutStreak(_ logs: [WorkoutLog]) -> Int {
         previous = current
     }
     return streak
+}
+
+private func periodTrendMetrics(finished: [WorkoutLog], scoped: [WorkoutLog], range: ProgressRange) -> [ProgressTrendMetric] {
+    guard let days = range.days else { return [] }
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    guard let currentStart = calendar.date(byAdding: .day, value: -days + 1, to: today),
+          let previousStart = calendar.date(byAdding: .day, value: -days, to: currentStart)
+    else { return [] }
+
+    let previous = finished.filter { log in
+        let date = DateHelpers.date(from: log.date)
+        return date >= previousStart && date < currentStart
+    }
+    let currentSummary = trendSummary(scoped)
+    let previousSummary = trendSummary(previous)
+
+    return [
+        ProgressTrendMetric(id: "workouts", label: "Workouts", current: Double(currentSummary.workouts), previous: Double(previousSummary.workouts)),
+        ProgressTrendMetric(id: "volume", label: "Volume", current: currentSummary.volume, previous: previousSummary.volume),
+        ProgressTrendMetric(id: "sets", label: "Sets", current: Double(currentSummary.sets), previous: Double(previousSummary.sets)),
+    ]
+}
+
+private func trendSummary(_ logs: [WorkoutLog]) -> (workouts: Int, volume: Double, sets: Int) {
+    var volume = 0.0
+    var sets = 0
+    for log in logs {
+        for item in log.exerciseItems {
+            volume += volumeForItem(item)
+            sets += item.sets.count
+        }
+    }
+    return (logs.count, volume, sets)
+}
+
+private func strongestExerciseImprovement(exercises: [Exercise], logs: [WorkoutLog]) -> ExerciseImprovement? {
+    exercises.compactMap { exercise -> ExerciseImprovement? in
+        let history = exerciseHistory(exerciseId: exercise.id, logs: logs)
+        guard let latest = history.first?.bestSet else { return nil }
+        guard let previous = history.dropFirst().compactMap(\.bestSet).max(by: { $0.score < $1.score }) else { return nil }
+        guard latest.score > previous.score else { return nil }
+        return ExerciseImprovement(exercise: exercise, latest: latest, previous: previous)
+    }
+    .max { $0.percent < $1.percent }
 }
 
 func volumeForItem(_ item: ExerciseItem) -> Double {

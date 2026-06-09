@@ -127,4 +127,47 @@ describe('progress calculations', () => {
       vi.useRealTimers();
     }
   });
+
+  it('builds period trends and strongest exercise improvement', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-24T12:00:00'));
+
+    try {
+      const trendLogs = [
+        {
+          id: 'previous',
+          name: 'Previous Push',
+          date: '2026-05-17',
+          status: 'finished',
+          exerciseItems: [{ exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '5', weight: '100' }] }],
+        },
+        {
+          id: 'earlier-current',
+          name: 'Early Push',
+          date: '2026-05-18',
+          status: 'finished',
+          exerciseItems: [{ exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '5', weight: '105' }] }],
+        },
+        {
+          id: 'latest-current',
+          name: 'Latest Push',
+          date: '2026-05-24',
+          status: 'finished',
+          exerciseItems: [{ exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '5', weight: '115' }] }],
+        },
+      ];
+
+      const progress = buildProgress(trendLogs, exercises, '7');
+
+      expect(progress.trends.find((item) => item.id === 'workouts')).toMatchObject({
+        current: 2,
+        previous: 1,
+        delta: 1,
+      });
+      expect(progress.strongestImprovement.exercise.name).toBe('Bench Press');
+      expect(progress.strongestImprovement.latest.weight).toBe(115);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

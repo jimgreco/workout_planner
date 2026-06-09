@@ -142,6 +142,51 @@ function LatestBest({ items }) {
   );
 }
 
+function formatTrendValue(metric, value) {
+  if (metric.id === 'volume') return formatVolume(value);
+  return Math.round(value).toLocaleString();
+}
+
+function TrendSummary({ metrics, improvement }) {
+  if ((metrics?.length ?? 0) === 0 && !improvement) return null;
+
+  return (
+    <section className="progress-panel progress-trends" aria-label="Performance trends">
+      <div className="panel-heading">
+        <h2>Performance Trends</h2>
+      </div>
+      {metrics?.length > 0 && (
+        <div className="trend-metric-grid">
+          {metrics.map((metric) => {
+            const direction = metric.delta > 0 ? 'up' : metric.delta < 0 ? 'down' : 'flat';
+            const sign = metric.delta > 0 ? '+' : '';
+            return (
+              <div className={`trend-metric ${direction}`} key={metric.id}>
+                <span>{metric.label}</span>
+                <strong>{formatTrendValue(metric, metric.current)}</strong>
+                <em>
+                  {sign}{formatTrendValue(metric, metric.delta)} · {sign}{Math.round(metric.percent)}%
+                </em>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {improvement && (
+        <div className="trend-improvement">
+          <TrendingUp size={18} />
+          <div>
+            <strong>{improvement.exercise.name}</strong>
+            <span>
+              Best set improved {Math.round(improvement.percent)}% from {setLabel(improvement.previous.set, improvement.previous.item?.weightType, improvement.exercise.usesTime)} to {setLabel(improvement.latest.set, improvement.latest.item?.weightType, improvement.exercise.usesTime)}
+            </span>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Progress({ logs, exercises }) {
   const [selectedRange, setSelectedRange] = useState('90');
   const progress = buildProgress(logs, exercises, selectedRange);
@@ -180,6 +225,8 @@ export default function Progress({ logs, exercises }) {
           </div>
 
           <LatestBest items={progress.topExercises} />
+
+          <TrendSummary metrics={progress.trends} improvement={progress.strongestImprovement} />
 
           <div className="progress-grid">
             <section className="progress-panel progress-panel-wide">
