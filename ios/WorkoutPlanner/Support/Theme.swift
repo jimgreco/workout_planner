@@ -97,6 +97,26 @@ struct DangerButtonStyle: ButtonStyle {
     }
 }
 
+struct KeyboardDoneToolbar: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Spacer(minLength: 0)
+                Text("Done")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .padding(.trailing, 18)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.bar)
+    }
+}
+
 struct IconCircleButton: View {
     let systemName: String
     var tint: Color = Theme.text

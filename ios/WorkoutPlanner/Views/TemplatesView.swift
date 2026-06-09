@@ -1129,9 +1129,8 @@ private struct TemplateFormSheet: View {
                     }
                     .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
+                ToolbarItem(placement: .keyboard) {
+                    KeyboardDoneToolbar {
                         focusedTextField = nil
                         focusedBuilderField = nil
                     }
@@ -1303,9 +1302,8 @@ private struct ProgramFormSheet: View {
                     }
                     .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
+                ToolbarItem(placement: .keyboard) {
+                    KeyboardDoneToolbar {
                         focusedField = nil
                     }
                 }

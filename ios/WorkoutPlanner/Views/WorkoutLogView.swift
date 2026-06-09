@@ -104,17 +104,10 @@ struct WorkoutLogView: View {
             .navigationTitle(pageTitle)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Button {
+                ToolbarItem(placement: .keyboard) {
+                    KeyboardDoneToolbar {
                         focusedTextField = nil
                         focusedBuilderField = nil
-                    } label: {
-                        Text("Done")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(Theme.accent, in: Capsule())
                     }
                 }
             }
