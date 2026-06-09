@@ -3,7 +3,7 @@ import SwiftUI
 private enum ProgramTab: String, CaseIterable, Identifiable {
     case program = "Program"
     case routines = "Routines"
-    case exercises = "Exercise Library"
+    case exercises = "Exercises"
 
     var id: String { rawValue }
 }

@@ -51,7 +51,7 @@ const PAGES = [
   { id: 'log',       label: 'Workout',          icon: Dumbbell },
   { id: 'programs',  label: 'Program',          icon: ClipboardList },
   { id: 'routines',  label: 'Routines',         icon: LayoutGrid },
-  { id: 'exercises', label: 'Exercise Library', icon: Library },
+  { id: 'exercises', label: 'Exercises', icon: Library },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
 ];
@@ -941,7 +941,7 @@ export default function App() {
                 <ChevronRight size={16} />
               </button>
               <button className="support-link" onClick={() => dismissOnboarding('exercises')}>
-                <span>Browse Exercise Library</span>
+                <span>Browse Exercises</span>
                 <ChevronRight size={16} />
               </button>
             </div>

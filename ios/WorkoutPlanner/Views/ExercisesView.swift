@@ -8,7 +8,7 @@ struct ExercisesView: View {
                     .padding(16)
                     .padding(.bottom, 96)
             }
-                .navigationTitle("Exercise Library")
+                .navigationTitle("Exercises")
                 .navigationBarTitleDisplayMode(.large)
         }
     }
@@ -36,7 +36,7 @@ struct ExerciseLibrarySection: View {
         VStack(alignment: .leading, spacing: 12) {
             if showHeader {
                 ProgramSectionHeader(
-                    title: "Exercise Library",
+                    title: "Exercises",
                     subtitle: store.exercises.count == 1 ? "1 exercise" : "\(store.exercises.count) exercises"
                 )
             }

@@ -287,7 +287,7 @@ export default function Exercises({ exercises, logs = [], onUpdate, actionReques
   return (
     <div className={embedded ? 'exercise-library-embedded' : 'page'}>
       <div className="action-row">
-        <h1 style={{ marginBottom: 0 }}>Exercise Library</h1>
+        <h1 style={{ marginBottom: 0 }}>Exercises</h1>
         <button className="btn btn-primary" onClick={openAdd}>
           <Plus size={18} /> Add Exercise
         </button>
