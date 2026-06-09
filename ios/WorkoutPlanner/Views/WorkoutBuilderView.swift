@@ -52,7 +52,7 @@ struct WorkoutBuilderView: View {
     var onChanged: (() -> Void)?
     var onTextChanged: (() -> Void)?
     var onEditingDone: (() -> Void)?
-    @State private var exerciseSearch = ""
+    @State private var showingExercisePicker = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -96,6 +96,11 @@ struct WorkoutBuilderView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .sheet(isPresented: $showingExercisePicker) {
+            ExercisePickerSheet(exercises: availableExercises, muscleGroups: exerciseMuscleGroups) { exercise in
+                addExercise(exercise)
+            }
+        }
     }
 
     private var addExercisePanel: some View {
@@ -115,8 +120,7 @@ struct WorkoutBuilderView: View {
                 }
             }
 
-            exerciseSearchField
-            addExerciseMenu
+            addExerciseButton
         }
         .padding(items.isEmpty ? 12 : 0)
         .frame(maxWidth: .infinity)
@@ -130,48 +134,9 @@ struct WorkoutBuilderView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
-    private var exerciseSearchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.muted)
-            TextField("Search exercises to add", text: $exerciseSearch)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(size: 15))
-            if !exerciseSearch.isEmpty {
-                Button {
-                    exerciseSearch = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Theme.muted)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear exercise search")
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
-        .background(Theme.background)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-    }
-
-    private var addExerciseMenu: some View {
-        Menu {
-            let available = availableExercises
-            if available.isEmpty {
-                Text(exerciseSearch.isEmpty ? "No more exercises available" : "No matching exercises")
-            } else {
-                ForEach(available) { exercise in
-                    Button("\(exercise.name) (\(exercise.muscleGroup))") {
-                        addExercise(exercise)
-                    }
-                }
-            }
+    private var addExerciseButton: some View {
+        Button {
+            showingExercisePicker = true
         } label: {
             Label("Add Exercise", systemImage: "plus")
                 .font(.system(size: 14, weight: .heavy))
@@ -194,12 +159,12 @@ struct WorkoutBuilderView: View {
         let used = Set(items.map(\.exerciseId))
         return exercises
             .filter { !used.contains($0.id) }
-            .filter { exercise in
-                exerciseSearch.isEmpty
-                    || exercise.name.localizedCaseInsensitiveContains(exerciseSearch)
-                    || exercise.muscleGroup.localizedCaseInsensitiveContains(exerciseSearch)
-            }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var exerciseMuscleGroups: [String] {
+        Array(Set(exercises.map { displayMuscleGroup($0.muscleGroup) }))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private func replacementExercises(for index: Int) -> [Exercise] {
@@ -255,7 +220,6 @@ struct WorkoutBuilderView: View {
             useIndividualReps: false,
             sets: sets
         ))
-        exerciseSearch = ""
         onChanged?()
     }
 
@@ -279,6 +243,195 @@ struct WorkoutBuilderView: View {
         items.swapAt(index, newIndex)
         onChanged?()
     }
+}
+
+private struct ExercisePickerSheet: View {
+    let exercises: [Exercise]
+    let muscleGroups: [String]
+    let onSelect: (Exercise) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    @State private var selectedMuscleGroup: String?
+
+    private var filteredExercises: [Exercise] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return exercises.filter { exercise in
+            let muscleGroup = displayMuscleGroup(exercise.muscleGroup)
+            let matchesMuscleGroup = selectedMuscleGroup == nil || selectedMuscleGroup == muscleGroup
+            let matchesSearch = query.isEmpty
+                || exercise.name.localizedCaseInsensitiveContains(query)
+                || muscleGroup.localizedCaseInsensitiveContains(query)
+                || (exercise.description ?? "").localizedCaseInsensitiveContains(query)
+            return matchesMuscleGroup && matchesSearch
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 8) {
+                searchField
+                    .padding(.horizontal, 14)
+
+                muscleGroupFilter
+
+                if filteredExercises.isEmpty {
+                    EmptyState(icon: "magnifyingglass", text: "No matching exercises")
+                        .padding(.horizontal, 14)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 6) {
+                            ForEach(filteredExercises) { exercise in
+                                Button {
+                                    onSelect(exercise)
+                                    dismiss()
+                                } label: {
+                                    ExercisePickerRow(exercise: exercise)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 16)
+                    }
+                }
+            }
+            .padding(.top, 8)
+            .background(Theme.background)
+            .navigationTitle("Add Exercise")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.muted)
+
+            TextField("Search exercises or muscle groups", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(size: 14))
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.muted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear exercise search")
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 38)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var muscleGroupFilter: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            HStack(spacing: 8) {
+                FilterChip(title: "All", isSelected: selectedMuscleGroup == nil) {
+                    selectedMuscleGroup = nil
+                }
+
+                ForEach(muscleGroups, id: \.self) { muscleGroup in
+                    FilterChip(title: muscleGroup, isSelected: selectedMuscleGroup == muscleGroup) {
+                        selectedMuscleGroup = muscleGroup
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 2)
+        }
+    }
+}
+
+private struct ExercisePickerRow: View {
+    let exercise: Exercise
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(exercise.name)
+                .font(.system(size: 15, weight: .heavy))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Badge(text: displayMuscleGroup(exercise.muscleGroup))
+
+            if let description = cleanedDescription {
+                Text(description)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .frame(maxWidth: 88, alignment: .leading)
+            }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.accent)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(Theme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var cleanedDescription: String? {
+        let value = exercise.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
+    }
+}
+
+private struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(isSelected ? Color.white : Theme.text)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(isSelected ? Theme.accent : Theme.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                        .stroke(isSelected ? Theme.accent : Theme.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private func displayMuscleGroup(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "Other" : trimmed
 }
 
 private struct ExerciseSetsCard: View {
