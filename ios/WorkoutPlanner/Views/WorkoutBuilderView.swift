@@ -68,10 +68,12 @@ struct WorkoutBuilderView: View {
                         readOnly: readOnly,
                         showWeight: showWeight,
                         planningMode: planningMode,
+                        replacementExercises: replacementExercises(for: index),
                         canMoveUp: index > 0,
                         canMoveDown: index < items.count - 1,
                         defaultReps: exercise.defaultReps ?? defaultReps,
                         onMove: { direction in move(index, direction) },
+                        onReplace: { replacement in replaceExercise(index, with: replacement) },
                         onRemove: { removeExercise(index) },
                         onSetCompleted: onSetCompleted,
                         onResetPersonalBest: onResetPersonalBest,
@@ -155,6 +157,15 @@ struct WorkoutBuilderView: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    private func replacementExercises(for index: Int) -> [Exercise] {
+        guard items.indices.contains(index) else { return [] }
+        let currentId = items[index].exerciseId
+        let used = Set(items.map(\.exerciseId))
+        return exercises
+            .filter { $0.id == currentId || !used.contains($0.id) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private func exercise(for id: String) -> Exercise? {
         exercises.first { $0.id == id }
     }
@@ -197,6 +208,15 @@ struct WorkoutBuilderView: View {
         onChanged?()
     }
 
+    private func replaceExercise(_ index: Int, with exercise: Exercise) {
+        guard items.indices.contains(index), items[index].exerciseId != exercise.id else { return }
+        items[index].exerciseId = exercise.id
+        if (items[index].description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items[index].description = exercise.description ?? ""
+        }
+        onChanged?()
+    }
+
     private func move(_ index: Int, _ direction: Int) {
         let newIndex = index + direction
         guard items.indices.contains(index), items.indices.contains(newIndex) else { return }
@@ -215,10 +235,12 @@ private struct ExerciseSetsCard: View {
     let readOnly: Bool
     let showWeight: Bool
     let planningMode: Bool
+    let replacementExercises: [Exercise]
     let canMoveUp: Bool
     let canMoveDown: Bool
     let defaultReps: Int
     let onMove: (Int) -> Void
+    let onReplace: (Exercise) -> Void
     let onRemove: () -> Void
     let onSetCompleted: ((Int, Int) -> Void)?
     let onResetPersonalBest: ((Exercise) -> Void)?
@@ -227,6 +249,7 @@ private struct ExerciseSetsCard: View {
     let onTextChanged: (() -> Void)?
     let onEditingDone: (() -> Void)?
     @FocusState private var focusedCompactField: CompactRepField?
+    @FocusState private var notesFocused: Bool
     @State private var editedCompactFields: Set<CompactRepField> = []
 
     private let setColumnWidth: CGFloat = 28
@@ -295,6 +318,20 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.accent)
             }
 
+            if !readOnly || (item.description?.isEmpty == false) {
+                TextField("Exercise notes, cues, or substitution reason", text: Binding(
+                    get: { item.description ?? "" },
+                    set: { value in
+                        item.description = value
+                        onTextChanged?()
+                    }
+                ), axis: .vertical)
+                .lineLimit(1...3)
+                .focused($notesFocused)
+                .fieldStyle()
+                .disabled(readOnly)
+            }
+
             if planningMode && !readOnly {
                 Toggle("Same \(repUnit) target for every set", isOn: sameTargetForEverySet)
                     .font(.system(size: 13, weight: .semibold))
@@ -336,10 +373,11 @@ private struct ExerciseSetsCard: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .shadow(color: .black.opacity(isActiveExercise ? 0.12 : 0.06), radius: isActiveExercise ? 10 : 4, x: 0, y: 2)
         .toolbar {
-            if focusedCompactField != nil {
+            if focusedCompactField != nil || notesFocused {
                 ToolbarItem(placement: .keyboard) {
                     KeyboardDoneToolbar {
                         focusedCompactField = nil
+                        notesFocused = false
                         focusedField = nil
                     }
                 }
@@ -347,6 +385,11 @@ private struct ExerciseSetsCard: View {
         }
         .onChange(of: focusedCompactField) { oldValue, newValue in
             if oldValue != nil, newValue != oldValue {
+                onEditingDone?()
+            }
+        }
+        .onChange(of: notesFocused) { oldValue, newValue in
+            if oldValue && !newValue {
                 onEditingDone?()
             }
         }
@@ -432,9 +475,28 @@ private struct ExerciseSetsCard: View {
 
     private var controlRow: some View {
         HStack(spacing: 8) {
+            substitutionMenu
             restMenu
             pairMenu
         }
+    }
+
+    private var substitutionMenu: some View {
+        Menu {
+            ForEach(replacementExercises) { replacement in
+                Button("\(replacement.name) (\(replacement.muscleGroup))") {
+                    onReplace(replacement)
+                }
+            }
+        } label: {
+            Label("Sub \(exercise.name)", systemImage: "arrow.triangle.2.circlepath")
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .frame(maxWidth: .infinity)
+        .disabled(replacementExercises.count <= 1)
     }
 
     private var restMenu: some View {

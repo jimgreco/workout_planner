@@ -15,7 +15,7 @@ const oneItem = [
 describe('WorkoutBuilder', () => {
   it('renders exercise name and muscle group badge', () => {
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={() => {}} />);
-    expect(screen.getByText('Bench Press')).toBeInTheDocument();
+    expect(screen.getAllByText('Bench Press')[0]).toBeInTheDocument();
     expect(screen.getByText('Chest')).toBeInTheDocument();
   });
 
@@ -86,6 +86,29 @@ describe('WorkoutBuilder', () => {
     expect(onChange).toHaveBeenCalledOnce();
     const updated = onChange.mock.calls[0][0];
     expect(updated[0].sets[0].reps).toBe('10');
+  });
+
+  it('updates exercise notes while logging', () => {
+    const onChange = vi.fn();
+    render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/exercise notes/i), { target: { value: 'Use a close grip today' } });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange.mock.calls[0][0][0].description).toBe('Use a close grip today');
+  });
+
+  it('substitutes an exercise while preserving sets', () => {
+    const onChange = vi.fn();
+    render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText(/substitute bench press/i), { target: { value: 'ex2' } });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange.mock.calls[0][0][0]).toMatchObject({
+      exerciseId: 'ex2',
+      sets: oneItem[0].sets,
+    });
   });
 
   it('adds a new set when "+ Add Set" is clicked', () => {

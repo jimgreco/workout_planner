@@ -269,6 +269,24 @@ export default function WorkoutBuilder({
     onChange(items.map((item, i) => (i === itemIdx ? { ...item, ...patch } : item)));
   }
 
+  function replaceExercise(itemIdx, exerciseId) {
+    const replacement = exById(exerciseId);
+    if (!replacement || items[itemIdx]?.exerciseId === exerciseId) return;
+    onChange(items.map((item, i) => (
+      i === itemIdx
+        ? { ...item, exerciseId, description: item.description || replacement.description || '' }
+        : item
+    )));
+  }
+
+  function replacementExercises(itemIdx) {
+    const currentId = items[itemIdx]?.exerciseId;
+    const used = new Set(items.map((item) => item.exerciseId));
+    return exercises
+      .filter((exercise) => exercise.id === currentId || !used.has(exercise.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   function updateAllSetReps(itemIdx, field, value) {
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
@@ -398,6 +416,20 @@ export default function WorkoutBuilder({
                     <span className="superset-chip">{supersetLabel(item.supersetGroup)}</span>
                   )}
                   {!readOnly && (
+                    <label className="substitution-control">
+                      <span>Sub</span>
+                      <select
+                        aria-label={`Substitute ${ex.name}`}
+                        value={item.exerciseId}
+                        onChange={(e) => replaceExercise(idx, e.target.value)}
+                      >
+                        {replacementExercises(idx).map((replacement) => (
+                          <option key={replacement.id} value={replacement.id}>{replacement.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {!readOnly && (
                     <label className="rest-target-control">
                       <span>Rest</span>
                       <select
@@ -424,11 +456,11 @@ export default function WorkoutBuilder({
                     </button>
                   )}
                 </div>
-                {(item.description || (!readOnly && planningMode)) && (
+                {(item.description || !readOnly) && (
                   <textarea
                     className="exercise-description-input"
                     rows={2}
-                    placeholder={ex.description ? 'Exercise description' : 'Add routine description or cues'}
+                    placeholder="Exercise notes, cues, or substitution reason"
                     value={item.description ?? ex.description ?? ''}
                     onChange={(e) => updateItem(idx, { description: e.target.value })}
                     disabled={readOnly}
