@@ -79,6 +79,13 @@ function repRangeValue(min, max) {
   return cleanMin || cleanMax;
 }
 
+function compactRepValue(set = {}, field) {
+  if (field === 'placeholderReps') return set.placeholderReps ?? set.reps ?? '';
+  if (field === 'placeholderRepsLeft') return set.placeholderRepsLeft ?? set.repsLeft ?? set.placeholderReps ?? set.reps ?? '';
+  if (field === 'placeholderRepsRight') return set.placeholderRepsRight ?? set.repsRight ?? set.placeholderReps ?? set.reps ?? '';
+  return set[field] ?? '';
+}
+
 function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
   const [now, setNow] = useState(() => Date.now());
   const alertedRef = useRef(false);
@@ -300,7 +307,8 @@ export default function WorkoutBuilder({
 
   function updateAllSetRepRange(itemIdx, field, side, value) {
     const item = items[itemIdx];
-    const current = repRange(item?.sets?.[0]?.[field]) ?? { min: item?.sets?.[0]?.[field] ?? '', max: '' };
+    const currentValue = compactRepValue(item?.sets?.[0], field);
+    const current = repRange(currentValue) ?? { min: currentValue, max: '' };
     updateAllSetReps(itemIdx, field, repRangeValue(
       side === 'min' ? value : current.min,
       side === 'max' ? value : current.max,
@@ -311,7 +319,7 @@ export default function WorkoutBuilder({
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       const nextValues = Object.fromEntries(fields.map((field) => {
-        const current = item.sets[0]?.[field] ?? '';
+        const current = compactRepValue(item.sets[0], field);
         const range = repRange(current);
         return [
           field,

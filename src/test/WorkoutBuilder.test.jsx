@@ -187,6 +187,20 @@ describe('WorkoutBuilder', () => {
     expect(updated[0].sets.map((set) => set.placeholderReps)).toEqual(['8-12', '8-12']);
   });
 
+  it('uses saved reps when enabling a range for existing routines', () => {
+    const onChange = vi.fn();
+    const items = [{ exerciseId: 'ex1', sets: [{ reps: '8', weight: '' }, { reps: '8', weight: '' }] }];
+    const { rerender } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} planningMode />);
+
+    fireEvent.click(screen.getByLabelText(/use reps range/i));
+    const rangedItems = onChange.mock.calls[0][0];
+    expect(rangedItems[0].sets.map((set) => set.placeholderReps)).toEqual(['8-8', '8-8']);
+
+    rerender(<WorkoutBuilder exercises={exercises} items={rangedItems} onChange={onChange} planningMode />);
+    expect(screen.getByLabelText(/min reps/i)).toHaveValue('8');
+    expect(screen.getByLabelText(/max reps/i)).toHaveValue('8');
+  });
+
   it('removes an exercise when ✕ button is clicked', () => {
     const onChange = vi.fn();
     const items = [
