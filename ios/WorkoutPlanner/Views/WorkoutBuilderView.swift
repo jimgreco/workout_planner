@@ -807,13 +807,15 @@ private struct ExerciseSetsCard: View {
                         "Min \(repUnit)",
                         field: .repsMin,
                         value: rangeBinding(field: .reps, side: .min),
-                        placeholder: rangePlaceholder(field: .reps, side: .min)
+                        placeholder: rangePlaceholder(field: .reps, side: .min),
+                        useFallbackPlaceholder: false
                     )
                     compactField(
                         "Max \(repUnit)",
                         field: .repsMax,
                         value: rangeBinding(field: .reps, side: .max),
-                        placeholder: rangePlaceholder(field: .reps, side: .max)
+                        placeholder: rangePlaceholder(field: .reps, side: .max),
+                        useFallbackPlaceholder: false
                     )
                 }
             } else {
@@ -870,9 +872,10 @@ private struct ExerciseSetsCard: View {
         _ label: String,
         field: CompactRepField,
         value: Binding<String>,
-        placeholder providedPlaceholder: RepsFieldPlaceholder? = nil
+        placeholder providedPlaceholder: RepsFieldPlaceholder? = nil,
+        useFallbackPlaceholder: Bool = true
     ) -> some View {
-        let placeholder = providedPlaceholder ?? compactPlaceholder(field: field)
+        let placeholder = providedPlaceholder ?? (useFallbackPlaceholder ? compactPlaceholder(field: field) : nil)
         let isFocused = focusedCompactField == field
 
         return VStack(alignment: .leading, spacing: 4) {
@@ -887,7 +890,7 @@ private struct ExerciseSetsCard: View {
                             .padding(.horizontal, 4)
                             .frame(maxWidth: .infinity)
                             .allowsHitTesting(false)
-                    } else {
+                    } else if useFallbackPlaceholder {
                         Text(compactValue(field: field))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.muted.opacity(0.58))
@@ -1395,17 +1398,16 @@ private struct CompactRepRange {
 private func repRange(_ value: String) -> CompactRepRange? {
     let parts = value
         .trimmingCharacters(in: .whitespacesAndNewlines)
-        .split(maxSplits: 1, whereSeparator: { $0 == "-" || $0 == "–" })
+        .split(maxSplits: 1, omittingEmptySubsequences: false, whereSeparator: { $0 == "-" || $0 == "–" })
         .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-    guard parts.count == 2, !parts[0].isEmpty || !parts[1].isEmpty else { return nil }
+    guard parts.count == 2 else { return nil }
     return CompactRepRange(min: parts[0], max: parts[1])
 }
 
 private func repRangeValue(min: String, max: String) -> String {
     let cleanMin = min.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanMax = max.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !cleanMin.isEmpty, !cleanMax.isEmpty { return "\(cleanMin)-\(cleanMax)" }
-    return cleanMin.isEmpty ? cleanMax : cleanMin
+    return "\(cleanMin)-\(cleanMax)"
 }
 
 private struct SetNumericField: View {
