@@ -158,9 +158,9 @@ struct ToolbarCircleActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(disabled ? Theme.muted.opacity(0.4) : tint)
-                .frame(width: 42, height: 42)
+                .frame(width: 34, height: 34)
                 .contentShape(Circle())
                 .toolbarGlass(in: Circle(), tint: disabled ? nil : tint.opacity(0.08))
         }
@@ -175,14 +175,14 @@ struct Card<Content: View>: View {
 
     var body: some View {
         content
-            .padding(16)
+            .padding(14)
             .background(Theme.background)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                     .stroke(Theme.border, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+            .shadow(color: .black.opacity(0.045), radius: 3, x: 0, y: 1)
     }
 }
 
@@ -227,17 +227,17 @@ struct EmptyState: View {
     let text: String
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 44, weight: .regular))
+                .font(.system(size: 34, weight: .regular))
                 .foregroundStyle(Theme.border)
             Text(text)
-                .font(.system(size: 14))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.muted)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 44)
+        .padding(.vertical, 30)
     }
 }
 

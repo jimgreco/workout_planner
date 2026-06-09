@@ -124,8 +124,6 @@ struct AppShell: View {
             TemplatesView(selectedPage: $page)
         case .settings:
             SettingsPage {
-                page = .log
-            } onReviewConflicts: {
                 showingSyncConflicts = true
             } onSignOut: {
                 signOut()
@@ -144,7 +142,6 @@ private struct SettingsPage: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var store: WorkoutStore
     @AppStorage("forge.lastExportAt.v1") private var lastExportAt = ""
-    let onDone: () -> Void
     let onReviewConflicts: () -> Void
     let onSignOut: () -> Void
     @State private var showingFeedback = false
@@ -158,7 +155,7 @@ private struct SettingsPage: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 16) {
                     AccountProfileCard(user: auth.user, isDemoMode: auth.isDemoMode)
 
                     AccountSettingsSection(title: "Sync") {
@@ -166,7 +163,7 @@ private struct SettingsPage: View {
                             VStack(spacing: 0) {
                                 HStack(spacing: 14) {
                                     Text("Status")
-                                        .font(.system(size: 17, weight: .regular))
+                                        .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(Theme.text)
 
                                     Spacer()
@@ -177,7 +174,7 @@ private struct SettingsPage: View {
                                         tint: syncStatusTint
                                     )
                                 }
-                                .frame(minHeight: 50)
+                                .frame(minHeight: 44)
 
                                 if let detail = store.syncDetailText {
                                     AccountSettingsDivider()
@@ -195,10 +192,10 @@ private struct SettingsPage: View {
                                     Task { await syncNow() }
                                 } label: {
                                     Text(store.isSyncingPending ? "Syncing..." : "Sync Now")
-                                        .font(.system(size: 17, weight: .medium))
+                                        .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(syncButtonDisabled ? Theme.muted : Color.blue)
                                         .frame(maxWidth: .infinity)
-                                        .frame(height: 50)
+                                        .frame(height: 44)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(syncButtonDisabled)
@@ -237,7 +234,7 @@ private struct SettingsPage: View {
                                     .font(.footnote)
                                     .foregroundStyle(Theme.muted)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, 10)
 
                                 AccountSettingsDivider()
 
@@ -298,10 +295,10 @@ private struct SettingsPage: View {
                                 confirmingDelete = true
                             } label: {
                                 Text("Delete Account")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Theme.danger)
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 50)
+                                    .frame(height: 44)
                             }
                             .buttonStyle(.plain)
                             .disabled(accountBusy)
@@ -310,10 +307,10 @@ private struct SettingsPage: View {
 
                             Button(role: .destructive, action: onSignOut) {
                                 Text("Sign Out")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Theme.danger)
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 50)
+                                    .frame(height: 44)
                             }
                             .buttonStyle(.plain)
                             .disabled(accountBusy)
@@ -321,31 +318,17 @@ private struct SettingsPage: View {
                     }
 
                     Text("Version \(AppConfiguration.appVersion) (\(AppConfiguration.buildNumber)) - \(AppConfiguration.gitCommitHash)")
-                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.muted)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 18)
+                        .padding(.top, 8)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 30)
-                .padding(.bottom, 44)
+                .padding(16)
+                .padding(.bottom, 96)
             }
             .background(AccountSettingsStyle.background.ignoresSafeArea())
-            .navigationTitle("Account")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: onDone) {
-                        Text("Done")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Theme.text)
-                            .padding(.horizontal, 18)
-                            .frame(height: 38)
-                            .toolbarGlass(in: Capsule(), tint: AccountSettingsStyle.cardBackground.opacity(0.75))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
         .sheet(isPresented: $showingFeedback) {
             FeedbackSheet(isSending: $accountBusy) { message in
@@ -518,11 +501,11 @@ private struct SettingsPage: View {
 }
 
 private enum AccountSettingsStyle {
-    static let background = Color(uiColor: .systemGroupedBackground)
-    static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
-    static let divider = Color(uiColor: .separator).opacity(0.35)
-    static let sectionTitle = Color(uiColor: .secondaryLabel)
-    static let cardRadius: CGFloat = 28
+    static let background = Theme.background
+    static let cardBackground = Theme.background
+    static let divider = Theme.border.opacity(0.8)
+    static let sectionTitle = Theme.muted
+    static let cardRadius: CGFloat = Theme.radius
 }
 
 private enum AccountBackupDateFormatting {
@@ -572,19 +555,19 @@ private struct AccountProfileCard: View {
     }
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             AccountAvatar(user: user)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(displayName)
-                    .font(.system(size: 21, weight: .semibold))
+                    .font(.system(size: 18, weight: .heavy))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
                 HStack(spacing: 8) {
                     Text(email.isEmpty ? "Signed in" : email)
-                        .font(.system(size: 17, weight: .regular))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
@@ -603,12 +586,15 @@ private struct AccountProfileCard: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 24)
-        .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
         .background(AccountSettingsStyle.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: AccountSettingsStyle.cardRadius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: AccountSettingsStyle.cardRadius, style: .continuous))
-        .shadow(color: .black.opacity(0.025), radius: 18, x: 0, y: 8)
+        .shadow(color: .black.opacity(0.045), radius: 3, x: 0, y: 1)
         .accessibilityElement(children: .combine)
     }
 }
@@ -654,18 +640,18 @@ private struct AccountAvatar: View {
                 fallback
             }
         }
-        .frame(width: 62, height: 62)
+        .frame(width: 48, height: 48)
         .background(avatarBackground)
         .clipShape(Circle())
         .overlay(Circle().stroke(.white.opacity(0.65), lineWidth: 2))
-        .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
     private var fallback: some View {
         ZStack {
             avatarBackground
             Text(initials)
-                .font(.system(size: 21, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(.white)
         }
     }
@@ -684,11 +670,12 @@ private struct AccountSettingsSection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: 11, weight: .heavy))
                 .foregroundStyle(AccountSettingsStyle.sectionTitle)
-                .padding(.leading, 22)
+                .textCase(.uppercase)
+                .padding(.leading, 2)
 
             content
         }
@@ -700,11 +687,16 @@ private struct AccountSettingsCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AccountSettingsStyle.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: AccountSettingsStyle.cardRadius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
             .clipShape(RoundedRectangle(cornerRadius: AccountSettingsStyle.cardRadius, style: .continuous))
+            .shadow(color: .black.opacity(0.035), radius: 3, x: 0, y: 1)
     }
 }
 
@@ -715,14 +707,14 @@ private struct AccountSettingsActionRow: View {
     var showsChevron = true
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 24, weight: .regular))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 30)
+                .frame(width: 24)
 
             Text(title)
-                .font(.system(size: 17, weight: .regular))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
@@ -731,11 +723,11 @@ private struct AccountSettingsActionRow: View {
 
             if showsChevron {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.muted.opacity(0.45))
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .contentShape(Rectangle())
     }
 }
@@ -746,11 +738,11 @@ private struct AccountSyncStatusBadge: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 27, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
             Text(title)
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 13, weight: .heavy))
         }
         .foregroundStyle(tint)
         .lineLimit(1)

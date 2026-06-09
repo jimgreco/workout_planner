@@ -9,7 +9,7 @@ struct ExercisesView: View {
                     .padding(.bottom, 96)
             }
                 .navigationTitle("Exercises")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -33,7 +33,7 @@ struct ExerciseLibrarySection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             if showHeader {
                 ProgramSectionHeader(
                     title: "Exercises",
@@ -49,7 +49,7 @@ struct ExerciseLibrarySection: View {
                     text: search.isEmpty ? "No exercises yet. Tap + to get started." : "No exercises match your search."
                 )
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     ForEach(filtered) { exercise in
                         ExerciseRow(
                             exercise: exercise,
@@ -138,19 +138,19 @@ private struct ExerciseSearchBar: View {
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 14)
-        .frame(height: 46)
+        .padding(.horizontal, 12)
+        .frame(height: 42)
         .frame(maxWidth: .infinity)
         .background {
-            Capsule()
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                 .fill(Theme.surface.opacity(isFocused ? 0.92 : 0.76))
         }
-        .toolbarGlass(in: Capsule(), tint: isFocused ? Theme.accent.opacity(0.08) : nil)
+        .toolbarGlass(in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous), tint: isFocused ? Theme.accent.opacity(0.08) : nil)
         .overlay(
-            Capsule()
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                 .stroke(isFocused ? Theme.accent.opacity(0.45) : Theme.border.opacity(0.65), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(isFocused ? 0.14 : 0.06), radius: isFocused ? 12 : 6, x: 0, y: 4)
+        .shadow(color: .black.opacity(isFocused ? 0.09 : 0.035), radius: isFocused ? 7 : 3, x: 0, y: 2)
         .animation(.easeOut(duration: 0.16), value: isFocused)
         .animation(.easeOut(duration: 0.16), value: text.isEmpty)
     }
@@ -197,7 +197,7 @@ private struct ExerciseRow: View {
                 exerciseNotes(lineLimit: 3)
             }
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.background)
         .overlay(
@@ -205,7 +205,7 @@ private struct ExerciseRow: View {
                 .stroke(Theme.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+        .shadow(color: .black.opacity(0.045), radius: 3, x: 0, y: 1)
     }
 
     private var actionButtons: some View {

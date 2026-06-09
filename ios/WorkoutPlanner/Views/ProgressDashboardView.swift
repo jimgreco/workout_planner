@@ -17,7 +17,7 @@ struct ProgressDashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
                     Picker("", selection: $selectedRange) {
                         ForEach(ProgressRange.allCases) { range in
                             Text(range.label).tag(range)
@@ -60,9 +60,10 @@ struct ProgressDashboardView: View {
                     }
                 }
                 .padding(16)
+                .padding(.bottom, 96)
             }
             .navigationTitle("Progress")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -277,17 +278,17 @@ private struct ProgressMetricCard: View {
 
     var body: some View {
         Card {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 9) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Theme.accent)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 30, height: 30)
                     .background(Theme.accent.opacity(0.09))
                     .clipShape(Circle())
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(value)
-                        .font(.system(size: 20, weight: .heavy))
+                        .font(.system(size: 19, weight: .heavy))
                         .foregroundStyle(Theme.text)
                         .minimumScaleFactor(0.75)
                     Text(title)
@@ -301,7 +302,7 @@ private struct ProgressMetricCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 66, alignment: .topLeading)
         }
     }
 }
@@ -411,9 +412,9 @@ struct ProgressPanel<Content: View>: View {
 
     var body: some View {
         Card {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text(title)
-                    .font(.system(size: 16, weight: .heavy))
+                    .font(.system(size: 15, weight: .heavy))
                     .foregroundStyle(Theme.text)
                 content
             }

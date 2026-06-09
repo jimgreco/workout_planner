@@ -28,7 +28,7 @@ struct TemplatesView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     Picker("Program view", selection: $selectedTab) {
                         ForEach(ProgramTab.allCases) { tab in
                             Text(tab.rawValue).tag(tab)
@@ -42,7 +42,7 @@ struct TemplatesView: View {
                 .padding(.bottom, 96)
             }
             .navigationTitle("Program")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     ToolbarCircleActionButton(
@@ -73,9 +73,9 @@ struct TemplatesView: View {
                         }
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 17, weight: .bold))
                             .foregroundStyle(Theme.accent)
-                            .frame(width: 42, height: 42)
+                            .frame(width: 34, height: 34)
                             .contentShape(Circle())
                             .toolbarGlass(in: Circle(), tint: Theme.accent.opacity(0.08))
                     }
@@ -191,14 +191,14 @@ struct TemplatesView: View {
     }
 
     private var routinesTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             ProgramSectionHeader(
                 title: "Routines",
                 subtitle: routineCountLabel
             )
 
             if store.templates.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     EmptyState(icon: "square.grid.2x2", text: "No routines yet. Tap + to save your favorite workouts.")
 
                     Button {
@@ -211,7 +211,7 @@ struct TemplatesView: View {
                     .disabled(isSaving || store.exercises.isEmpty)
                 }
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     ForEach(store.templates) { template in
                         TemplateCard(
                             template: template,
@@ -673,16 +673,17 @@ struct ProgramSectionHeader: View {
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 18, weight: .heavy))
+                .foregroundStyle(Theme.text)
+            Text(subtitle)
+                .font(.system(size: 12, weight: .heavy))
                 .foregroundStyle(Theme.muted)
                 .textCase(.uppercase)
-            Text(subtitle)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
+        .padding(.top, 2)
     }
 }
 
@@ -939,7 +940,7 @@ private struct ProgramWeekGrid: View {
     let week: [PlannedProgramDay]
 
     private let columns = [
-        GridItem(.adaptive(minimum: 92), spacing: 8, alignment: .top)
+        GridItem(.adaptive(minimum: 78), spacing: 8, alignment: .top)
     ]
 
     var body: some View {
@@ -1225,8 +1226,8 @@ private struct ProgramDayChip: View {
                     .minimumScaleFactor(0.8)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
-        .padding(8)
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
+        .padding(7)
         .background(backgroundColor)
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(borderColor, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))

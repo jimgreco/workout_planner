@@ -21,7 +21,7 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 14) {
                     Picker("", selection: $viewMode) {
                         Label("List", systemImage: "list.bullet").tag(HistoryMode.list)
                         Label("Calendar", systemImage: "calendar").tag(HistoryMode.calendar)
@@ -35,9 +35,10 @@ struct HistoryView: View {
                     }
                 }
                 .padding(16)
+                .padding(.bottom, 96)
             }
             .navigationTitle("History")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
         }
         .alert("Delete Workout", isPresented: Binding(
             get: { deleteTarget != nil },
@@ -87,13 +88,13 @@ struct HistoryView: View {
     }
 
     private var calendarView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             HStack(spacing: 12) {
                 IconCircleButton(systemName: "chevron.left") {
                     calendarMonth = Calendar.current.date(byAdding: .month, value: -1, to: calendarMonth) ?? calendarMonth
                 }
                 Text(calendarMonth.formatted(.dateTime.month(.wide).year()))
-                    .font(.system(size: 18, weight: .heavy))
+                    .font(.system(size: 17, weight: .heavy))
                     .foregroundStyle(Theme.text)
                     .frame(minWidth: 180)
                 IconCircleButton(systemName: "chevron.right") {
@@ -109,9 +110,9 @@ struct HistoryView: View {
             )
 
             if let selectedDate {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(DateHelpers.date(from: selectedDate).formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .font(.system(size: 18, weight: .heavy))
+                        .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Theme.text)
 
                     let logs = logsByDate[selectedDate] ?? []
@@ -188,11 +189,11 @@ private struct HistoryItemView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.muted)
                 }
-                .padding(16)
+                .padding(14)
             }
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(log.exerciseItems) { item in
                         if let exercise = exercises.first(where: { $0.id == item.exerciseId }) {
                             VStack(alignment: .leading, spacing: 6) {
@@ -247,8 +248,8 @@ private struct HistoryItemView: View {
                         IconCircleButton(systemName: "trash", tint: Theme.danger, action: onDelete)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .top) {
                     Rectangle().fill(Theme.border).frame(height: 1)
@@ -261,7 +262,7 @@ private struct HistoryItemView: View {
                 .stroke(isExpanded ? Theme.text : Theme.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .shadow(color: .black.opacity(isExpanded ? 0.12 : 0.06), radius: isExpanded ? 10 : 4, x: 0, y: 2)
+        .shadow(color: .black.opacity(isExpanded ? 0.08 : 0.04), radius: isExpanded ? 7 : 3, x: 0, y: 1)
     }
 
     private func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool) -> String {
@@ -392,7 +393,7 @@ private struct CalendarCell: View {
                 .frame(height: 10)
                 .padding(.bottom, 4)
             }
-            .frame(height: 44)
+            .frame(height: 40)
             .frame(maxWidth: .infinity)
             .background(isSelected ? Theme.text : !logs.isEmpty ? Theme.accent.opacity(0.08) : Theme.background)
             .overlay(
