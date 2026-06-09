@@ -42,6 +42,7 @@ test('validates nested workout log limits and statuses', () => {
     id: 'log-1',
     name: '',
     date: '2026-05-21',
+    readiness: 4,
     status: 'planning',
     exerciseItems: [{
       exerciseId: 'ex-1',
@@ -55,6 +56,7 @@ test('validates nested workout log limits and statuses', () => {
   }, 'log-1');
 
   assert.equal(log.status, 'planning');
+  assert.equal(log.readiness, 4);
   assert.equal(log.exerciseItems[0].weightType, 'bar_double');
   assert.equal(log.exerciseItems[0].restTargetSeconds, 90);
   assert.equal(log.exerciseItems[0].supersetGroup, 'A');

@@ -393,7 +393,7 @@ export function validateLog(body, pathId) {
   assertObject(body, 'log');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'date', 'notes', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'date', 'notes', 'readiness', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
     'log',
   );
   requireMatchingId(body, pathId);
@@ -409,6 +409,8 @@ export function validateLog(body, pathId) {
   };
   const notes = stringValue(body.notes, 'notes', { max: 2000 });
   if (notes !== undefined) log.notes = notes;
+  const readiness = optionalIntValue(body.readiness, 'readiness', 1, 5);
+  if (readiness !== undefined) log.readiness = readiness;
   const startTime = isoDateTimeValue(body.startTime, 'startTime');
   if (startTime !== undefined) log.startTime = startTime;
   const endTime = isoDateTimeValue(body.endTime, 'endTime');

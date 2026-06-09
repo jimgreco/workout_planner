@@ -175,6 +175,11 @@ function programTargetsForSet(set, lastSet, program, hitTarget, hitCap, fallback
   };
 }
 
+function readinessValue(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 5 ? parsed : undefined;
+}
+
 export default function WorkoutLog({
   exercises,
   templates,
@@ -195,6 +200,7 @@ export default function WorkoutLog({
   const [name, setName]             = useState('');
   const [date, setDate]             = useState(today);
   const [notes, setNotes]           = useState('');
+  const [readiness, setReadiness]   = useState('');
   const [items, setItems]           = useState([]);
   const [startTime, setStartTime]   = useState(null);
     const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
@@ -228,6 +234,7 @@ export default function WorkoutLog({
       setName(editingLog.name || '');
       setDate(editingLog.date || today);
       setNotes(editingLog.notes || '');
+      setReadiness(editingLog.readiness ? String(editingLog.readiness) : '');
       setItems(JSON.parse(JSON.stringify(editingLog.exerciseItems || [])));
       setStartTime(editingLog.startTime || null);
       return;
@@ -239,6 +246,7 @@ export default function WorkoutLog({
       setName(active.name || '');
       setDate(active.date || today);
       setNotes(active.notes || '');
+      setReadiness(active.readiness ? String(active.readiness) : '');
       setItems(JSON.parse(JSON.stringify(active.exerciseItems || [])));
       setStartTime(active.startTime || null);
     }
@@ -288,6 +296,7 @@ export default function WorkoutLog({
         name: data.name,
         date: data.date,
         notes: data.notes,
+        ...(readinessValue(data.readiness) ? { readiness: readinessValue(data.readiness) } : {}),
         exerciseItems: data.items,
         startTime: data.startTime,
         status: data.status || 'active',
@@ -311,6 +320,7 @@ export default function WorkoutLog({
       name: workoutName || name,
       date,
       notes,
+      readiness,
       items: workoutItems || items,
       startTime: null,
       status: 'planning',
@@ -322,7 +332,7 @@ export default function WorkoutLog({
     if (!workoutId) return;
     const now = new Date().toISOString();
     setStartTime(now);
-    autoSave(workoutId, { name, date, notes, items, startTime: now, status: 'active' });
+    autoSave(workoutId, { name, date, notes, readiness, items, startTime: now, status: 'active' });
   }
 
   // ── Handle exercise changes from WorkoutBuilder ──────────────────────────
@@ -353,10 +363,10 @@ export default function WorkoutLog({
       // First exercise added — enter planning mode
       const id = crypto.randomUUID();
       setWorkoutId(id);
-      autoSave(id, { name, date, notes, items: newItems, startTime: null, status: 'planning' });
+      autoSave(id, { name, date, notes, readiness, items: newItems, startTime: null, status: 'planning' });
     } else if (workoutId) {
       const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-      scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
+      scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
     }
   }
 
@@ -371,7 +381,7 @@ export default function WorkoutLog({
   function handleItemsTextBlur() {
     if (!workoutId) return;
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-    scheduleAutoSave(workoutId, { name, date, notes, items: latestItemsRef.current, startTime, status });
+    scheduleAutoSave(workoutId, { name, date, notes, readiness, items: latestItemsRef.current, startTime, status });
   }
 
   
@@ -412,7 +422,7 @@ export default function WorkoutLog({
 
     setItems(newItems);
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
+    scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
   }
 
   function handleRestTargetReached(exIdx, setIdx) {
@@ -453,7 +463,7 @@ export default function WorkoutLog({
     clearTimeout(restAlertTimer.current);
     setItems(newItems);
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
+    scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
   }
 
   function handleEndRest(exIdx, setIdx) {
@@ -478,17 +488,18 @@ export default function WorkoutLog({
     clearTimeout(restAlertTimer.current);
     setItems(newItems);
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-    scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
+    scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
   }
 
   function handleFieldChange(field, value) {
     if (field === 'name') setName(value);
     else if (field === 'date') setDate(value);
     else if (field === 'notes') setNotes(value);
+    else if (field === 'readiness') setReadiness(value);
 
-    if (workoutId && field === 'date') {
+    if (workoutId && (field === 'date' || field === 'readiness')) {
       const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-      const data = { name, date, notes, items, startTime, status };
+      const data = { name, date, notes, readiness, items, startTime, status };
       data[field] = value;
       scheduleAutoSave(workoutId, data);
     }
@@ -497,7 +508,7 @@ export default function WorkoutLog({
   function handleFieldBlur(field) {
     if (!workoutId) return;
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-    const data = { name, date, notes, items, startTime, status };
+    const data = { name, date, notes, readiness, items, startTime, status };
     if (field === 'name') data.name = name;
     if (field === 'notes') data.notes = notes;
     scheduleAutoSave(workoutId, data);
@@ -576,7 +587,7 @@ export default function WorkoutLog({
     } else {
       const finalName = (!name || name === '') ? t.name : name;
       const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-      scheduleAutoSave(workoutId, { name: finalName, date, notes, items: combinedItems, startTime, status });
+      scheduleAutoSave(workoutId, { name: finalName, date, notes, readiness, items: combinedItems, startTime, status });
     }
   }
 
@@ -616,6 +627,7 @@ export default function WorkoutLog({
         name,
         date,
         notes,
+        ...(readinessValue(readiness) ? { readiness: readinessValue(readiness) } : {}),
         exerciseItems: items,
         startTime,
         endTime,
@@ -679,6 +691,7 @@ export default function WorkoutLog({
     setName('');
     setDate(today);
     setNotes('');
+    setReadiness('');
     setItems([]);
     setStartTime(null);
     setElapsed('');
@@ -777,6 +790,17 @@ export default function WorkoutLog({
         <div className="form-group">
           <label>Date</label>
           <input type="date" value={date} onChange={(e) => handleFieldChange('date', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Readiness</label>
+          <select aria-label="Readiness" value={readiness} onChange={(e) => handleFieldChange('readiness', e.target.value)}>
+            <option value="">Not set</option>
+            <option value="1">1 - Low</option>
+            <option value="2">2</option>
+            <option value="3">3 - Okay</option>
+            <option value="4">4</option>
+            <option value="5">5 - High</option>
+          </select>
         </div>
       </div>
 

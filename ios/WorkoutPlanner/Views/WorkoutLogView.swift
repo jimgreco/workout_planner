@@ -15,6 +15,7 @@ struct WorkoutLogView: View {
     @State private var name = ""
     @State private var date = Date()
     @State private var notes = ""
+    @State private var readiness = 0
     @State private var items: [ExerciseItem] = []
     @State private var startTime: String?
     @State private var activeExerciseIndex = 0
@@ -250,6 +251,27 @@ struct WorkoutLogView: View {
                     .fieldStyle()
                     .onChange(of: date) { _, _ in scheduleSave() }
             }
+
+            VStack(alignment: .leading, spacing: 6) {
+                FormLabel(text: "Readiness")
+                Picker("", selection: Binding(
+                    get: { readiness },
+                    set: { value in
+                        readiness = value
+                        scheduleSave()
+                    }
+                )) {
+                    Text("Not set").tag(0)
+                    Text("1 - Low").tag(1)
+                    Text("2").tag(2)
+                    Text("3 - Okay").tag(3)
+                    Text("4").tag(4)
+                    Text("5 - High").tag(5)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fieldStyle()
+            }
         }
     }
 
@@ -313,6 +335,7 @@ struct WorkoutLogView: View {
         name = log.name
         date = DateHelpers.date(from: log.date)
         notes = log.notes ?? ""
+        readiness = log.readiness ?? 0
         items = log.exerciseItems
         startTime = log.startTime
         isEditing = editing
@@ -428,6 +451,7 @@ struct WorkoutLogView: View {
                 name: name,
                 date: DateHelpers.dayString(from: date),
                 notes: notes,
+                readiness: readiness > 0 ? readiness : nil,
                 exerciseItems: items,
                 startTime: startTime,
                 endTime: isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : endTime,
@@ -507,6 +531,7 @@ struct WorkoutLogView: View {
             name: name,
             date: DateHelpers.dayString(from: date),
             notes: notes,
+            readiness: readiness > 0 ? readiness : nil,
             exerciseItems: items,
             startTime: startTime,
             status: status
@@ -1053,6 +1078,7 @@ struct WorkoutLogView: View {
         name = ""
         date = Date()
         notes = ""
+        readiness = 0
         items = []
         startTime = nil
         activeExerciseIndex = 0

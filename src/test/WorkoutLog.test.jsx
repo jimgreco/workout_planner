@@ -49,6 +49,7 @@ describe('WorkoutLog', () => {
       />,
     );
 
+    fireEvent.change(screen.getByLabelText(/readiness/i), { target: { value: '4' } });
     const option = screen.getByRole('option', { name: /strength plan/i });
     fireEvent.change(option.closest('select'), { target: { value: 'program-1:tmpl-1' } });
 
@@ -56,9 +57,10 @@ describe('WorkoutLog', () => {
     expect(saveLog.mock.calls[0][0]).toMatchObject({
       name: 'Push Day',
       status: 'planning',
+      readiness: 4,
       exerciseItems: [{ exerciseId: 'bench' }],
     });
-    expect(screen.getByText('Bench Press')).toBeInTheDocument();
+    expect(screen.getAllByText('Bench Press')[0]).toBeInTheDocument();
   });
 
   it('applies program progression when starting an active program workout', async () => {

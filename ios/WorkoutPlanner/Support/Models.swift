@@ -275,6 +275,7 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
     var name: String
     var date: String
     var notes: String?
+    var readiness: Int?
     var exerciseItems: [ExerciseItem]
     var startTime: String?
     var endTime: String?
@@ -289,6 +290,7 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         name: String,
         date: String,
         notes: String? = "",
+        readiness: Int? = nil,
         exerciseItems: [ExerciseItem] = [],
         startTime: String? = nil,
         endTime: String? = nil,
@@ -302,6 +304,7 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         self.name = name
         self.date = date
         self.notes = notes
+        self.readiness = readiness
         self.exerciseItems = exerciseItems
         self.startTime = startTime
         self.endTime = endTime
