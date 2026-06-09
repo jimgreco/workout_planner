@@ -223,6 +223,8 @@ private struct ExerciseSetsCard: View {
     let onEditExercise: ((Exercise) -> Void)?
     let onChanged: (() -> Void)?
     let onTextChanged: (() -> Void)?
+    @FocusState private var focusedCompactField: CompactRepField?
+    @State private var editedCompactFields: Set<CompactRepField> = []
 
     private let setColumnWidth: CGFloat = 28
     private let restColumnWidth: CGFloat = 54
@@ -503,24 +505,24 @@ private struct ExerciseSetsCard: View {
             if exercise.isUnilateral == true {
                 if compactUsesRange {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        compactField("Left min", value: rangeBinding(field: .left, side: .min))
-                        compactField("Left max", value: rangeBinding(field: .left, side: .max))
-                        compactField("Right min", value: rangeBinding(field: .right, side: .min))
-                        compactField("Right max", value: rangeBinding(field: .right, side: .max))
+                        compactField("Left min", field: .left, value: rangeBinding(field: .left, side: .min))
+                        compactField("Left max", field: .left, value: rangeBinding(field: .left, side: .max))
+                        compactField("Right min", field: .right, value: rangeBinding(field: .right, side: .min))
+                        compactField("Right max", field: .right, value: rangeBinding(field: .right, side: .max))
                     }
                 } else {
                     HStack(spacing: 8) {
-                        compactField("Left \(repUnit)", value: compactBinding(field: .left))
-                        compactField("Right \(repUnit)", value: compactBinding(field: .right))
+                        compactField("Left \(repUnit)", field: .left, value: compactBinding(field: .left))
+                        compactField("Right \(repUnit)", field: .right, value: compactBinding(field: .right))
                     }
                 }
             } else if compactUsesRange {
                 HStack(spacing: 8) {
-                    compactField("Min \(repUnit)", value: rangeBinding(field: .reps, side: .min))
-                    compactField("Max \(repUnit)", value: rangeBinding(field: .reps, side: .max))
+                    compactField("Min \(repUnit)", field: .reps, value: rangeBinding(field: .reps, side: .min))
+                    compactField("Max \(repUnit)", field: .reps, value: rangeBinding(field: .reps, side: .max))
                 }
             } else {
-                compactField("\(repUnitTitle) for all sets", value: compactBinding(field: .reps))
+                compactField("\(repUnitTitle) for all sets", field: .reps, value: compactBinding(field: .reps))
             }
 
             HStack(spacing: 8) {
@@ -552,7 +554,7 @@ private struct ExerciseSetsCard: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
-    private enum CompactRepField {
+    private enum CompactRepField: Hashable {
         case reps
         case left
         case right
@@ -570,32 +572,61 @@ private struct ExerciseSetsCard: View {
         return repRange(compactValue(field: .reps)) != nil
     }
 
-    private func compactField(_ label: String, value: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func compactField(_ label: String, field: CompactRepField, value: Binding<String>) -> some View {
+        let placeholder = compactPlaceholder(field: field)
+        let isFocused = focusedCompactField == field
+
+        return VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .heavy))
                 .foregroundStyle(Theme.muted)
                 .textCase(.uppercase)
-            TextField("", text: value)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.center)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.text)
-                .frame(height: 40)
-                .background(Theme.background)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                        .stroke(Theme.border, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+            ZStack {
+                if value.wrappedValue.isEmpty, !isFocused {
+                    if let placeholder {
+                        RepsFieldPlaceholderView(value: placeholder)
+                            .padding(.horizontal, 4)
+                            .frame(maxWidth: .infinity)
+                            .allowsHitTesting(false)
+                    } else {
+                        Text(compactValue(field: field))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.muted.opacity(0.58))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.68)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 4)
+                            .frame(maxWidth: .infinity)
+                            .allowsHitTesting(false)
+                    }
+                }
+
+                TextField("", text: value)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .focused($focusedCompactField, equals: field)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .frame(height: 40)
+            }
+            .background(Theme.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         }
         .frame(maxWidth: .infinity)
     }
 
     private func compactBinding(field: CompactRepField) -> Binding<String> {
         Binding(
-            get: { compactValue(field: field) },
-            set: { updateAllCompactValues(field: field, value: $0); onTextChanged?() }
+            get: { compactTextValue(field: field) },
+            set: {
+                editedCompactFields.insert(field)
+                updateAllCompactValues(field: field, value: $0)
+                onTextChanged?()
+            }
         )
     }
 
@@ -629,6 +660,18 @@ private struct ExerciseSetsCard: View {
         case .right:
             return first.placeholderRepsRight ?? first.repsRight ?? first.placeholderReps ?? first.reps ?? ""
         }
+    }
+
+    private func compactTextValue(field: CompactRepField) -> String {
+        let value = compactValue(field: field)
+        guard RepsFieldPlaceholder(rawValue: value) != nil, !editedCompactFields.contains(field) else {
+            return value
+        }
+        return ""
+    }
+
+    private func compactPlaceholder(field: CompactRepField) -> RepsFieldPlaceholder? {
+        RepsFieldPlaceholder(rawValue: compactValue(field: field))
     }
 
     private func updateAllCompactValues(field: CompactRepField, value: String) {
