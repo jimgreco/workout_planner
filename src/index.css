@@ -508,6 +508,8 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .program-next-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
 }

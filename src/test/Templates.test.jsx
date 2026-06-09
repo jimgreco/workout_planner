@@ -126,6 +126,46 @@ describe('Routines page', () => {
     expect(onLogsChanged).toHaveBeenCalled();
   });
 
+  it('delays the active program schedule by one day with week wraparound', async () => {
+    const onProgramsUpdate = vi.fn();
+    render(
+      <Templates
+        templates={[
+          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
+          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [
+            { weekday: 1, templateId: 'tmpl-1' },
+            { weekday: 6, templateId: 'tmpl-2' },
+          ],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /delay/i }));
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    expect(saveProgram.mock.calls[0][0]).toMatchObject({
+      id: 'program-1',
+      schedule: [
+        { weekday: 0, templateId: 'tmpl-2' },
+        { weekday: 2, templateId: 'tmpl-1' },
+      ],
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
+  });
+
   it('shows active program adherence beyond the current week', () => {
     render(
       <Templates

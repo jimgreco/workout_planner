@@ -609,6 +609,23 @@ export default function Templates({
     }
   }
 
+  async function handleDelayProgram() {
+    if (!activeProgram?.schedule?.length || saving) return;
+    setSaving(true);
+    try {
+      const delayed = {
+        ...activeProgram,
+        schedule: activeProgram.schedule
+          .map((item) => ({ ...item, weekday: (Number(item.weekday) + 1) % 7 }))
+          .sort((a, b) => a.weekday - b.weekday),
+      };
+      const updated = await saveProgram(cleanProgram(delayed));
+      onProgramsUpdate(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function setScheduledTemplate(weekday, templateId) {
     setProgramForm((draft) => {
       const schedule = (draft.schedule ?? []).filter((item) => item.weekday !== weekday);
@@ -733,6 +750,9 @@ export default function Templates({
               <div className="program-next-actions">
                 <button className="btn btn-secondary btn-sm" onClick={handleSkipNextWorkout} disabled={!nextWorkout || saving}>
                   <SkipForward size={14} /> Skip
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handleDelayProgram} disabled={!activeProgram?.schedule?.length || saving}>
+                  <RefreshCcw size={14} /> Delay
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(nextWorkout.template)} disabled={!nextWorkout}>
                   <Play size={14} fill="currentColor" /> Start

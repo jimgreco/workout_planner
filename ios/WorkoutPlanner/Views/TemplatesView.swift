@@ -37,6 +37,9 @@ struct TemplatesView: View {
                             },
                             onSkip: { workout in
                                 Task { await skip(workout) }
+                            },
+                            onDelay: { program in
+                                Task { await delay(program) }
                             }
                         )
                         ProgramList(
@@ -192,6 +195,27 @@ struct TemplatesView: View {
                 exerciseItems: [],
                 status: "skipped"
             ))
+        } catch {
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func delay(_ program: TrainingProgram) async {
+        guard !isSaving, !program.schedule.isEmpty else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            var delayed = program
+            delayed.schedule = program.schedule
+                .map { item in
+                    var delayedItem = item
+                    delayedItem.weekday = (item.weekday + 1) % 7
+                    return delayedItem
+                }
+                .sorted { $0.weekday < $1.weekday }
+            try await store.saveProgram(delayed)
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
@@ -680,6 +704,7 @@ private struct ProgramSummaryCard: View {
     let onDelete: (TrainingProgram) -> Void
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
+    let onDelay: (TrainingProgram) -> Void
 
     private var nextWorkout: NextProgramWorkout? {
         ProgramPlanner.nextWorkout(program: program, templates: templates, logs: logs)
@@ -728,9 +753,11 @@ private struct ProgramSummaryCard: View {
 
                 if let program {
                     ProgramNextWorkoutPanel(
+                        program: program,
                         nextWorkout: nextWorkout,
                         onStart: onStart,
-                        onSkip: onSkip
+                        onSkip: onSkip,
+                        onDelay: onDelay
                     )
 
                     ProgramWeekGrid(week: week)
@@ -772,9 +799,11 @@ private struct ProgramSummaryCard: View {
 }
 
 private struct ProgramNextWorkoutPanel: View {
+    let program: TrainingProgram
     let nextWorkout: NextProgramWorkout?
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
+    let onDelay: (TrainingProgram) -> Void
 
     private var title: String {
         guard let nextWorkout else { return "No scheduled workout" }
@@ -817,6 +846,17 @@ private struct ProgramNextWorkoutPanel: View {
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))
                 .disabled(nextWorkout == nil)
+
+                Button {
+                    onDelay(program)
+                } label: {
+                    Label("Delay", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .disabled(program.schedule.isEmpty)
 
                 Button {
                     if let template = nextWorkout?.template {
