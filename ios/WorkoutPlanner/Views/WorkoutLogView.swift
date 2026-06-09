@@ -261,7 +261,7 @@ struct WorkoutLogView: View {
                 Menu {
                     ForEach(activeProgramWorkouts) { workout in
                         Button("\(workout.program.name) - \(displayProgramDate(workout.date)) - \(workout.template.name)") {
-                            applyTemplate(workout.template, replace: true)
+                            applyTemplate(workout.template, replace: true, program: workout.program)
                         }
                     }
                 } label: {
@@ -545,11 +545,11 @@ struct WorkoutLogView: View {
         }
     }
 
-    private func applyTemplate(_ template: WorkoutTemplate, replace: Bool) {
+    private func applyTemplate(_ template: WorkoutTemplate, replace: Bool, program: TrainingProgram? = nil) {
         let existingIds = Set(replace ? [] : items.map(\.exerciseId))
         let templateItems = template.exerciseItems
             .filter { !existingIds.contains($0.exerciseId) }
-            .map { item in prepopulated(item) }
+            .map { item in prepopulated(item, program: program) }
 
         guard !templateItems.isEmpty else { return }
         if replace {
@@ -567,24 +567,27 @@ struct WorkoutLogView: View {
         saveNow(status: "planning")
     }
 
-    private func prepopulated(_ item: ExerciseItem) -> ExerciseItem {
+    private func prepopulated(_ item: ExerciseItem, program: TrainingProgram? = nil) -> ExerciseItem {
         let last = lastFinishedItem(for: item.exerciseId)
+        let hitTarget = program != nil ? exerciseHitTarget(templateSets: item.sets, lastSets: last?.sets ?? []) : false
+        let hitCap = program != nil ? exerciseHitRepCap(templateSets: item.sets, lastSets: last?.sets ?? [], cap: Double(program?.progression?.maxReps ?? 12)) : false
         let sets = item.sets.enumerated().map { offset, set in
             let plannedReps = set.reps?.trimmingCharacters(in: .whitespacesAndNewlines)
             let placeholderReps = set.placeholderReps?.trimmingCharacters(in: .whitespacesAndNewlines)
             let targetReps = plannedReps?.isEmpty == false
                 ? plannedReps ?? String(store.settings.defaultReps)
                 : (placeholderReps?.isEmpty == false ? placeholderReps ?? String(store.settings.defaultReps) : String(store.settings.defaultReps))
+            let targets = programTargets(for: set, lastSet: last?.sets.indices.contains(offset) == true ? last?.sets[offset] : nil, program: program, hitTarget: hitTarget, hitCap: hitCap)
             if let last, last.sets.indices.contains(offset) {
                 let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return WorkoutSet(
                     reps: "",
                     weight: "",
-                    placeholderReps: lastReps.isEmpty ? targetReps : "\(lastReps) (\(targetReps))",
-                    placeholderWeight: last.sets[offset].weight
+                    placeholderReps: lastReps.isEmpty ? targets.reps : "\(lastReps) (\(targets.reps))",
+                    placeholderWeight: targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
                 )
             }
-            return WorkoutSet(reps: "", weight: "", placeholderReps: targetReps, placeholderWeight: "")
+            return WorkoutSet(reps: "", weight: "", placeholderReps: targets.reps.isEmpty ? targetReps : targets.reps, placeholderWeight: targets.weight)
         }
         return ExerciseItem(
             exerciseId: item.exerciseId,
@@ -592,6 +595,100 @@ struct WorkoutLogView: View {
             restTargetSeconds: item.restTargetSeconds,
             supersetGroup: item.supersetGroup,
             sets: sets
+        )
+    }
+
+    private func numeric(_ value: String?) -> Double {
+        Double(value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
+    }
+
+    private func repValue(_ set: WorkoutSet?) -> Double {
+        max(numeric(set?.reps), numeric(set?.repsLeft), numeric(set?.repsRight))
+    }
+
+    private func plannedRepValue(_ set: WorkoutSet) -> Double {
+        let planned = numeric(set.reps)
+        if planned > 0 { return planned }
+        let placeholder = numeric(set.placeholderReps)
+        return placeholder > 0 ? placeholder : Double(store.settings.defaultReps)
+    }
+
+    private func exerciseHitTarget(templateSets: [WorkoutSet], lastSets: [WorkoutSet]) -> Bool {
+        guard lastSets.count >= templateSets.count else { return false }
+        return templateSets.indices.allSatisfy { index in
+            repValue(lastSets[index]) >= plannedRepValue(templateSets[index])
+        }
+    }
+
+    private func exerciseHitRepCap(templateSets: [WorkoutSet], lastSets: [WorkoutSet], cap: Double) -> Bool {
+        guard lastSets.count >= templateSets.count else { return false }
+        return templateSets.indices.allSatisfy { index in
+            repValue(lastSets[index]) >= cap
+        }
+    }
+
+    private func activeDeload(for program: TrainingProgram?) -> ProgramDeloadRule? {
+        guard let deload = program?.deload,
+              deload.type == "every_n_weeks"
+        else { return nil }
+        let calendar = Calendar.current
+        let everyWeeks = max(2, deload.everyWeeks ?? 4)
+        let currentWeek = workoutStartOfWeek(date)
+        let startWeek = workoutStartOfWeek(DateHelpers.date(from: deload.startDate ?? DateHelpers.todayString()))
+        let weeks = calendar.dateComponents([.weekOfYear], from: startWeek, to: currentWeek).weekOfYear ?? 0
+        return weeks >= 0 && weeks % everyWeeks == 0 ? deload : nil
+    }
+
+    private func workoutStartOfWeek(_ value: Date) -> Date {
+        let startOfDay = Calendar.current.startOfDay(for: value)
+        let weekdayOffset = Calendar.current.component(.weekday, from: startOfDay) - 1
+        return Calendar.current.date(byAdding: .day, value: -weekdayOffset, to: startOfDay) ?? startOfDay
+    }
+
+    private func programTargets(
+        for set: WorkoutSet,
+        lastSet: WorkoutSet?,
+        program: TrainingProgram?,
+        hitTarget: Bool,
+        hitCap: Bool
+    ) -> (reps: String, weight: String) {
+        let progression = program?.progression
+        let deload = activeDeload(for: program)
+        var targetReps = plannedRepValue(set)
+        var targetWeight = numeric(lastSet?.weight)
+
+        if let progression, progression.type != "none", hitTarget {
+            let repIncrement = Double(progression.repIncrement ?? 1)
+            let weightIncrement = progression.weightIncrement ?? 5
+            switch progression.type {
+            case "double_progression":
+                let minReps = Double(progression.minReps ?? 8)
+                let maxReps = Double(progression.maxReps ?? 12)
+                if hitCap {
+                    targetReps = minReps
+                    if targetWeight > 0 { targetWeight += weightIncrement }
+                } else {
+                    targetReps = min(maxReps, max(targetReps, repValue(lastSet)) + repIncrement)
+                }
+            case "linear_reps":
+                targetReps = max(targetReps, repValue(lastSet)) + repIncrement
+            case "linear_weight":
+                if targetWeight > 0 { targetWeight += weightIncrement }
+            default:
+                break
+            }
+        }
+
+        if let deload {
+            targetReps = max(1, (targetReps * Double(deload.repPercent ?? 100) / 100).rounded())
+            if targetWeight > 0 {
+                targetWeight *= Double(deload.loadPercent ?? 100) / 100
+            }
+        }
+
+        return (
+            reps: formatProgressionNumber(targetReps),
+            weight: targetWeight > 0 ? formatProgressionNumber(targetWeight) : ""
         )
     }
 

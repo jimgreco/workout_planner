@@ -84,6 +84,97 @@ function nextProgramWorkout(program, templates, logs) {
   return null;
 }
 
+function numberValue(value) {
+  const parsed = Number.parseFloat(String(value ?? '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatProgramNumber(value) {
+  if (!Number.isFinite(value)) return '';
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
+}
+
+function setRepValue(set) {
+  return Math.max(numberValue(set?.reps), numberValue(set?.repsLeft), numberValue(set?.repsRight));
+}
+
+function plannedRepValue(set, fallback) {
+  return numberValue(set?.reps || set?.placeholderReps || fallback);
+}
+
+function programDeloadActive(program, workoutDate) {
+  const deload = program?.deload;
+  if (!deload || deload.type !== 'every_n_weeks') return null;
+  const everyWeeks = Math.max(2, deload.everyWeeks || 4);
+  const start = new Date(`${deload.startDate || localDateKey(startOfToday())}T00:00:00`);
+  const current = new Date(`${workoutDate || localDateKey(startOfToday())}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(current.getTime())) return null;
+  const startWeek = new Date(start);
+  startWeek.setDate(start.getDate() - start.getDay());
+  const currentWeek = new Date(current);
+  currentWeek.setDate(current.getDate() - current.getDay());
+  const weeks = Math.floor((currentWeek - startWeek) / (7 * 24 * 60 * 60 * 1000));
+  return weeks >= 0 && weeks % everyWeeks === 0 ? deload : null;
+}
+
+function exerciseHitTarget(templateSets, lastSets, fallbackReps) {
+  if (!lastSets?.length || lastSets.length < templateSets.length) return false;
+  return templateSets.every((set, index) => setRepValue(lastSets[index]) >= plannedRepValue(set, fallbackReps));
+}
+
+function exerciseHitRepCap(templateSets, lastSets, cap) {
+  if (!lastSets?.length || lastSets.length < templateSets.length) return false;
+  return templateSets.every((_, index) => setRepValue(lastSets[index]) >= cap);
+}
+
+function programTargetsForSet(set, lastSet, program, hitTarget, hitCap, fallbackReps, workoutDate) {
+  const progression = program?.progression;
+  const deload = programDeloadActive(program, workoutDate);
+  let targetReps = plannedRepValue(set, fallbackReps) || fallbackReps;
+  let targetLeft = numberValue(set?.repsLeft || set?.placeholderRepsLeft) || targetReps;
+  let targetRight = numberValue(set?.repsRight || set?.placeholderRepsRight) || targetReps;
+  let targetWeight = numberValue(lastSet?.weight);
+
+  if (progression && progression.type !== 'none' && hitTarget) {
+    const repIncrement = progression.repIncrement || 1;
+    const weightIncrement = progression.weightIncrement || 5;
+    if (progression.type === 'double_progression') {
+      const minReps = progression.minReps || 8;
+      const maxReps = progression.maxReps || 12;
+      if (hitCap) {
+        targetReps = minReps;
+        targetLeft = minReps;
+        targetRight = minReps;
+        if (targetWeight > 0) targetWeight += weightIncrement;
+      } else {
+        targetReps = Math.min(maxReps, Math.max(targetReps, setRepValue(lastSet)) + repIncrement);
+        targetLeft = Math.min(maxReps, Math.max(targetLeft, numberValue(lastSet?.repsLeft || lastSet?.reps)) + repIncrement);
+        targetRight = Math.min(maxReps, Math.max(targetRight, numberValue(lastSet?.repsRight || lastSet?.reps)) + repIncrement);
+      }
+    } else if (progression.type === 'linear_reps') {
+      targetReps = Math.max(targetReps, setRepValue(lastSet)) + repIncrement;
+      targetLeft = Math.max(targetLeft, numberValue(lastSet?.repsLeft || lastSet?.reps)) + repIncrement;
+      targetRight = Math.max(targetRight, numberValue(lastSet?.repsRight || lastSet?.reps)) + repIncrement;
+    } else if (progression.type === 'linear_weight' && targetWeight > 0) {
+      targetWeight += weightIncrement;
+    }
+  }
+
+  if (deload) {
+    targetReps = Math.max(1, Math.round(targetReps * ((deload.repPercent || 100) / 100)));
+    targetLeft = Math.max(1, Math.round(targetLeft * ((deload.repPercent || 100) / 100)));
+    targetRight = Math.max(1, Math.round(targetRight * ((deload.repPercent || 100) / 100)));
+    if (targetWeight > 0) targetWeight *= (deload.loadPercent || 100) / 100;
+  }
+
+  return {
+    reps: formatProgramNumber(targetReps),
+    repsLeft: formatProgramNumber(targetLeft),
+    repsRight: formatProgramNumber(targetRight),
+    weight: targetWeight > 0 ? formatProgramNumber(targetWeight) : '',
+  };
+}
+
 export default function WorkoutLog({
   exercises,
   templates,
@@ -422,10 +513,10 @@ export default function WorkoutLog({
   function loadProgramWorkout(value) {
     const target = activeProgramWorkouts.find((workout) => `${workout.program.id}:${workout.template.id}` === value);
     if (!target) return;
-    applyTemplateToWorkout(target.template);
+    applyTemplateToWorkout(target.template, target.program);
   }
 
-  function applyTemplateToWorkout(t) {
+  function applyTemplateToWorkout(t, program = null) {
 
     const currentExerciseIds = new Set(items.map(item => item.exerciseId));
     
@@ -433,6 +524,8 @@ export default function WorkoutLog({
       .filter(item => !currentExerciseIds.has(item.exerciseId))
       .map((item) => {
         const lastItem = getLastItemForExercise(item.exerciseId, logs);
+        const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
+        const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
         return {
           exerciseId: item.exerciseId,
           weightType: item.weightType || lastItem?.weightType || 'weight',
@@ -443,16 +536,17 @@ export default function WorkoutLog({
             const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
             const targetLeft = s.repsLeft || s.placeholderRepsLeft || targetReps;
             const targetRight = s.repsRight || s.placeholderRepsRight || targetReps;
+            const programTargets = programTargetsForSet(s, lastItem?.sets?.[si], program, hitTarget, hitCap, settings.defaultReps, date);
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
               return {
                 reps: '',
                 repsLeft: '',
                 repsRight: '',
                 weight: '',
-                placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`,
-                placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${targetLeft})`,
-                placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${targetRight})`,
-                placeholderWeight: lastItem.sets[si].weight,
+                placeholderReps: `${lastItem.sets[si].reps} (${program ? programTargets.reps : targetReps})`,
+                placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${program ? programTargets.repsLeft : targetLeft})`,
+                placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${program ? programTargets.repsRight : targetRight})`,
+                placeholderWeight: program ? programTargets.weight : lastItem.sets[si].weight,
               };
             }
             return {
@@ -460,10 +554,10 @@ export default function WorkoutLog({
               repsLeft: '',
               repsRight: '',
               weight: '',
-              placeholderReps: targetReps,
-              placeholderRepsLeft: targetLeft,
-              placeholderRepsRight: targetRight,
-              placeholderWeight: '',
+              placeholderReps: program ? programTargets.reps : targetReps,
+              placeholderRepsLeft: program ? programTargets.repsLeft : targetLeft,
+              placeholderRepsRight: program ? programTargets.repsRight : targetRight,
+              placeholderWeight: program ? programTargets.weight : '',
             };
           }),
         };
