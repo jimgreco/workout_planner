@@ -51,6 +51,7 @@ struct WorkoutBuilderView: View {
     var onEditExercise: ((Exercise) -> Void)?
     var onChanged: (() -> Void)?
     var onTextChanged: (() -> Void)?
+    var onEditingDone: (() -> Void)?
     @State private var exerciseSearch = ""
 
     var body: some View {
@@ -76,7 +77,8 @@ struct WorkoutBuilderView: View {
                         onResetPersonalBest: onResetPersonalBest,
                         onEditExercise: onEditExercise,
                         onChanged: onChanged,
-                        onTextChanged: onTextChanged
+                        onTextChanged: onTextChanged,
+                        onEditingDone: onEditingDone
                     )
                 }
             }
@@ -223,6 +225,7 @@ private struct ExerciseSetsCard: View {
     let onEditExercise: ((Exercise) -> Void)?
     let onChanged: (() -> Void)?
     let onTextChanged: (() -> Void)?
+    let onEditingDone: (() -> Void)?
     @FocusState private var focusedCompactField: CompactRepField?
     @State private var editedCompactFields: Set<CompactRepField> = []
 
@@ -332,6 +335,21 @@ private struct ExerciseSetsCard: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .shadow(color: .black.opacity(isActiveExercise ? 0.12 : 0.06), radius: isActiveExercise ? 10 : 4, x: 0, y: 2)
+        .toolbar {
+            if focusedCompactField != nil {
+                ToolbarItem(placement: .keyboard) {
+                    KeyboardDoneToolbar {
+                        focusedCompactField = nil
+                        focusedField = nil
+                    }
+                }
+            }
+        }
+        .onChange(of: focusedCompactField) { oldValue, newValue in
+            if oldValue != nil, newValue != oldValue {
+                onEditingDone?()
+            }
+        }
     }
 
     private func headerContent(stacked: Bool) -> some View {

@@ -85,7 +85,8 @@ struct WorkoutLogView: View {
                         onSetCompleted: markSetCompleted,
                         onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
                         onChanged: builderChanged,
-                        onTextChanged: builderTextChanged
+                        onTextChanged: builderTextChanged,
+                        onEditingDone: commitBuilderFieldsIfNeeded
                     )
 
                     Divider().opacity(0.3)
