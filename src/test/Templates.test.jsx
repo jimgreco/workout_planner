@@ -118,10 +118,15 @@ describe('Routines page', () => {
     fireEvent.click(screen.getByRole('button', { name: /skip/i }));
 
     await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
     expect(saveLog.mock.calls[0][0]).toMatchObject({
       name: 'Push Day',
       status: 'skipped',
       exerciseItems: [],
+    });
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'skip',
+      title: 'Skipped Push Day',
     });
     expect(onLogsChanged).toHaveBeenCalled();
   });
@@ -167,6 +172,10 @@ describe('Routines page', () => {
       id: 'program-1',
       schedule: expectedSchedule,
     });
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'delay',
+      title: 'Delayed schedule',
+    });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
@@ -211,6 +220,10 @@ describe('Routines page', () => {
       id: 'program-1',
       schedule: expectedSchedule,
     });
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'pull_forward',
+      title: 'Pulled schedule forward',
+    });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
@@ -252,6 +265,32 @@ describe('Routines page', () => {
     expect(screen.getByText(/next 3 weeks/i)).toBeTruthy();
     expect(screen.getAllByText(/push day/i).length).toBeGreaterThan(1);
     expect(screen.getAllByText(/rest/i).length).toBeGreaterThan(0);
+  });
+
+  it('shows recent program activity', () => {
+    render(
+      <Templates
+        templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+          activity: [{ id: 'activity-1', type: 'delay', title: 'Delayed schedule', detail: 'Push Day moved later', date: '2026-05-26T12:00:00.000Z' }],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={() => {}}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText(/program activity/i)).toBeTruthy();
+    expect(screen.getByText(/delayed schedule/i)).toBeTruthy();
+    expect(screen.getByText(/push day moved later/i)).toBeTruthy();
   });
 
   it('opens new exercise from the program add menu', async () => {

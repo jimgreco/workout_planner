@@ -331,11 +331,38 @@ function programDeload(value) {
   return deload;
 }
 
+function programActivityItem(value, index) {
+  assertObject(value, `activity[${index}]`);
+  assertAllowedKeys(value, new Set(['id', 'type', 'date', 'title', 'detail']), `activity[${index}]`);
+
+  const item = {
+    id: validateId(value.id, `activity[${index}].id`),
+    type: stringValue(value.type, `activity[${index}].type`, { required: true, max: 32, allowEmpty: false }),
+    date: stringValue(value.date, `activity[${index}].date`, { required: true, max: 40, allowEmpty: false }),
+    title: stringValue(value.title, `activity[${index}].title`, { required: true, max: 160, allowEmpty: false }),
+  };
+  const detail = stringValue(value.detail, `activity[${index}].detail`, { max: 500 });
+  if (detail !== undefined) item.detail = detail;
+  return item;
+}
+
+function programActivity(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 30) fail('activity must contain at most 30 items');
+  const seen = new Set();
+  return value.map((item, index) => {
+    const entry = programActivityItem(item, index);
+    if (seen.has(entry.id)) return null;
+    seen.add(entry.id);
+    return entry;
+  }).filter(Boolean).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'active', 'progression', 'deload', 'progressionRule', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -355,6 +382,8 @@ export function validateProgram(body, pathId) {
   if (deload !== undefined) program.deload = deload;
   const progressionRule = stringValue(body.progressionRule, 'progressionRule', { max: 1000 });
   if (progressionRule !== undefined) program.progressionRule = progressionRule;
+  const activity = programActivity(body.activity);
+  if (activity !== undefined) program.activity = activity;
   return program;
 }
 

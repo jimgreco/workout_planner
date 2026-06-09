@@ -257,6 +257,15 @@ struct TemplatesView: View {
                 exerciseItems: [],
                 status: "skipped"
             ))
+            if let activeProgram = ProgramPlanner.activeProgram(from: store.programs) {
+                let updatedProgram = programWithActivity(
+                    activeProgram,
+                    type: "skip",
+                    title: "Skipped \(workout.template.name)",
+                    detail: ProgramPlanner.displayDate(workout.date)
+                )
+                try await store.saveProgram(updatedProgram)
+            }
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
@@ -269,8 +278,13 @@ struct TemplatesView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            var delayed = program
             let nextWorkout = ProgramPlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs)
+            var delayed = programWithActivity(
+                program,
+                type: "delay",
+                title: "Delayed schedule",
+                detail: nextWorkout.map { "\($0.template.name) moved later from \(ProgramPlanner.displayDate($0.date))" } ?? "Moved next scheduled workout later"
+            )
             delayed.schedule = ProgramPlanner.movedSchedule(program.schedule, startingAt: nextWorkout?.weekday, direction: 1)
             try await store.saveProgram(delayed)
         } catch {
@@ -285,8 +299,13 @@ struct TemplatesView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            var pulled = program
             let nextWorkout = ProgramPlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs)
+            var pulled = programWithActivity(
+                program,
+                type: "pull_forward",
+                title: "Pulled schedule forward",
+                detail: nextWorkout.map { "\($0.template.name) moved earlier from \(ProgramPlanner.displayDate($0.date))" } ?? "Moved next scheduled workout earlier"
+            )
             pulled.schedule = ProgramPlanner.movedSchedule(program.schedule, startingAt: nextWorkout?.weekday, direction: -1)
             try await store.saveProgram(pulled)
         } catch {
@@ -294,6 +313,13 @@ struct TemplatesView: View {
                 store.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func programWithActivity(_ program: TrainingProgram, type: String, title: String, detail: String? = nil) -> TrainingProgram {
+        var updated = program
+        let entry = ProgramActivity(type: type, title: title, detail: detail)
+        updated.activity = ([entry] + (program.activity ?? [])).prefix(30).map { $0 }
+        return updated
     }
 
 }
@@ -800,6 +826,10 @@ private struct ProgramSummaryCard: View {
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.muted)
                     }
+
+                    if let activity = program.activity, !activity.isEmpty {
+                        ProgramActivityList(activity: Array(activity.prefix(5)))
+                    }
                 } else {
                     Label("Schedule routines by weekday, then start the next planned workout from here.", systemImage: "calendar")
                         .font(.system(size: 13))
@@ -1023,6 +1053,76 @@ private struct ProgramUpcomingRow: View {
         case .missed: return Theme.warning.opacity(0.08)
         case .planned, .rest: return Theme.background
         }
+    }
+}
+
+private struct ProgramActivityList: View {
+    let activity: [ProgramActivity]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Activity")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Text("Recent changes")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+            }
+
+            VStack(spacing: 6) {
+                ForEach(activity) { entry in
+                    ProgramActivityRow(entry: entry)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Program activity")
+    }
+}
+
+private struct ProgramActivityRow: View {
+    let entry: ProgramActivity
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.title)
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                if let detail = entry.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let dateLabel = activityDateLabel(entry.date) {
+                Text(dateLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Theme.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private func activityDateLabel(_ value: String) -> String? {
+        guard let date = ISO8601DateFormatter().date(from: value) else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, h:mm a"
+        return formatter.string(from: date)
     }
 }
 

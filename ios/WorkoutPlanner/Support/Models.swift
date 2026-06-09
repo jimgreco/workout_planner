@@ -205,6 +205,28 @@ struct ProgramDeloadRule: Codable, Equatable {
     }
 }
 
+struct ProgramActivity: Codable, Identifiable, Equatable {
+    var id: String
+    var type: String
+    var date: String
+    var title: String
+    var detail: String?
+
+    init(
+        id: String = UUID().uuidString,
+        type: String,
+        date: String = ISO8601DateFormatter().string(from: Date()),
+        title: String,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.date = date
+        self.title = title
+        self.detail = detail
+    }
+}
+
 struct TrainingProgram: Codable, Identifiable, Equatable {
     var id: String
     var name: String
@@ -214,6 +236,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
     var progression: ProgramProgressionRule?
     var deload: ProgramDeloadRule?
     var progressionRule: String?
+    var activity: [ProgramActivity]?
     var updatedAt: String?
     var revision: Int?
 
@@ -226,6 +249,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         progression: ProgramProgressionRule? = ProgramProgressionRule(),
         deload: ProgramDeloadRule? = nil,
         progressionRule: String? = "",
+        activity: [ProgramActivity]? = nil,
         updatedAt: String? = nil,
         revision: Int? = nil
     ) {
@@ -237,6 +261,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.progression = progression
         self.deload = deload
         self.progressionRule = progressionRule
+        self.activity = activity
         self.updatedAt = updatedAt
         self.revision = revision
     }

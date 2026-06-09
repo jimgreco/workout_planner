@@ -133,6 +133,32 @@ function dateLabel(date) {
   return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
 }
 
+function activityId() {
+  return `activity-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function formatActivityDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function withProgramActivity(program, type, title, detail) {
+  return {
+    ...program,
+    activity: [
+      {
+        id: activityId(),
+        type,
+        date: new Date().toISOString(),
+        title,
+        ...(detail ? { detail } : {}),
+      },
+      ...(program.activity ?? []),
+    ].slice(0, 30),
+  };
+}
+
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '';
@@ -473,6 +499,17 @@ function cleanProgram(program) {
         return true;
       })
       .sort((a, b) => a.weekday - b.weekday),
+    activity: (program.activity ?? [])
+      .filter((item) => item?.id && item?.type && item?.date && item?.title)
+      .map((item) => ({
+        id: String(item.id),
+        type: String(item.type),
+        date: String(item.date),
+        title: String(item.title).trim(),
+        ...(item.detail ? { detail: String(item.detail).trim() } : {}),
+      }))
+      .filter((item) => item.title)
+      .slice(0, 30),
   };
   const progression = cleanProgression(program.progression);
   if (progression) {
@@ -674,6 +711,13 @@ export default function Templates({
         status: 'skipped',
       });
       onLogsChanged(updated);
+      const updatedPrograms = await saveProgram(cleanProgram(withProgramActivity(
+        activeProgram,
+        'skip',
+        `Skipped ${nextWorkout.template.name}`,
+        dateLabel(nextWorkout.date),
+      )));
+      onProgramsUpdate(updatedPrograms);
     } finally {
       setSaving(false);
     }
@@ -684,7 +728,12 @@ export default function Templates({
     setSaving(true);
     try {
       const delayed = {
-        ...activeProgram,
+        ...withProgramActivity(
+          activeProgram,
+          'delay',
+          'Delayed schedule',
+          nextWorkout ? `${nextWorkout.template.name} moved later from ${dateLabel(nextWorkout.date)}` : 'Moved next scheduled workout later',
+        ),
         schedule: moveScheduledWorkout(activeProgram.schedule, nextWorkout?.entry?.weekday, 1),
       };
       const updated = await saveProgram(cleanProgram(delayed));
@@ -699,7 +748,12 @@ export default function Templates({
     setSaving(true);
     try {
       const pulled = {
-        ...activeProgram,
+        ...withProgramActivity(
+          activeProgram,
+          'pull_forward',
+          'Pulled schedule forward',
+          nextWorkout ? `${nextWorkout.template.name} moved earlier from ${dateLabel(nextWorkout.date)}` : 'Moved next scheduled workout earlier',
+        ),
         schedule: moveScheduledWorkout(activeProgram.schedule, nextWorkout?.entry?.weekday, -1),
       };
       const updated = await saveProgram(cleanProgram(pulled));
@@ -939,6 +993,25 @@ export default function Templates({
                 <CalendarDays size={15} />
                 {activeProgram.progressionRule}
               </p>
+            )}
+            {activeProgram.activity?.length > 0 && (
+              <div className="program-activity" aria-label="Program activity">
+                <div className="program-activity-heading">
+                  <strong>Activity</strong>
+                  <span>Recent changes</span>
+                </div>
+                <div className="program-activity-list">
+                  {activeProgram.activity.slice(0, 5).map((entry) => (
+                    <div key={entry.id} className="program-activity-item">
+                      <div>
+                        <strong>{entry.title}</strong>
+                        {entry.detail && <span>{entry.detail}</span>}
+                      </div>
+                      <time>{formatActivityDate(entry.date)}</time>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </>
         ) : (

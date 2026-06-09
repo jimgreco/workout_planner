@@ -661,6 +661,62 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .program-upcoming-day.planned em {
   color: var(--text);
 }
+.program-activity {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+.program-activity-heading,
+.program-activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.program-activity-heading strong {
+  font-size: 14px;
+}
+.program-activity-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.program-activity-list {
+  display: grid;
+  gap: 6px;
+}
+.program-activity-item {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.program-activity-item div {
+  min-width: 0;
+}
+.program-activity-item strong,
+.program-activity-item span {
+  display: block;
+}
+.program-activity-item strong {
+  font-size: 13px;
+}
+.program-activity-item span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-activity-item time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
 .program-adherence {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
