@@ -143,6 +143,7 @@ struct AppShell: View {
 private struct SettingsPage: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var store: WorkoutStore
+    @AppStorage("forge.lastExportAt.v1") private var lastExportAt = ""
     let onDone: () -> Void
     let onReviewConflicts: () -> Void
     let onSignOut: () -> Void
@@ -229,6 +230,14 @@ private struct SettingsPage: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(accountBusy)
+
+                                AccountSettingsDivider()
+
+                                Text(lastExportText)
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.muted)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 12)
 
                                 AccountSettingsDivider()
 
@@ -362,6 +371,11 @@ private struct SettingsPage: View {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 44, weight: .semibold))
                         .foregroundStyle(Theme.accent)
+                    if let exportedAt = AccountBackupDateFormatting.displayText(for: file.exportedAt) {
+                        Text("Exported \(exportedAt)")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.muted)
+                    }
                     ShareLink(item: file.url) {
                         Label("Share Export", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
@@ -459,12 +473,23 @@ private struct SettingsPage: View {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("forge-workout-export-\(DateHelpers.todayString()).json")
             try data.write(to: url, options: .atomic)
-            exportFile = ExportFile(url: url)
+            let payload = try? JSONDecoder().decode(ForgeExportPayload.self, from: data)
+            let exportedAt = AccountBackupDateFormatting.normalizedTimestamp(payload?.exportedAt)
+                ?? ISO8601DateFormatter().string(from: Date())
+            lastExportAt = exportedAt
+            exportFile = ExportFile(url: url, exportedAt: exportedAt)
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private var lastExportText: String {
+        if let exportedAt = AccountBackupDateFormatting.displayText(for: lastExportAt) {
+            return "Last export: \(exportedAt)"
+        }
+        return "No exports from this iPhone yet"
     }
 
     @MainActor
@@ -498,6 +523,39 @@ private enum AccountSettingsStyle {
     static let divider = Color(uiColor: .separator).opacity(0.35)
     static let sectionTitle = Color(uiColor: .secondaryLabel)
     static let cardRadius: CGFloat = 28
+}
+
+private enum AccountBackupDateFormatting {
+    static let fractionalISO: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static let standardISO = ISO8601DateFormatter()
+
+    static let display: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static func normalizedTimestamp(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return date(from: value) == nil ? nil : value
+    }
+
+    static func displayText(for value: String?) -> String? {
+        guard let value = value, let date = date(from: value) else { return nil }
+        return display.string(from: date)
+    }
+
+    private static func date(from value: String) -> Date? {
+        fractionalISO.date(from: value) ?? standardISO.date(from: value)
+    }
 }
 
 private struct AccountProfileCard: View {
@@ -841,6 +899,7 @@ private struct SyncConflictValueColumn: View {
 private struct ExportFile: Identifiable {
     let id = UUID()
     let url: URL
+    let exportedAt: String
 }
 
 private struct ImportDraft: Identifiable {
@@ -875,6 +934,9 @@ private struct ImportPreviewSheet: View {
             Form {
                 Section {
                     LabeledContent("File", value: draft.fileName)
+                    if let exportedAt = AccountBackupDateFormatting.displayText(for: draft.payload.exportedAt) {
+                        LabeledContent("Exported", value: exportedAt)
+                    }
                     LabeledContent("Exercises", value: "\(draft.preview.counts.exercises)")
                     LabeledContent("Routines", value: "\(draft.preview.counts.templates)")
                     LabeledContent("Workouts", value: "\(draft.preview.counts.logs)")

@@ -58,6 +58,7 @@ const PAGES = [
 const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';
 const CRASH_REPORT_KEY = 'forge.lastCrashReportAt.v1';
 const CRASH_REPORT_COOLDOWN_MS = 30 * 60 * 1000;
+const LAST_EXPORT_KEY = 'forge.lastExportAt.v1';
 
 const emptyImportDraft = () => ({
   fileName: '',
@@ -85,6 +86,39 @@ function formatConflictRevision(item) {
   if (Number.isInteger(item.revision)) bits.push(`Rev ${item.revision}`);
   if (item.updatedAt) bits.push(new Date(item.updatedAt).toLocaleString());
   return bits.join(' · ') || 'Unsynced';
+}
+
+function readLastExportAt() {
+  try {
+    return localStorage.getItem(LAST_EXPORT_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberLastExportAt(value) {
+  try {
+    localStorage.setItem(LAST_EXPORT_KEY, value);
+  } catch {
+    // Export still succeeded; skip the local receipt if storage is unavailable.
+  }
+}
+
+function validTimestamp(value, fallback = '') {
+  if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return value;
+  return fallback;
+}
+
+function formatBackupTimestamp(value) {
+  const timestamp = validTimestamp(value);
+  if (!timestamp) return '';
+  return new Date(timestamp).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function programProgressionLabel(progression) {
@@ -148,6 +182,7 @@ export default function App() {
   const [importDraft, setImportDraft] = useState(emptyImportDraft);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
+  const [lastExportAt, setLastExportAt] = useState(() => readLastExportAt());
   const [isOffline, setIsOffline] = useState(() => (
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   ));
@@ -367,7 +402,10 @@ export default function App() {
       link.download = `forge-workout-export-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      setNotice({ type: 'success', message: 'Export downloaded.' });
+      const exportedAt = validTimestamp(data.exportedAt, new Date().toISOString());
+      rememberLastExportAt(exportedAt);
+      setLastExportAt(exportedAt);
+      setNotice({ type: 'success', message: `Export downloaded. Last export: ${formatBackupTimestamp(exportedAt)}.` });
       setShowUserMenu(false);
     } finally {
       setAccountBusy(false);
@@ -448,6 +486,7 @@ export default function App() {
   }
 
   function renderAccountMenuItems() {
+    const lastExportLabel = formatBackupTimestamp(lastExportAt);
     return (
       <>
         <div className="dropdown-info">
@@ -459,6 +498,9 @@ export default function App() {
         <button className="dropdown-item" onClick={handleExportData} disabled={accountBusy}>
           <Download size={16} /> Export data
         </button>
+        <div className="dropdown-note">
+          {lastExportLabel ? `Last export: ${lastExportLabel}` : 'No exports from this browser yet'}
+        </div>
         <button className="dropdown-item" onClick={() => { setImportDraft(emptyImportDraft()); setAccountModal('import'); setShowUserMenu(false); }}>
           <Upload size={16} /> Import data
         </button>
@@ -809,6 +851,12 @@ export default function App() {
 
             {importDraft.preview && (
               <>
+                {formatBackupTimestamp(importDraft.preview.exportedAt) && (
+                  <p className="text-muted import-note">
+                    Exported {formatBackupTimestamp(importDraft.preview.exportedAt)}
+                  </p>
+                )}
+
                 <div className="import-preview">
                   <div>
                     <span>Exercises</span>

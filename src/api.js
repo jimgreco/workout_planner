@@ -771,6 +771,7 @@ export function previewImportData(data, current = {
     programs: programs.filter((item) => existingIds.programs.has(item.id)).length,
   };
   return {
+    exportedAt: typeof data.exportedAt === 'string' ? data.exportedAt : '',
     counts: {
       exercises: exercises.length,
       templates: templates.length,

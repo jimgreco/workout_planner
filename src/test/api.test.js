@@ -458,6 +458,7 @@ describe('account and support', () => {
 
   it('previewImportData summarizes imported data and duplicate IDs', () => {
     const preview = previewImportData({
+      exportedAt: '2026-06-08T20:15:00.000Z',
       exercises: [EX],
       templates: [TMPL],
       logs: [LOG],
@@ -470,6 +471,7 @@ describe('account and support', () => {
       programs: [],
     });
 
+    expect(preview.exportedAt).toBe('2026-06-08T20:15:00.000Z');
     expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, programs: 1, settings: 1 });
     expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1, programs: 0 });
     expect(preview.targetIsEmpty).toBe(false);
