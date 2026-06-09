@@ -99,10 +99,16 @@ struct WorkoutLogView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
+                    Button {
                         focusedTextField = nil
                         focusedBuilderField = nil
+                    } label: {
+                        Text("Done")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 40)
+                            .background(Theme.accent, in: Capsule())
                     }
                 }
             }
@@ -136,6 +142,9 @@ struct WorkoutLogView: View {
         .onChange(of: focusedBuilderField) { oldValue, newValue in
             if oldValue != nil, newValue != oldValue {
                 commitBuilderFieldsIfNeeded()
+            }
+            if let newValue {
+                clearBuilderFieldForEntry(newValue)
             }
         }
         .alert(isEditing ? "Cancel Editing?" : "Discard Workout?", isPresented: $showDiscardConfirm) {
@@ -606,10 +615,54 @@ struct WorkoutLogView: View {
         if items.indices.contains(nextExercise) {
             activeExerciseIndex = nextExercise
             activeSetIndex = nextSet
+            focusedBuilderField = repsFocusField(itemIndex: nextExercise, setIndex: nextSet)
         }
         scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: now)
         updateExternalLiveActivityNow()
         saveNow(status: currentStatus())
+    }
+
+    private func clearBuilderFieldForEntry(_ field: WorkoutBuilderFocusedField) {
+        let itemIndex: Int
+        let setIndex: Int
+        switch field {
+        case let .reps(i, s), let .repsLeft(i, s), let .repsRight(i, s), let .weight(i, s), let .rpe(i, s), let .rir(i, s):
+            itemIndex = i
+            setIndex = s
+        }
+
+        guard items.indices.contains(itemIndex), items[itemIndex].sets.indices.contains(setIndex) else { return }
+
+        switch field {
+        case .reps:
+            guard items[itemIndex].sets[setIndex].reps?.isEmpty == false else { return }
+            items[itemIndex].sets[setIndex].reps = ""
+        case .repsLeft:
+            guard items[itemIndex].sets[setIndex].repsLeft?.isEmpty == false else { return }
+            items[itemIndex].sets[setIndex].repsLeft = ""
+        case .repsRight:
+            guard items[itemIndex].sets[setIndex].repsRight?.isEmpty == false else { return }
+            items[itemIndex].sets[setIndex].repsRight = ""
+        case .weight:
+            guard items[itemIndex].sets[setIndex].weight?.isEmpty == false else { return }
+            items[itemIndex].sets[setIndex].weight = ""
+        case .rpe:
+            guard items[itemIndex].sets[setIndex].rpe?.isEmpty == false else { return }
+            items[itemIndex].sets[setIndex].rpe = ""
+        case .rir:
+            guard items[itemIndex].sets[setIndex].rir?.isEmpty == false else { return }
+            items[itemIndex].sets[setIndex].rir = ""
+        }
+        hasPendingBuilderCommit = true
+    }
+
+    private func repsFocusField(itemIndex: Int, setIndex: Int) -> WorkoutBuilderFocusedField {
+        if items.indices.contains(itemIndex),
+           let exercise = store.exercise(id: items[itemIndex].exerciseId),
+           exercise.isUnilateral == true {
+            return .repsLeft(itemIndex: itemIndex, setIndex: setIndex)
+        }
+        return .reps(itemIndex: itemIndex, setIndex: setIndex)
     }
 
     private func endRest(exerciseIndex: Int, setIndex: Int) {

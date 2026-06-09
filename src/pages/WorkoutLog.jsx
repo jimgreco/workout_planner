@@ -68,8 +68,13 @@ export default function WorkoutLog({
 
   const saveTimer = useRef(null);
   const restAlertTimer = useRef(null);
+  const latestItemsRef = useRef(items);
   const isActive = !!workoutId;
   const isPlanningMode = !!workoutId && !startTime && !isEditing.current;
+
+  useEffect(() => {
+    latestItemsRef.current = items;
+  }, [items]);
 
   // ── Resume active workout or load editing log ────────────────────────────
   useEffect(() => {
@@ -197,6 +202,7 @@ export default function WorkoutLog({
       });
     }
 
+    latestItemsRef.current = newItems;
     setItems(newItems);
 
     if (!workoutId && newItems.length > 0) {
@@ -208,6 +214,20 @@ export default function WorkoutLog({
       const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
       scheduleAutoSave(workoutId, { name, date, notes, items: newItems, startTime, status });
     }
+  }
+
+  function handleItemsTextChange(newItems) {
+    latestItemsRef.current = newItems;
+    setItems(newItems);
+    if (!workoutId && newItems.length > 0) {
+      setWorkoutId(crypto.randomUUID());
+    }
+  }
+
+  function handleItemsTextBlur() {
+    if (!workoutId) return;
+    const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+    scheduleAutoSave(workoutId, { name, date, notes, items: latestItemsRef.current, startTime, status });
   }
 
   
@@ -271,12 +291,21 @@ export default function WorkoutLog({
     else if (field === 'date') setDate(value);
     else if (field === 'notes') setNotes(value);
 
-    if (workoutId) {
+    if (workoutId && field === 'date') {
       const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
       const data = { name, date, notes, items, startTime, status };
       data[field] = value;
       scheduleAutoSave(workoutId, data);
     }
+  }
+
+  function handleFieldBlur(field) {
+    if (!workoutId) return;
+    const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+    const data = { name, date, notes, items, startTime, status };
+    if (field === 'name') data.name = name;
+    if (field === 'notes') data.notes = notes;
+    scheduleAutoSave(workoutId, data);
   }
 
   // ── Load template into active workout ────────────────────────────────────
@@ -534,6 +563,7 @@ export default function WorkoutLog({
             placeholder="e.g. Monday Push Day"
             value={name}
             onChange={(e) => handleFieldChange('name', e.target.value)}
+            onBlur={() => handleFieldBlur('name')}
           />
         </div>
         <div className="form-group">
@@ -574,6 +604,8 @@ export default function WorkoutLog({
         exercises={exercises}
         items={items}
         onChange={handleItemsChange}
+        onTextChange={handleItemsTextChange}
+        onTextBlur={handleItemsTextBlur}
         activeExerciseIdx={activeExerciseIdx}
         activeSetIdx={activeSetIdx}
         onSetCompleted={handleSetCompleted}
@@ -593,6 +625,7 @@ export default function WorkoutLog({
           placeholder="How did it go? Any PRs, fatigue notes…"
           value={notes}
           onChange={(e) => handleFieldChange('notes', e.target.value)}
+          onBlur={() => handleFieldBlur('notes')}
         />
       </div>
 

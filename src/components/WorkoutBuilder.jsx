@@ -125,6 +125,8 @@ export default function WorkoutBuilder({
   exercises,
   items,
   onChange,
+  onTextChange,
+  onTextBlur,
   readOnly = false,
   showWeight = true,
   defaultSets = 4,
@@ -234,7 +236,7 @@ export default function WorkoutBuilder({
     onChange(copy);
   }
 
-  function updateSet(itemIdx, setIdx, field, value) {
+  function updateSet(itemIdx, setIdx, field, value, options = {}) {
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       return {
@@ -244,7 +246,21 @@ export default function WorkoutBuilder({
         ),
       };
     });
-    onChange(copy);
+    if (options.textEntry && onTextChange) {
+      onTextChange(copy);
+    } else {
+      onChange(copy);
+    }
+  }
+
+  function handleSetTextFocus(itemIdx, setIdx, field) {
+    const value = items[itemIdx]?.sets?.[setIdx]?.[field];
+    if (readOnly || value === undefined || value === null || value === '') return;
+    updateSet(itemIdx, setIdx, field, '', { textEntry: true });
+  }
+
+  function handleSetTextBlur() {
+    onTextBlur?.();
   }
 
   function updateItem(itemIdx, patch) {
@@ -600,7 +616,9 @@ export default function WorkoutBuilder({
                             inputMode="numeric"
                             placeholder={planningMode ? "L" : (set.placeholderRepsLeft || "L")}
                             value={planningMode ? (set.placeholderRepsLeft || '') : (set.repsLeft ?? '')}
-                            onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft', e.target.value)}
+                            onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft')}
+                            onBlur={handleSetTextBlur}
+                            onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft', e.target.value, { textEntry: true })}
                             disabled={readOnly}
                             aria-label={`Left ${repUnit} for set ${si + 1} of ${ex.name}`}
                             style={planningMode ? { color: 'var(--text-muted)' } : undefined}
@@ -610,7 +628,9 @@ export default function WorkoutBuilder({
                             inputMode="numeric"
                             placeholder={planningMode ? "R" : (set.placeholderRepsRight || "R")}
                             value={planningMode ? (set.placeholderRepsRight || '') : (set.repsRight ?? '')}
-                            onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight', e.target.value)}
+                            onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight')}
+                            onBlur={handleSetTextBlur}
+                            onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight', e.target.value, { textEntry: true })}
                             disabled={readOnly}
                             aria-label={`Right ${repUnit} for set ${si + 1} of ${ex.name}`}
                             style={planningMode ? { color: 'var(--text-muted)' } : undefined}
@@ -622,7 +642,9 @@ export default function WorkoutBuilder({
                           inputMode="numeric"
                           placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
                           value={planningMode ? (set.placeholderReps || '') : set.reps}
-                          onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value)}
+                          onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderReps' : 'reps')}
+                          onBlur={handleSetTextBlur}
+                          onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value, { textEntry: true })}
                           disabled={readOnly}
                           style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                         />
@@ -638,7 +660,9 @@ export default function WorkoutBuilder({
                               step="2.5"
                               placeholder={set.placeholderWeight || "—"}
                               value={set.weight}
-                              onChange={(e) => updateSet(idx, si, 'weight', e.target.value)}
+                              onFocus={() => handleSetTextFocus(idx, si, 'weight')}
+                              onBlur={handleSetTextBlur}
+                              onChange={(e) => updateSet(idx, si, 'weight', e.target.value, { textEntry: true })}
                               disabled={readOnly}
                               aria-label={`Weight for set ${si + 1} of ${ex.name}`}
 	                            />
@@ -708,7 +732,9 @@ export default function WorkoutBuilder({
                                 step="0.5"
                                 placeholder="-"
                                 value={set.rpe || ''}
-                                onChange={(e) => updateSet(idx, si, 'rpe', e.target.value)}
+                                onFocus={() => handleSetTextFocus(idx, si, 'rpe')}
+                                onBlur={handleSetTextBlur}
+                                onChange={(e) => updateSet(idx, si, 'rpe', e.target.value, { textEntry: true })}
                                 aria-label={`RPE for set ${si + 1} of ${ex.name}`}
                               />
                             </label>
@@ -721,7 +747,9 @@ export default function WorkoutBuilder({
                                 step="1"
                                 placeholder="-"
                                 value={set.rir || ''}
-                                onChange={(e) => updateSet(idx, si, 'rir', e.target.value)}
+                                onFocus={() => handleSetTextFocus(idx, si, 'rir')}
+                                onBlur={handleSetTextBlur}
+                                onChange={(e) => updateSet(idx, si, 'rir', e.target.value, { textEntry: true })}
                                 aria-label={`RIR for set ${si + 1} of ${ex.name}`}
                               />
                             </label>
