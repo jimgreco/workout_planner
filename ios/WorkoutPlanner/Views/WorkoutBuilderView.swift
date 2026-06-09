@@ -496,10 +496,7 @@ private struct ExerciseSetsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                headerContent(stacked: false)
-                headerContent(stacked: true)
-            }
+            cardHeader
 
             Divider()
 
@@ -517,13 +514,7 @@ private struct ExerciseSetsCard: View {
             }
 
             if !readOnly {
-                ViewThatFits(in: .horizontal) {
-                    controlRow
-                    VStack(spacing: 8) {
-                        restMenu
-                        pairMenu
-                    }
-                }
+                controlMenus
             } else if item.restTargetSeconds ?? 0 > 0 {
                 Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
                     .font(.system(size: 12, weight: .bold))
@@ -607,20 +598,10 @@ private struct ExerciseSetsCard: View {
         }
     }
 
-    private func headerContent(stacked: Bool) -> some View {
-        Group {
-            if stacked {
-                VStack(alignment: .leading, spacing: 10) {
-                    exerciseTitle
-                    headerButtons
-                }
-            } else {
-                HStack(alignment: .top, spacing: 12) {
-                    exerciseTitle
-                    Spacer(minLength: 8)
-                    headerButtons
-                }
-            }
+    private var cardHeader: some View {
+        HStack(alignment: .top, spacing: 10) {
+            exerciseTitle
+            headerButtons
         }
     }
 
@@ -664,32 +645,39 @@ private struct ExerciseSetsCard: View {
     @ViewBuilder
     private var headerButtons: some View {
         if !readOnly {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 if canEditExercise {
                     Button {
                         onEditExercise?(exercise)
                     } label: {
-                        Label("Edit", systemImage: "pencil")
-                            .labelStyle(.titleAndIcon)
-                            .font(.system(size: 12, weight: .bold))
-                            .lineLimit(1)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                            .frame(width: 26, height: 26)
+                            .background(Theme.background)
+                            .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                            .clipShape(Circle())
                     }
-                    .buttonStyle(SecondaryButtonStyle(compact: true))
-                    .fixedSize(horizontal: true, vertical: false)
+                    .buttonStyle(.plain)
                 }
-                IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp) { onMove(-1) }
-                IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown) { onMove(1) }
-                IconCircleButton(systemName: "xmark", tint: Theme.danger, action: onRemove)
+                IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp, size: 26, iconSize: 11) { onMove(-1) }
+                IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown, size: 26, iconSize: 11) { onMove(1) }
+                IconCircleButton(systemName: "xmark", tint: Theme.danger, size: 26, iconSize: 11, action: onRemove)
             }
             .fixedSize(horizontal: true, vertical: false)
         }
     }
 
-    private var controlRow: some View {
-        HStack(spacing: 8) {
-            substitutionMenu
-            restMenu
-            pairMenu
+    @ViewBuilder
+    private var controlMenus: some View {
+        VStack(spacing: 8) {
+            if replacementExercises.count > 1 {
+                substitutionMenu
+            }
+            HStack(spacing: 8) {
+                restMenu
+                pairMenu
+            }
         }
     }
 
@@ -706,7 +694,7 @@ private struct ExerciseSetsCard: View {
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .buttonStyle(ExerciseCardMenuButtonStyle())
         .frame(maxWidth: .infinity)
         .disabled(replacementExercises.count <= 1)
     }
@@ -722,10 +710,10 @@ private struct ExerciseSetsCard: View {
         } label: {
             Label("Rest \(restTargetLabel(item.restTargetSeconds))", systemImage: "timer")
                 .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                .minimumScaleFactor(0.76)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .buttonStyle(ExerciseCardMenuButtonStyle())
         .frame(maxWidth: .infinity)
     }
 
@@ -740,10 +728,10 @@ private struct ExerciseSetsCard: View {
         } label: {
             Label("Pair \(supersetLabel(item.supersetGroup))", systemImage: "link")
                 .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                .minimumScaleFactor(0.76)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .buttonStyle(ExerciseCardMenuButtonStyle())
         .frame(maxWidth: .infinity)
     }
 
@@ -786,44 +774,73 @@ private struct ExerciseSetsCard: View {
     }
 
     private var compactTargetControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle("Use \(repUnit) range", isOn: Binding(
-                get: { compactUsesRange },
-                set: { setCompactRangeMode($0) }
-            ))
-            .font(.system(size: 13, weight: .semibold))
-            .tint(Theme.accent)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Shared target")
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+
+                Spacer()
+
+                HStack(spacing: 0) {
+                    Text("Range")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .padding(.trailing, 16)
+
+                    Toggle("", isOn: Binding(
+                        get: { compactUsesRange },
+                        set: { setCompactRangeMode($0) }
+                    ))
+                    .labelsHidden()
+                    .tint(Theme.accent)
+                    .scaleEffect(0.82)
+                    .frame(width: 48, height: 28, alignment: .trailing)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
 
             if compactUsesRange {
                 HStack(spacing: 8) {
-                    compactField("Min \(repUnit)", field: .reps, value: rangeBinding(field: .reps, side: .min))
-                    compactField("Max \(repUnit)", field: .reps, value: rangeBinding(field: .reps, side: .max))
+                    compactField(
+                        "Min \(repUnit)",
+                        field: .repsMin,
+                        value: rangeBinding(field: .reps, side: .min),
+                        placeholder: rangePlaceholder(field: .reps, side: .min)
+                    )
+                    compactField(
+                        "Max \(repUnit)",
+                        field: .repsMax,
+                        value: rangeBinding(field: .reps, side: .max),
+                        placeholder: rangePlaceholder(field: .reps, side: .max)
+                    )
                 }
             } else {
-                compactField("\(repUnitTitle) for all sets", field: .reps, value: compactBinding(field: .reps))
+                compactField("All sets", field: .reps, value: compactBinding(field: .reps))
             }
 
             HStack(spacing: 8) {
                 Text("\(item.sets.count) \(item.sets.count == 1 ? "set" : "sets")")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.muted)
                 Spacer()
                 Button {
                     addSet()
                 } label: {
-                    Label("Add Set", systemImage: "plus")
+                    Label("Add", systemImage: "plus")
                 }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .buttonStyle(CompactTargetButtonStyle())
                 Button(role: .destructive) {
                     removeSet(item.sets.count - 1)
                 } label: {
                     Label("Remove", systemImage: "xmark")
                 }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .buttonStyle(CompactTargetButtonStyle())
                 .disabled(item.sets.count <= 1)
             }
         }
-        .padding(12)
+        .padding(10)
         .background(Theme.surface)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
@@ -834,6 +851,8 @@ private struct ExerciseSetsCard: View {
 
     private enum CompactRepField: Hashable {
         case reps
+        case repsMin
+        case repsMax
         case left
         case right
     }
@@ -847,13 +866,18 @@ private struct ExerciseSetsCard: View {
         return repRange(compactValue(field: .reps)) != nil
     }
 
-    private func compactField(_ label: String, field: CompactRepField, value: Binding<String>) -> some View {
-        let placeholder = compactPlaceholder(field: field)
+    private func compactField(
+        _ label: String,
+        field: CompactRepField,
+        value: Binding<String>,
+        placeholder providedPlaceholder: RepsFieldPlaceholder? = nil
+    ) -> some View {
+        let placeholder = providedPlaceholder ?? compactPlaceholder(field: field)
         let isFocused = focusedCompactField == field
 
         return VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 10, weight: .heavy))
+                .font(.system(size: 9, weight: .heavy))
                 .foregroundStyle(Theme.muted)
                 .textCase(.uppercase)
             ZStack {
@@ -882,7 +906,7 @@ private struct ExerciseSetsCard: View {
                     .focused($focusedCompactField, equals: field)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
-                    .frame(height: 40)
+                    .frame(height: 36)
             }
             .background(Theme.background)
             .overlay(
@@ -910,9 +934,15 @@ private struct ExerciseSetsCard: View {
             get: {
                 let value = compactValue(field: field)
                 let range = repRange(value)
-                return side == .min ? (range?.min ?? value) : (range?.max ?? "")
+                let sideValue = side == .min ? (range?.min ?? value) : (range?.max ?? "")
+                let focusField = compactRangeFocusField(side)
+                if RepsFieldPlaceholder(rawValue: sideValue) != nil, !editedCompactFields.contains(focusField) {
+                    return ""
+                }
+                return sideValue
             },
             set: { value in
+                editedCompactFields.insert(compactRangeFocusField(side))
                 let current = compactValue(field: field)
                 let range = repRange(current)
                 let next = repRangeValue(
@@ -928,7 +958,7 @@ private struct ExerciseSetsCard: View {
     private func compactValue(field: CompactRepField) -> String {
         guard let first = item.sets.first else { return "" }
         switch field {
-        case .reps:
+        case .reps, .repsMin, .repsMax:
             if let placeholderReps = first.placeholderReps {
                 return placeholderReps
             }
@@ -995,10 +1025,21 @@ private struct ExerciseSetsCard: View {
         RepsFieldPlaceholder(rawValue: compactValue(field: field))
     }
 
+    private func rangePlaceholder(field: CompactRepField, side: CompactRangeSide) -> RepsFieldPlaceholder? {
+        let value = compactValue(field: field)
+        let range = repRange(value)
+        let sideValue = side == .min ? (range?.min ?? value) : (range?.max ?? "")
+        return RepsFieldPlaceholder(rawValue: sideValue)
+    }
+
+    private func compactRangeFocusField(_ side: CompactRangeSide) -> CompactRepField {
+        side == .min ? .repsMin : .repsMax
+    }
+
     private func updateAllCompactValues(field: CompactRepField, value: String) {
         for index in item.sets.indices {
             switch field {
-            case .reps:
+            case .reps, .repsMin, .repsMax:
                 item.sets[index].placeholderReps = value
                 item.sets[index].reps = nil
                 item.sets[index].repsLeft = nil
@@ -1304,6 +1345,40 @@ private struct ExerciseSetsCard: View {
         guard item.sets.count > 1 else { return }
         item.sets.remove(at: index)
         onChanged?()
+    }
+}
+
+private struct ExerciseCardMenuButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 40)
+            .background(Theme.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+    }
+}
+
+private struct CompactTargetButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
+            .background(Theme.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
     }
 }
 

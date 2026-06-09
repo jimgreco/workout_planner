@@ -130,14 +130,16 @@ struct IconCircleButton: View {
     let systemName: String
     var tint: Color = Theme.text
     var disabled = false
+    var size: CGFloat = 32
+    var iconSize: CGFloat = 14
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: iconSize, weight: .semibold))
                 .foregroundStyle(disabled ? Theme.muted.opacity(0.4) : tint)
-                .frame(width: 32, height: 32)
+                .frame(width: size, height: size)
                 .background(Theme.background)
                 .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                 .clipShape(Circle())
