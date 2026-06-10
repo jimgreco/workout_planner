@@ -289,12 +289,36 @@ export default function WorkoutLog({
         weightType,
         restTargetSeconds: item.restTargetSeconds,
         supersetGroup: item.supersetGroup,
+        description: item.description,
+        useIndividualReps: item.useIndividualReps,
         sets: item.sets.map((s, si) => {
-          const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
+          const targetReps = plannedRepText(s, String(settings.defaultReps));
+          const targetLeft = plannedSideRepText(s, 'left', targetReps);
+          const targetRight = plannedSideRepText(s, 'right', targetReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType };
+            return {
+              reps: '',
+              repsLeft: '',
+              repsRight: '',
+              weight: '',
+              placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`,
+              placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${targetLeft})`,
+              placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${targetRight})`,
+              placeholderWeight: lastItem.sets[si].weight,
+              placeholderWeightType: lastItem.weightType,
+            };
           }
-          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
+          return {
+            reps: '',
+            repsLeft: '',
+            repsRight: '',
+            weight: '',
+            placeholderReps: targetReps,
+            placeholderRepsLeft: targetLeft,
+            placeholderRepsRight: targetRight,
+            placeholderWeight: '',
+            placeholderWeightType: weightType,
+          };
         }),
       };
     });

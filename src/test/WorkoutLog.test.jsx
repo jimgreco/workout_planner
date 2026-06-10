@@ -100,6 +100,41 @@ describe('WorkoutLog', () => {
     });
   });
 
+  it('preserves a routine rep range when launched into planning', async () => {
+    render(
+      <WorkoutLog
+        exercises={exercises}
+        templates={templates}
+        initialTemplate={{
+          id: 'tmpl-range',
+          name: 'Range Day',
+          description: '',
+          exerciseItems: [
+            {
+              exerciseId: 'bench',
+              weightType: 'weight',
+              useIndividualReps: false,
+              sets: [{ reps: '8', placeholderReps: '8-12', weight: '' }],
+            },
+          ],
+        }}
+        logs={[]}
+        programs={[]}
+        settings={settings}
+        onLogsChanged={() => {}}
+        onExercisesChanged={() => {}}
+        onClearTemplate={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0].exerciseItems[0].sets[0]).toMatchObject({
+      placeholderReps: '8-12',
+    });
+    expect(screen.getByLabelText(/min reps/i)).toHaveValue('8');
+    expect(screen.getByLabelText(/max reps/i)).toHaveValue('12');
+  });
+
   it('uses a shared unilateral routine target when planning a workout', async () => {
     render(
       <WorkoutLog

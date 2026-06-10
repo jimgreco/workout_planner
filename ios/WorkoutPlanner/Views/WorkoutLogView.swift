@@ -708,13 +708,16 @@ struct WorkoutLogView: View {
             let targetLeft = plannedSideRepText(set, side: .left, fallback: targetReps)
             let targetRight = plannedSideRepText(set, side: .right, fallback: targetReps)
             let targets = programTargets(for: set, lastSet: last?.sets.indices.contains(offset) == true ? last?.sets[offset] : nil, program: program, hitTarget: hitTarget, hitCap: hitCap)
-            let targetPlaceholder = targets.reps.isEmpty ? targetReps : targets.reps
+            let progressedReps = program == nil ? "" : targets.reps
+            let targetPlaceholder = progressedReps.isEmpty ? targetReps : progressedReps
+            let targetLeftPlaceholder = progressedReps.isEmpty ? targetLeft : progressedReps
+            let targetRightPlaceholder = progressedReps.isEmpty ? targetRight : progressedReps
             if let last, last.sets.indices.contains(offset) {
                 let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let lastLeft = last.sets[offset].repsLeft?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
                 let lastRight = last.sets[offset].repsRight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
-                let placeholderWeight = targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
-                let placeholderWeightType = targets.weight.isEmpty
+                let placeholderWeight = program == nil || targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
+                let placeholderWeightType = program == nil || targets.weight.isEmpty
                     ? last.weightType
                     : (last.weightType ?? item.weightType ?? "weight")
                 return WorkoutSet(
@@ -723,8 +726,8 @@ struct WorkoutLogView: View {
                     repsRight: isUnilateral ? "" : nil,
                     weight: "",
                     placeholderReps: lastReps.isEmpty ? targetPlaceholder : "\(lastReps) (\(targetPlaceholder))",
-                    placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? (targets.reps.isEmpty ? targetLeft : targets.reps) : "\(lastLeft) (\(targetPlaceholder))") : nil,
-                    placeholderRepsRight: isUnilateral ? (lastRight.isEmpty ? (targets.reps.isEmpty ? targetRight : targets.reps) : "\(lastRight) (\(targetPlaceholder))") : nil,
+                    placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? targetLeftPlaceholder : "\(lastLeft) (\(targetLeftPlaceholder))") : nil,
+                    placeholderRepsRight: isUnilateral ? (lastRight.isEmpty ? targetRightPlaceholder : "\(lastRight) (\(targetRightPlaceholder))") : nil,
                     placeholderWeight: placeholderWeight,
                     placeholderWeightType: placeholderWeightType
                 )
@@ -735,8 +738,8 @@ struct WorkoutLogView: View {
                 repsRight: isUnilateral ? "" : nil,
                 weight: "",
                 placeholderReps: targetPlaceholder,
-                placeholderRepsLeft: isUnilateral ? targetPlaceholder : nil,
-                placeholderRepsRight: isUnilateral ? targetPlaceholder : nil,
+                placeholderRepsLeft: isUnilateral ? targetLeftPlaceholder : nil,
+                placeholderRepsRight: isUnilateral ? targetRightPlaceholder : nil,
                 placeholderWeight: targets.weight,
                 placeholderWeightType: item.weightType ?? last?.weightType ?? "weight"
             )
@@ -753,7 +756,12 @@ struct WorkoutLogView: View {
     }
 
     private func numeric(_ value: String?) -> Double {
-        Double(value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let number = Double(trimmed) { return number }
+        let prefix = trimmed.prefix { character in
+            character.isNumber || character == "."
+        }
+        return Double(prefix) ?? 0
     }
 
     private enum RepSide {
