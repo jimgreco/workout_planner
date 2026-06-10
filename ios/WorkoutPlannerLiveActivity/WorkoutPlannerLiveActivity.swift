@@ -115,77 +115,108 @@ private struct LockScreenWorkoutView: View {
         state.isComplete ? forgeSuccess : forgeAccent
     }
 
+    private var timerTitle: String {
+        if state.isComplete { return "Done" }
+        return state.isResting ? "Rest" : "Elapsed"
+    }
+
+    private var thirdMetricTitle: String {
+        if !state.weight.isEmpty { return "Load" }
+        if shouldShowSetType(state) { return "Type" }
+        return "Done"
+    }
+
+    private var thirdMetricValue: String {
+        if !state.weight.isEmpty { return state.weight }
+        if shouldShowSetType(state) { return state.setType }
+        return progressLabel
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 9) {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundStyle(.white)
-                    .frame(width: 24, height: 24)
-                    .background(progressTint, in: Circle())
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: statusIcon)
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(progressTint, in: Circle())
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Forge")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(liveActivityText)
-                    Text("\(state.exerciseCount) \(state.exerciseCount == 1 ? "exercise" : "exercises")")
-                        .font(.caption2.weight(.semibold))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Forge")
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(liveActivityText)
+                        Text("\(state.exerciseCount) \(state.exerciseCount == 1 ? "exercise" : "exercises")")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(liveActivityTertiaryText)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(timerTitle)
+                        .font(.system(size: 9, weight: .heavy))
                         .foregroundStyle(liveActivityTertiaryText)
+                        .textCase(.uppercase)
+                    LiveActivityTimer(state: state)
+                        .font(.system(size: 28, weight: .heavy, design: .rounded).monospacedDigit())
+                        .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
                         .lineLimit(1)
-                }
-
-                Spacer()
-
-                LiveActivityTimer(state: state)
-                    .font(.system(.title3, design: .rounded).weight(.heavy).monospacedDigit())
-                    .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(headline)
-                    .font(.headline.weight(.heavy))
-                    .foregroundStyle(liveActivityText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-
-                Text(detailLine)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(liveActivitySecondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-
-            HStack(spacing: 8) {
-                LockScreenMetric(title: "Set", value: state.setLabel)
-                LockScreenMetric(title: "Reps", value: state.reps)
-                if !state.weight.isEmpty {
-                    LockScreenMetric(title: "Weight", value: state.weight)
-                } else if shouldShowSetType(state) {
-                    LockScreenMetric(title: "Type", value: state.setType)
+                        .minimumScaleFactor(0.72)
                 }
             }
 
-            HStack(spacing: 8) {
-                LockScreenProgressBar(value: state.progress, tint: progressTint)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(headline)
+                        .font(.system(size: 17, weight: .heavy))
+                        .foregroundStyle(liveActivityText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
 
-                Text(progressLabel)
-                    .font(.caption2.weight(.heavy).monospacedDigit())
-                    .foregroundStyle(liveActivitySecondaryText)
-                    .frame(minWidth: 34, alignment: .trailing)
+                    Text(detailLine)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(liveActivitySecondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
+
+                Spacer(minLength: 6)
 
                 if let personalBest = state.personalBest {
                     Label("PB \(personalBest)", systemImage: "star.fill")
                         .font(.caption2.weight(.heavy))
                         .foregroundStyle(forgeAccent)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                        .minimumScaleFactor(0.72)
                 }
             }
+
+            HStack(spacing: 7) {
+                LockScreenMetric(title: "Set", value: state.setLabel)
+                LockScreenMetric(title: "Reps", value: state.reps)
+                LockScreenMetric(title: thirdMetricTitle, value: thirdMetricValue)
+            }
+
+            HStack(alignment: .center, spacing: 8) {
+                Text("Progress")
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(liveActivityTertiaryText)
+                    .textCase(.uppercase)
+                    .frame(width: 48, alignment: .leading)
+
+                LockScreenProgressBar(value: state.progress, tint: progressTint)
+
+                Text(progressLabel)
+                    .font(.caption2.weight(.heavy).monospacedDigit())
+                    .foregroundStyle(liveActivitySecondaryText)
+                    .frame(minWidth: 38, alignment: .trailing)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 }
 
@@ -196,19 +227,19 @@ private struct LockScreenMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption2.weight(.heavy))
+                .font(.system(size: 10, weight: .heavy))
                 .foregroundStyle(liveActivityTertiaryText)
                 .textCase(.uppercase)
             Text(value.isEmpty ? "-" : value)
-                .font(.caption.weight(.heavy))
+                .font(.system(size: 14, weight: .heavy))
                 .foregroundStyle(liveActivityText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 }
 
@@ -230,7 +261,7 @@ private struct LockScreenProgressBar: View {
                         .frame(width: proxy.size.width * clampedValue)
                 }
         }
-        .frame(height: 4)
+        .frame(height: 5)
     }
 }
 

@@ -1791,6 +1791,8 @@ private struct SetNumericField: View {
     var body: some View {
         let showsCaptionLine = reservesCaptionSpace || caption != nil
         let fieldHeight: CGFloat = showsCaptionLine ? 58 : 44
+        let captionHeight: CGFloat = caption == nil ? 0 : 14
+        let contentHeight = fieldHeight - captionHeight
         let isFocused = focusedField == focus
 
         VStack(spacing: 0) {
@@ -1819,24 +1821,27 @@ private struct SetNumericField: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(isDisabled ? Theme.muted : Theme.text)
                     .padding(.horizontal, 6)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .disabled(isDisabled)
             }
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(height: contentHeight)
+            .frame(maxWidth: .infinity)
 
-            if showsCaptionLine {
-                Text(caption ?? " ")
+            if let caption {
+                Text(caption)
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(caption == nil ? .clear : Theme.muted)
+                    .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .monospacedDigit()
-                    .frame(maxWidth: .infinity, minHeight: 14)
+                    .frame(height: captionHeight)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 4)
                     .allowsHitTesting(false)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: fieldHeight)
+        .frame(height: fieldHeight)
+        .frame(maxWidth: .infinity)
         .background(isActive ? Theme.accent.opacity(0.08) : Theme.background)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)

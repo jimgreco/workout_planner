@@ -1344,6 +1344,11 @@ private let liveRestTargetOptions: [(label: String, seconds: Int?)] = [
     ("5:00", 300),
 ]
 
+private let livePrimaryTileHeight: CGFloat = 58
+private let liveCaptionTileHeight: CGFloat = 72
+private let liveSecondaryTileHeight: CGFloat = 54
+private let liveGridSpacing: CGFloat = 6
+
 private struct WorkoutLiveActivityCard: View {
     @Binding var items: [ExerciseItem]
     let exercises: [Exercise]
@@ -1420,7 +1425,7 @@ private struct WorkoutLiveActivityCard: View {
 
     var body: some View {
         TimelineView(.periodic(from: Date(), by: 1)) { _ in
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 10) {
                     Label("Live", systemImage: "bolt.fill")
                         .font(.system(size: 13, weight: .heavy))
@@ -1467,7 +1472,7 @@ private struct WorkoutLiveActivityCard: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.muted)
             }
-            .padding(16)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 LinearGradient(
@@ -1608,29 +1613,20 @@ private struct WorkoutLiveActivityCard: View {
 
     private func currentSetSection(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, isUpNext: Bool) -> some View {
         let showsWeight = context.item.weightType != "none"
-        let reservesWeightCaption = showsWeight && reservesCalculatedWeightCaption(weightType: context.item.weightType)
+        let weightCaption = calculatedWeightCaption(weight: set.wrappedValue.weight, weightType: context.item.weightType)
+        let primaryTileHeight = weightCaption == nil ? livePrimaryTileHeight : liveCaptionTileHeight
 
-        return VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(isCompleted(context.set) ? "Selected set" : isUpNext ? "Up next" : "Current set")
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(Theme.muted)
-                    .textCase(.uppercase)
+        return VStack(alignment: .leading, spacing: 8) {
+            currentSetHeader(context, isUpNext: isUpNext)
 
-                ViewThatFits(in: .horizontal) {
-                    currentSetHeaderContent(context, stacked: false)
-                    currentSetHeaderContent(context, stacked: true)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                LazyVGrid(columns: liveFieldColumns(count: showsWeight ? 3 : 2), alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: liveGridSpacing) {
+                LazyVGrid(columns: liveFieldColumns(count: showsWeight ? 3 : 2), alignment: .leading, spacing: liveGridSpacing) {
                     WorkoutLiveInput(
                         title: context.exercise.usesTime == true ? "Secs" : "Reps",
                         text: stringBinding(set, \.reps),
                         placeholder: repsLabel(for: context.set) ?? "0",
                         keyboard: .numberPad,
-                        reservesCaptionSpace: reservesWeightCaption
+                        height: primaryTileHeight
                     )
                     .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
 
@@ -1640,24 +1636,25 @@ private struct WorkoutLiveActivityCard: View {
                             text: stringBinding(set, \.weight),
                             placeholder: weightPlaceholder(for: context) ?? "0",
                             keyboard: .decimalPad,
-                            caption: calculatedWeightCaption(weight: set.wrappedValue.weight, weightType: context.item.weightType),
-                            reservesCaptionSpace: reservesCalculatedWeightCaption(weightType: context.item.weightType)
+                            caption: weightCaption,
+                            height: primaryTileHeight
                         )
                         .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
                     }
 
-                    weightTypeMenu(context)
+                    weightTypeMenu(context, height: primaryTileHeight)
                 }
                 .frame(maxWidth: .infinity)
 
-                LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: 8) {
-                    setTypeMenu(set: set)
+                LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: liveGridSpacing) {
+                    setTypeMenu(set: set, height: liveSecondaryTileHeight)
 
                     WorkoutLiveInput(
                         title: "RPE",
                         text: stringBinding(set, \.rpe),
                         placeholder: "-",
-                        keyboard: .decimalPad
+                        keyboard: .decimalPad,
+                        height: liveSecondaryTileHeight
                     )
                     .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
 
@@ -1665,7 +1662,8 @@ private struct WorkoutLiveActivityCard: View {
                         title: "RIR",
                         text: stringBinding(set, \.rir),
                         placeholder: "-",
-                        keyboard: .decimalPad
+                        keyboard: .decimalPad,
+                        height: liveSecondaryTileHeight
                     )
                     .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
                 }
@@ -1686,7 +1684,7 @@ private struct WorkoutLiveActivityCard: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 15, weight: .heavy))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 38, height: 38)
                 }
                 .buttonStyle(.plain)
                 .background(Theme.surface)
@@ -1700,7 +1698,7 @@ private struct WorkoutLiveActivityCard: View {
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 15, weight: .heavy))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 38, height: 38)
                 }
                 .buttonStyle(.plain)
                 .background(Theme.surface)
@@ -1719,7 +1717,7 @@ private struct WorkoutLiveActivityCard: View {
                 .disabled(isCompleted(context.set))
             }
         }
-        .padding(14)
+        .padding(12)
         .background(isUpNext ? Theme.accent.opacity(0.08) : Theme.background)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
@@ -1728,57 +1726,53 @@ private struct WorkoutLiveActivityCard: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
-    private func currentSetHeaderContent(_ context: WorkoutLiveSetContext, stacked: Bool) -> some View {
+    private func currentSetHeader(_ context: WorkoutLiveSetContext, isUpNext: Bool) -> some View {
         let badge = Text("\(context.setIndex + 1)/\(context.item.sets.count)")
             .font(.system(size: 14, weight: .heavy, design: .rounded))
             .foregroundStyle(Theme.accent)
             .monospacedDigit()
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(Theme.accent.opacity(0.11))
             .clipShape(Capsule())
             .accessibilityLabel("Set \(context.setIndex + 1) of \(context.item.sets.count)")
 
         let title = Text(context.exercise.name)
-            .font(.system(size: 22, weight: .heavy))
+            .font(.system(size: 20, weight: .heavy))
             .foregroundStyle(Theme.text)
-            .lineLimit(3)
+            .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
 
-        return Group {
-            if stacked {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        badge
-                        if !context.exercise.muscleGroup.isEmpty {
-                            Badge(text: context.exercise.muscleGroup)
-                        }
-                    }
-                    title
-                    restTargetMenu(context)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 6) {
+                Text(isCompleted(context.set) ? "Selected" : isUpNext ? "Up next" : "Current")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+
+                badge
+
+                if !context.exercise.muscleGroup.isEmpty {
+                    Badge(text: context.exercise.muscleGroup)
                 }
-            } else {
-                HStack(alignment: .center, spacing: 8) {
-                    badge
-                    title.layoutPriority(1)
-                    if !context.exercise.muscleGroup.isEmpty {
-                        Badge(text: context.exercise.muscleGroup)
-                    }
-                    Spacer(minLength: 4)
-                    restTargetMenu(context)
-                }
+
+                Spacer(minLength: 4)
+
+                restTargetMenu(context)
             }
+
+            title
         }
     }
 
     private func liveFieldColumns(count: Int) -> [GridItem] {
         Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .top),
+            repeating: GridItem(.flexible(minimum: 0), spacing: liveGridSpacing, alignment: .top),
             count: max(1, count)
         )
     }
 
-    private func setTypeMenu(set: Binding<WorkoutSet>) -> some View {
+    private func setTypeMenu(set: Binding<WorkoutSet>, height: CGFloat) -> some View {
         Menu {
             ForEach(liveSetTypeOptions, id: \.value) { option in
                 Button(option.label) {
@@ -1787,12 +1781,12 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
         } label: {
-            WorkoutLiveMenuMetric(title: "Set Type", value: setTypeLabel(set.wrappedValue.setType))
+            WorkoutLiveMenuMetric(title: "Set Type", value: setTypeLabel(set.wrappedValue.setType), height: height)
         }
         .buttonStyle(.plain)
     }
 
-    private func weightTypeMenu(_ context: WorkoutLiveSetContext) -> some View {
+    private func weightTypeMenu(_ context: WorkoutLiveSetContext, height: CGFloat = livePrimaryTileHeight) -> some View {
         Menu {
             ForEach(liveWeightTypeOptions, id: \.value) { option in
                 Button(option.label) {
@@ -1801,7 +1795,7 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
         } label: {
-            WorkoutLiveMenuMetric(title: "Load", value: weightTypeLabel(context.item.weightType))
+            WorkoutLiveMenuMetric(title: "Load", value: weightTypeLabel(context.item.weightType), height: height)
         }
         .buttonStyle(.plain)
     }
@@ -2065,6 +2059,7 @@ private extension View {
 private struct WorkoutLiveMenuMetric: View {
     let title: String
     let value: String
+    let height: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -2086,8 +2081,8 @@ private struct WorkoutLiveMenuMetric: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+        .frame(height: height, alignment: .center)
+        .frame(maxWidth: .infinity)
         .background(Theme.background.opacity(0.68))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
@@ -2099,12 +2094,10 @@ private struct WorkoutLiveInput: View {
     let placeholder: String
     let keyboard: UIKeyboardType
     var caption: String? = nil
-    var reservesCaptionSpace = false
+    let height: CGFloat
 
     var body: some View {
-        let showsCaptionLine = reservesCaptionSpace || caption != nil
-
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 10, weight: .heavy))
                 .foregroundStyle(Theme.muted)
@@ -2119,10 +2112,10 @@ private struct WorkoutLiveInput: View {
                 .minimumScaleFactor(0.76)
                 .frame(height: 22, alignment: .leading)
 
-            if showsCaptionLine {
-                Text(caption ?? " ")
+            if let caption {
+                Text(caption)
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(caption == nil ? .clear : Theme.muted)
+                    .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .monospacedDigit()
@@ -2130,8 +2123,8 @@ private struct WorkoutLiveInput: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: showsCaptionLine ? 82 : 70, alignment: .leading)
+        .frame(height: height, alignment: .center)
+        .frame(maxWidth: .infinity)
         .background(Theme.background.opacity(0.68))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
