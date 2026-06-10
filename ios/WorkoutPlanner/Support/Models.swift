@@ -323,8 +323,31 @@ struct WorkoutSettings: Codable, Equatable {
     var defaultSets: Int
     var defaultReps: Int
     var defaultRestTargetSeconds: Int?
+    var advancedMode: Bool
 
-    static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0)
+    static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false)
+
+    init(defaultSets: Int, defaultReps: Int, defaultRestTargetSeconds: Int? = 0, advancedMode: Bool = false) {
+        self.defaultSets = defaultSets
+        self.defaultReps = defaultReps
+        self.defaultRestTargetSeconds = defaultRestTargetSeconds
+        self.advancedMode = advancedMode
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case defaultSets
+        case defaultReps
+        case defaultRestTargetSeconds
+        case advancedMode
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        defaultSets = try container.decodeIfPresent(Int.self, forKey: .defaultSets) ?? 4
+        defaultReps = try container.decodeIfPresent(Int.self, forKey: .defaultReps) ?? 8
+        defaultRestTargetSeconds = try container.decodeIfPresent(Int.self, forKey: .defaultRestTargetSeconds) ?? 0
+        advancedMode = try container.decodeIfPresent(Bool.self, forKey: .advancedMode) ?? false
+    }
 }
 
 private let workoutWeightTypes: Set<String> = ["weight", "double", "bar_double", "none"]

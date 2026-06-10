@@ -71,7 +71,7 @@ const SK_PREFIX = {
   programs: 'PROGRAM',
 };
 
-const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0 };
+const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false };
 const ADMIN_SCAN_LIMIT = 1000;
 const IS_LOCAL = process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test';
 const DEV_BYPASS_TOKEN = 'dev-bypass-token';
@@ -149,6 +149,10 @@ function securityHeaders() {
 
 function strip({ PK, SK, ...rest }) {
   return rest;
+}
+
+function normalizeSettings(settings) {
+  return { ...DEFAULT_SETTINGS, ...(settings || {}) };
 }
 
 function requestHeader(headers, name) {
@@ -413,7 +417,7 @@ function exportPayload(items) {
     feedback: [],
   };
   for (const item of items) {
-    if (item.SK === 'SETTINGS') data.settings = strip(item);
+    if (item.SK === 'SETTINGS') data.settings = normalizeSettings(strip(item));
     else if (item.SK.startsWith('EXERCISE#')) data.exercises.push(strip(item));
     else if (item.SK.startsWith('TEMPLATE#')) data.templates.push(strip(item));
     else if (item.SK.startsWith('LOG#')) data.logs.push(strip(item));
@@ -1016,7 +1020,7 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
         TableName: TABLE,
         Key: { PK, SK: 'SETTINGS' },
       }));
-      return ok(result.Item ? strip(result.Item) : DEFAULT_SETTINGS);
+      return ok(result.Item ? normalizeSettings(strip(result.Item)) : DEFAULT_SETTINGS);
     }
     if (method === 'PUT' && !id) {
       const body = validateSettings(parseJsonBody(event));

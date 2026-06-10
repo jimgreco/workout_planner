@@ -799,7 +799,8 @@ export default function Templates({
 
   const settingsDirty = settingsForm.defaultSets !== settings.defaultSets
     || settingsForm.defaultReps !== settings.defaultReps
-    || (settingsForm.defaultRestTargetSeconds || 0) !== (settings.defaultRestTargetSeconds || 0);
+    || (settingsForm.defaultRestTargetSeconds || 0) !== (settings.defaultRestTargetSeconds || 0)
+    || Boolean(settingsForm.advancedMode) !== Boolean(settings.advancedMode);
 
   return (
     <div className="page">
@@ -1168,6 +1169,7 @@ export default function Templates({
             defaultSets={settings.defaultSets}
             defaultReps={settings.defaultReps}
             defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
+            advancedMode={settings.advancedMode}
             lastWeightTypeByExerciseId={lastWeightTypeByExerciseId}
             planningMode
             onEditExercise={(exercise) => setExerciseForm({ ...exercise })}
@@ -1476,6 +1478,17 @@ export default function Templates({
               <option value={300}>5:00</option>
             </select>
           </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={Boolean(settingsForm.advancedMode)}
+              onChange={(e) => setSettingsForm({ ...settingsForm, advancedMode: e.target.checked })}
+            />
+            Advanced mode
+          </label>
+          <p className="text-muted" style={{ marginTop: -2 }}>
+            Shows set type, RPE, and RIR controls while logging workouts.
+          </p>
         </Modal>
       )}
 

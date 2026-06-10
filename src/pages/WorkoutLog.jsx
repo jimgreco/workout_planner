@@ -921,6 +921,7 @@ export default function WorkoutLog({
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
         defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
+        advancedMode={settings.advancedMode}
         lastWeightTypeByExerciseId={lastWeightTypeByExerciseId}
         planningMode={isPlanningMode}
       />

@@ -212,11 +212,12 @@ function requireMatchingId(body, pathId) {
 
 export function validateSettings(body) {
   assertObject(body, 'settings');
-  assertAllowedKeys(body, new Set(['defaultSets', 'defaultReps', 'defaultRestTargetSeconds']), 'settings');
+  assertAllowedKeys(body, new Set(['defaultSets', 'defaultReps', 'defaultRestTargetSeconds', 'advancedMode']), 'settings');
   return {
     defaultSets: intValue(body.defaultSets, 'defaultSets', 1, 20),
     defaultReps: intValue(body.defaultReps, 'defaultReps', 1, 100),
     defaultRestTargetSeconds: optionalIntValue(body.defaultRestTargetSeconds, 'defaultRestTargetSeconds', 0, 3600) ?? 0,
+    advancedMode: boolValue(body.advancedMode, 'advancedMode') ?? false,
   };
 }
 

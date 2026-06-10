@@ -1368,6 +1368,7 @@ private struct TemplateFormSheet: View {
                         defaultSets: store.settings.defaultSets,
                         defaultReps: store.settings.defaultReps,
                         defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
+                        advancedMode: store.settings.advancedMode,
                         lastWeightTypeByExerciseId: lastWeightTypesByExerciseId(from: store.logs),
                         planningMode: true,
                         onEditExercise: { exercise in editingExercise = exercise }
@@ -1815,6 +1816,12 @@ private struct TemplateSettingsSheet: View {
                     }
                 } footer: {
                     Text("These values are used when adding a new exercise to a workout or routine.")
+                }
+                Section {
+                    Toggle("Advanced Mode", isOn: $form.advancedMode)
+                        .tint(Theme.accent)
+                } footer: {
+                    Text("Shows set type, RPE, and RIR controls while logging workouts.")
                 }
             }
             .navigationTitle("Workout Defaults")

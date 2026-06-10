@@ -29,7 +29,7 @@ const cache = {
   settings:  /** @type {any|null} */ (null),
 };
 
-const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0 };
+const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false };
 const PENDING_LOG_QUEUE_KEY = 'forge.pendingLogSaves.v1';
 const PENDING_RESOURCE_QUEUE_KEY = 'forge.pendingResourceChanges.v1';
 const PENDING_CONFLICTS_KEY = 'forge.pendingConflicts.v1';
@@ -385,17 +385,17 @@ export async function initData() {
     Number(Boolean(b.active)) - Number(Boolean(a.active))
     || a.name.localeCompare(b.name)
   ));
-  cache.settings  = settings ?? { ...DEFAULT_SETTINGS };
+  cache.settings  = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
   dispatchSyncStatus();
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-export function getSettings() { return cache.settings ?? { ...DEFAULT_SETTINGS }; }
+export function getSettings() { return { ...DEFAULT_SETTINGS, ...(cache.settings ?? {}) }; }
 
 export async function saveSettings(settings) {
   const saved = (DEV_BYPASS && !BASE_URL) ? settings : await request('PUT', '/settings', settings);
-  cache.settings = saved;
-  return saved;
+  cache.settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+  return cache.settings;
 }
 
 // ── Exercises ──────────────────────────────────────────────────────────────────
@@ -828,7 +828,7 @@ function importDataLocally(data, mode) {
     cache.templates = templates;
     cache.logs = logs;
     cache.programs = programs;
-    if (settings) cache.settings = settings;
+    if (settings) cache.settings = { ...DEFAULT_SETTINGS, ...settings };
     return {
       imported: { exercises: exercises.length, templates: templates.length, logs: logs.length, programs: programs.length, settings: Boolean(settings) },
       renamed: { exercises: [], templates: [], logs: [], programs: [] },
@@ -893,7 +893,7 @@ function importDataLocally(data, mode) {
     Number(Boolean(b.active)) - Number(Boolean(a.active))
     || a.name.localeCompare(b.name)
   ));
-  if (settings) cache.settings = settings;
+  if (settings) cache.settings = { ...DEFAULT_SETTINGS, ...settings };
 
   return {
     imported: { exercises: newExercises.length, templates: newTemplates.length, logs: newLogs.length, programs: newPrograms.length, settings: Boolean(settings) },

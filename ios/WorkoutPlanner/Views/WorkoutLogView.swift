@@ -221,6 +221,7 @@ struct WorkoutLogView: View {
             items: $items,
             exercises: store.exercises,
             startTime: startTime,
+            advancedMode: store.settings.advancedMode,
             activeExerciseIndex: $activeExerciseIndex,
             activeSetIndex: $activeSetIndex,
             focusedField: $focusedLiveActivityField,
@@ -387,6 +388,7 @@ struct WorkoutLogView: View {
                 defaultSets: store.settings.defaultSets,
                 defaultReps: store.settings.defaultReps,
                 defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
+                advancedMode: store.settings.advancedMode,
                 lastWeightTypeByExerciseId: lastWeightTypesByExerciseId(from: store.logs),
                 activeExerciseIndex: activeExerciseIndex,
                 activeSetIndex: activeSetIndex,
@@ -1121,7 +1123,7 @@ struct WorkoutLogView: View {
             setLabel: "\(context.setIndex + 1)/\(context.item.sets.count)",
             reps: liveRepsLabel(for: context.set) ?? "-",
             weight: liveWeightLabel(for: context) ?? "",
-            setType: setTypeLabel(context.set.setType),
+            setType: store.settings.advancedMode ? setTypeLabel(context.set.setType) : "",
             personalBest: personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true),
             completedSets: completed,
             totalSets: total,
@@ -1353,6 +1355,7 @@ private struct WorkoutLiveActivityCard: View {
     @Binding var items: [ExerciseItem]
     let exercises: [Exercise]
     let startTime: String?
+    let advancedMode: Bool
     @Binding var activeExerciseIndex: Int
     @Binding var activeSetIndex: Int
     @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
@@ -1646,28 +1649,30 @@ private struct WorkoutLiveActivityCard: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: liveGridSpacing) {
-                    setTypeMenu(set: set, height: liveSecondaryTileHeight)
+                if advancedMode {
+                    LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: liveGridSpacing) {
+                        setTypeMenu(set: set, height: liveSecondaryTileHeight)
 
-                    WorkoutLiveInput(
-                        title: "RPE",
-                        text: stringBinding(set, \.rpe),
-                        placeholder: "-",
-                        keyboard: .decimalPad,
-                        height: liveSecondaryTileHeight
-                    )
-                    .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                        WorkoutLiveInput(
+                            title: "RPE",
+                            text: stringBinding(set, \.rpe),
+                            placeholder: "-",
+                            keyboard: .decimalPad,
+                            height: liveSecondaryTileHeight
+                        )
+                        .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
 
-                    WorkoutLiveInput(
-                        title: "RIR",
-                        text: stringBinding(set, \.rir),
-                        placeholder: "-",
-                        keyboard: .decimalPad,
-                        height: liveSecondaryTileHeight
-                    )
-                    .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                        WorkoutLiveInput(
+                            title: "RIR",
+                            text: stringBinding(set, \.rir),
+                            placeholder: "-",
+                            keyboard: .decimalPad,
+                            height: liveSecondaryTileHeight
+                        )
+                        .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
             }
 
             if let personalBest = personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true) {

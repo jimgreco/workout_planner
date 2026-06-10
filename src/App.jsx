@@ -197,7 +197,7 @@ export default function App() {
   const [templates, setTemplates] = useState([]);
   const [logs, setLogs]           = useState([]);
   const [programs, setPrograms]   = useState([]);
-  const [settings, setSettings]   = useState({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0 });
+  const [settings, setSettings]   = useState({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [editingLog, setEditingLog] = useState(null);
 
@@ -235,7 +235,7 @@ export default function App() {
     setTemplates([]);
     setLogs([]);
     setPrograms([]);
-    setSettings({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0 });
+    setSettings({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
     setPendingTemplate(null);
     setEditingLog(null);
     setPage('log');

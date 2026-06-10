@@ -151,12 +151,36 @@ private struct SettingsPage: View {
     @State private var exportFile: ExportFile?
     @State private var showingImportPicker = false
     @State private var importDraft: ImportDraft?
+    @State private var settingsBusy = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     AccountProfileCard(user: auth.user, isDemoMode: auth.isDemoMode)
+
+                    AccountSettingsSection(title: "Workout") {
+                        AccountSettingsCard {
+                            Toggle(isOn: Binding(
+                                get: { store.settings.advancedMode },
+                                set: { value in
+                                    Task { await setAdvancedMode(value) }
+                                }
+                            )) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Advanced Mode")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(Theme.text)
+                                    Text("Show set type, RPE, and RIR while logging workouts.")
+                                        .font(.footnote)
+                                        .foregroundStyle(Theme.muted)
+                                }
+                            }
+                            .tint(Theme.accent)
+                            .disabled(settingsBusy || store.isLoading)
+                            .padding(.vertical, 8)
+                        }
+                    }
 
                     AccountSettingsSection(title: "Sync") {
                         AccountSettingsCard {
@@ -406,6 +430,21 @@ private struct SettingsPage: View {
 
     private var syncButtonDisabled: Bool {
         accountBusy || store.isSyncingPending || store.usesLocalData || store.pendingConflictCount > 0
+    }
+
+    private func setAdvancedMode(_ value: Bool) async {
+        guard store.settings.advancedMode != value else { return }
+        settingsBusy = true
+        defer { settingsBusy = false }
+        var next = store.settings
+        next.advancedMode = value
+        do {
+            try await store.saveSettings(next)
+        } catch {
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private var syncStatusTitle: String {

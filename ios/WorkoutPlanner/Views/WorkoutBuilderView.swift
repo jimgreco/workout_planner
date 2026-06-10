@@ -45,6 +45,7 @@ struct WorkoutBuilderView: View {
     var defaultSets = 4
     var defaultReps = 8
     var defaultRestTargetSeconds: Int?
+    var advancedMode = false
     var lastWeightTypeByExerciseId: [String: String] = [:]
     var activeExerciseIndex: Int?
     var activeSetIndex: Int?
@@ -71,6 +72,7 @@ struct WorkoutBuilderView: View {
                         readOnly: readOnly,
                         showWeight: showWeight,
                         planningMode: planningMode,
+                        advancedMode: advancedMode,
                         replacementExercises: replacementExercises(for: index),
                         canMoveUp: index > 0,
                         canMoveDown: index < items.count - 1,
@@ -468,6 +470,7 @@ private struct ExerciseSetsCard: View {
     let readOnly: Bool
     let showWeight: Bool
     let planningMode: Bool
+    let advancedMode: Bool
     let replacementExercises: [Exercise]
     let canMoveUp: Bool
     let canMoveDown: Bool
@@ -1313,7 +1316,7 @@ private struct ExerciseSetsCard: View {
                 }
             }
 
-            if !readOnly && !planningMode {
+            if advancedMode && !readOnly && !planningMode {
                 HStack(spacing: rowSpacing) {
                     Color.clear.frame(width: setColumnWidth)
                     Menu {
@@ -1417,7 +1420,7 @@ private struct ExerciseSetsCard: View {
                 }
             }
 
-            if !readOnly && !planningMode {
+            if advancedMode && !readOnly && !planningMode {
                 HStack(spacing: rowSpacing) {
                     Menu {
                         ForEach(setTypeOptions, id: \.value) { option in

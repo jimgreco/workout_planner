@@ -188,6 +188,7 @@ export default function WorkoutBuilder({
   defaultSets = 4,
   defaultReps = 8,
   defaultRestTargetSeconds = 0,
+  advancedMode = false,
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetCompleted,
@@ -776,7 +777,7 @@ export default function WorkoutBuilder({
                       </td>
                     )}
                   </tr>
-                    {!readOnly && !planningMode && (
+                    {advancedMode && !readOnly && !planningMode && (
                       <tr className="set-effort-row">
                         <td aria-hidden="true"></td>
                         <td colSpan={setColumnCount - 1}>

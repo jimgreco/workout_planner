@@ -85,7 +85,11 @@ test('validates nested workout log limits and statuses', () => {
 
 test('validates template and settings boundaries', () => {
   assert.equal(validateTemplate({ id: 't-1', name: 'Push', exerciseItems: [] }, 't-1').name, 'Push');
-  assert.deepEqual(validateSettings({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 90 }), { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 90 });
+  assert.deepEqual(
+    validateSettings({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 90, advancedMode: true }),
+    { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 90, advancedMode: true },
+  );
+  assert.equal(validateSettings({ defaultSets: 4, defaultReps: 8 }).advancedMode, false);
   assert.throws(() => validateSettings({ defaultSets: 0, defaultReps: 8 }), ValidationError);
 });
 

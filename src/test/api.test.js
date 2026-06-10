@@ -81,7 +81,7 @@ describe('initData', () => {
     expect(getTemplates()).toEqual([TMPL]);
     expect(getLogs()).toEqual([LOG]);
     expect(getPrograms()).toEqual([PROGRAM]);
-    expect(getSettings()).toEqual({ defaultSets: 4, defaultReps: 8 });
+    expect(getSettings()).toEqual({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
     expect(globalThis.fetch).toHaveBeenCalledTimes(5);
   });
 });
