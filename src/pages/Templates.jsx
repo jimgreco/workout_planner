@@ -19,6 +19,7 @@ import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Exercises, { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
 import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog, saveExercise } from '../api.js';
+import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
 
 const WEEKDAYS = [
   { value: 0, label: 'Sun', long: 'Sunday' },
@@ -94,7 +95,7 @@ function starterSets(settings) {
   return Array.from({ length: settings.defaultSets }, () => ({ reps: String(settings.defaultReps), weight: '' }));
 }
 
-function buildStarterTemplates(exercises, settings) {
+function buildStarterTemplates(exercises, settings, lastWeightTypeByExerciseId = {}) {
   const byName = new Map(exercises.map((exercise) => [exercise.name.toLowerCase(), exercise]));
   return STARTER_TEMPLATES.map((starter) => {
     const exerciseItems = starter.exerciseNames
@@ -102,7 +103,7 @@ function buildStarterTemplates(exercises, settings) {
       .filter(Boolean)
       .map((exercise) => ({
         exerciseId: exercise.id,
-        weightType: 'weight',
+        weightType: lastWeightTypeByExerciseId[exercise.id] || 'weight',
         ...(settings.defaultRestTargetSeconds > 0 ? { restTargetSeconds: settings.defaultRestTargetSeconds } : {}),
         description: exercise.description || '',
         useIndividualReps: false,
@@ -561,6 +562,7 @@ export default function Templates({
     () => programs.find((program) => program.active) ?? null,
     [programs],
   );
+  const lastWeightTypeByExerciseId = useMemo(() => lastWeightTypesByExerciseId(logs), [logs]);
   const nextWorkout = useMemo(
     () => nextProgramWorkout(activeProgram, templates, logs),
     [activeProgram, templates, logs],
@@ -668,7 +670,7 @@ export default function Templates({
     setSaving(true);
     try {
       let updated = templates;
-      for (const template of buildStarterTemplates(exercises, settings)) {
+      for (const template of buildStarterTemplates(exercises, settings, lastWeightTypeByExerciseId)) {
         updated = await saveTemplate(template);
       }
       onUpdate(updated);
@@ -1166,6 +1168,7 @@ export default function Templates({
             defaultSets={settings.defaultSets}
             defaultReps={settings.defaultReps}
             defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
+            lastWeightTypeByExerciseId={lastWeightTypeByExerciseId}
             planningMode
             onEditExercise={(exercise) => setExerciseForm({ ...exercise })}
           />

@@ -235,7 +235,8 @@ struct TemplatesView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            for template in StarterTemplates.makeTemplates(exercises: store.exercises, settings: store.settings) {
+            let lastWeightTypes = lastWeightTypesByExerciseId(from: store.logs)
+            for template in StarterTemplates.makeTemplates(exercises: store.exercises, settings: store.settings, lastWeightTypeByExerciseId: lastWeightTypes) {
                 try await store.saveTemplate(template)
             }
         } catch {
@@ -337,14 +338,18 @@ private enum StarterTemplates {
         Starter(name: "Legs Starter", description: "Quads, hamstrings, and calves", exerciseNames: ["Barbell Squat", "Romanian Deadlift", "Standing Calf Raise"]),
     ]
 
-    static func makeTemplates(exercises: [Exercise], settings: WorkoutSettings) -> [WorkoutTemplate] {
+    static func makeTemplates(exercises: [Exercise], settings: WorkoutSettings, lastWeightTypeByExerciseId: [String: String] = [:]) -> [WorkoutTemplate] {
         var exercisesByName: [String: Exercise] = [:]
         for exercise in exercises where exercisesByName[exercise.name.lowercased()] == nil {
             exercisesByName[exercise.name.lowercased()] = exercise
         }
         return templates.compactMap { starter in
             let items = starter.exerciseNames.compactMap { exercisesByName[$0.lowercased()] }.map { exercise in
-                ExerciseItem(exerciseId: exercise.id, sets: defaultSets(settings))
+                ExerciseItem(
+                    exerciseId: exercise.id,
+                    weightType: lastWeightTypeByExerciseId[exercise.id] ?? "weight",
+                    sets: defaultSets(settings)
+                )
             }
             guard !items.isEmpty else { return nil }
             return WorkoutTemplate(name: starter.name, description: starter.description, exerciseItems: items)
@@ -1363,6 +1368,7 @@ private struct TemplateFormSheet: View {
                         defaultSets: store.settings.defaultSets,
                         defaultReps: store.settings.defaultReps,
                         defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
+                        lastWeightTypeByExerciseId: lastWeightTypesByExerciseId(from: store.logs),
                         planningMode: true,
                         onEditExercise: { exercise in editingExercise = exercise }
                     )

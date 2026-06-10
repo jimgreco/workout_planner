@@ -45,6 +45,7 @@ struct WorkoutBuilderView: View {
     var defaultSets = 4
     var defaultReps = 8
     var defaultRestTargetSeconds: Int?
+    var lastWeightTypeByExerciseId: [String: String] = [:]
     var activeExerciseIndex: Int?
     var activeSetIndex: Int?
     var planningMode = false
@@ -216,7 +217,7 @@ struct WorkoutBuilderView: View {
         }
         items.append(ExerciseItem(
             exerciseId: exercise.id,
-            weightType: "weight",
+            weightType: lastWeightTypeByExerciseId[exercise.id] ?? "weight",
             restTargetSeconds: (defaultRestTargetSeconds ?? 0) > 0 ? defaultRestTargetSeconds : nil,
             description: exercise.description ?? "",
             useIndividualReps: false,
@@ -232,7 +233,18 @@ struct WorkoutBuilderView: View {
 
     private func replaceExercise(_ index: Int, with exercise: Exercise) {
         guard items.indices.contains(index), items[index].exerciseId != exercise.id else { return }
+        let previousWeightType = items[index].weightType ?? "weight"
+        let nextWeightType = lastWeightTypeByExerciseId[exercise.id] ?? previousWeightType
         items[index].exerciseId = exercise.id
+        if previousWeightType != nextWeightType {
+            for setIndex in items[index].sets.indices {
+                let placeholder = items[index].sets[setIndex].placeholderWeight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !placeholder.isEmpty, items[index].sets[setIndex].placeholderWeightType == nil {
+                    items[index].sets[setIndex].placeholderWeightType = previousWeightType
+                }
+            }
+        }
+        items[index].weightType = nextWeightType
         if (items[index].description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             items[index].description = exercise.description ?? ""
         }

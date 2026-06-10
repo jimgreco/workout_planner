@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Check, X, Clock, Trophy, Clipboard, Trash2 } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Modal from '../components/Modal.jsx';
 import { saveLog, deleteLog, saveExercise } from '../api.js';
+import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
 import {
   bestPersonalBestSet,
   isPersonalBestImprovement,
@@ -243,6 +244,7 @@ export default function WorkoutLog({
   const latestItemsRef = useRef(items);
   const isActive = !!workoutId;
   const isPlanningMode = !!workoutId && !startTime && !isEditing.current;
+  const lastWeightTypeByExerciseId = useMemo(() => lastWeightTypesByExerciseId(logs), [logs]);
   const activeProgramWorkouts = programs
     .filter((program) => program.active)
     .map((program) => nextProgramWorkout(program, templates, logs))
@@ -919,6 +921,7 @@ export default function WorkoutLog({
         defaultSets={settings.defaultSets}
         defaultReps={settings.defaultReps}
         defaultRestTargetSeconds={settings.defaultRestTargetSeconds}
+        lastWeightTypeByExerciseId={lastWeightTypeByExerciseId}
         planningMode={isPlanningMode}
       />
 

@@ -197,6 +197,7 @@ export default function WorkoutBuilder({
   onResetPersonalBest,
   onEditExercise,
   planningMode = false,
+  lastWeightTypeByExerciseId = {},
 }) {
   const [exerciseSearch, setExerciseSearch] = useState('');
   const exerciseListId = useId();
@@ -210,6 +211,7 @@ export default function WorkoutBuilder({
     const exercise = exById(exerciseId);
     const setCount = exercise?.defaultSets || defaultSets;
     const repCount = exercise?.defaultReps || defaultReps;
+    const weightType = lastWeightTypeByExerciseId[exerciseId] || 'weight';
     const useSideReps = Boolean(exercise?.isUnilateral) && !planningMode;
     const item = {
       exerciseId,
@@ -218,7 +220,7 @@ export default function WorkoutBuilder({
         ...(useSideReps ? { repsLeft: String(repCount), repsRight: String(repCount) } : {}),
         weight: '',
       })),
-      weightType: 'weight',
+      weightType,
       description: exercise?.description || '',
       useIndividualReps: false,
     };
@@ -338,11 +340,18 @@ export default function WorkoutBuilder({
   function replaceExercise(itemIdx, exerciseId) {
     const replacement = exById(exerciseId);
     if (!replacement || items[itemIdx]?.exerciseId === exerciseId) return;
-    onChange(items.map((item, i) => (
-      i === itemIdx
-        ? { ...item, exerciseId, description: item.description || replacement.description || '' }
-        : item
-    )));
+    onChange(items.map((item, i) => {
+      if (i !== itemIdx) return item;
+      const previousWeightType = item.weightType || 'weight';
+      const weightType = lastWeightTypeByExerciseId[exerciseId] || previousWeightType;
+      const sets = previousWeightType === weightType
+        ? item.sets
+        : item.sets.map((set) => {
+          if (!String(set.placeholderWeight ?? '').trim() || set.placeholderWeightType) return set;
+          return { ...set, placeholderWeightType: previousWeightType };
+        });
+      return { ...item, exerciseId, weightType, sets, description: item.description || replacement.description || '' };
+    }));
   }
 
   function replacementExercises(itemIdx) {

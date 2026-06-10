@@ -327,6 +327,29 @@ struct WorkoutSettings: Codable, Equatable {
     static let defaults = WorkoutSettings(defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0)
 }
 
+private let workoutWeightTypes: Set<String> = ["weight", "double", "bar_double", "none"]
+
+private func workoutLogSortKey(_ log: WorkoutLog) -> String {
+    log.endTime ?? log.startTime ?? "\(log.date)T00:00:00"
+}
+
+func lastWeightTypesByExerciseId(from logs: [WorkoutLog]) -> [String: String] {
+    var result: [String: String] = [:]
+    let finishedLogs = logs
+        .filter { $0.status == "finished" }
+        .sorted { workoutLogSortKey($0) > workoutLogSortKey($1) }
+
+    for log in finishedLogs {
+        for item in log.exerciseItems where result[item.exerciseId] == nil {
+            let weightType = item.weightType ?? "weight"
+            guard workoutWeightTypes.contains(weightType) else { continue }
+            result[item.exerciseId] = weightType
+        }
+    }
+
+    return result
+}
+
 enum SyncConflictResource: String, Codable, CaseIterable {
     case exercises
     case templates

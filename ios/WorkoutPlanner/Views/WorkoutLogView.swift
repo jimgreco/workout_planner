@@ -387,6 +387,7 @@ struct WorkoutLogView: View {
                 defaultSets: store.settings.defaultSets,
                 defaultReps: store.settings.defaultReps,
                 defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
+                lastWeightTypeByExerciseId: lastWeightTypesByExerciseId(from: store.logs),
                 activeExerciseIndex: activeExerciseIndex,
                 activeSetIndex: activeSetIndex,
                 planningMode: isPlanningMode,

@@ -42,6 +42,12 @@ describe('Routines page', () => {
       <Templates
         templates={[]}
         exercises={exercises}
+        logs={[{
+          id: 'log-1',
+          date: '2026-01-01',
+          status: 'finished',
+          exerciseItems: [{ exerciseId: 'bench', weightType: 'bar_double', sets: [{ reps: '8', weight: '45' }] }],
+        }]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={onUpdate}
         onSettingsUpdate={() => {}}
@@ -55,7 +61,7 @@ describe('Routines page', () => {
     expect(saveTemplate.mock.calls[0][0]).toMatchObject({
       name: 'Push Starter',
       exerciseItems: [
-        { exerciseId: 'bench', sets: [{ reps: '10', weight: '' }, { reps: '10', weight: '' }, { reps: '10', weight: '' }] },
+        { exerciseId: 'bench', weightType: 'bar_double', sets: [{ reps: '10', weight: '' }, { reps: '10', weight: '' }, { reps: '10', weight: '' }] },
         { exerciseId: 'press' },
         { exerciseId: 'pushdown' },
       ],

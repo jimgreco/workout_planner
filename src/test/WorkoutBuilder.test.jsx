@@ -296,6 +296,26 @@ describe('WorkoutBuilder', () => {
       expect(screen.getByLabelText(/weight type for bench press/i)).toHaveValue('weight');
     });
 
+    it('uses the last load setting when adding an exercise', () => {
+      const onChange = vi.fn();
+      render(
+        <WorkoutBuilder
+          exercises={exercises}
+          items={[]}
+          onChange={onChange}
+          lastWeightTypeByExerciseId={{ ex2: 'bar_double' }}
+        />,
+      );
+
+      fireEvent.change(screen.getByPlaceholderText(/search exercises/i), { target: { value: 'Squat (Quads)' } });
+
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(onChange.mock.calls[0][0][0]).toMatchObject({
+        exerciseId: 'ex2',
+        weightType: 'bar_double',
+      });
+    });
+
     it('shows "Weight (2x)" when type is double', () => {
       const items = [{ exerciseId: 'ex2', weightType: 'double', sets: [{ reps: '10', weight: '50' }] }];
       render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
