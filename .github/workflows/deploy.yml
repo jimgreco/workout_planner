@@ -115,7 +115,19 @@ jobs:
              BUILD_TIME='$BUILD_TIME' \
              bash -s" <<'REMOTE_DEPLOY'
           set -euo pipefail
-          cd ~/consolidated-deploy
+
+          DEPLOY_DIR="${WORKOUT_DEPLOY_DIR:-$HOME/consolidated-deploy}"
+          if [ ! -f "$DEPLOY_DIR/docker-compose.yml" ]; then
+            if [ -f "$HOME/deploy/docker-compose.yml" ]; then
+              echo "Using fallback deploy directory: $HOME/deploy"
+              DEPLOY_DIR="$HOME/deploy"
+            else
+              echo "Could not find docker-compose.yml in $DEPLOY_DIR or $HOME/deploy"
+              ls -la "$HOME"
+              exit 1
+            fi
+          fi
+          cd "$DEPLOY_DIR"
 
           cleanup_deploy() {
             rm -f "${OVERRIDE_FILE:-}"
@@ -144,7 +156,7 @@ jobs:
           WORKOUT_GOOGLE_CLIENT_IDS="${WORKOUT_GOOGLE_CLIENT_IDS:-$(read_deploy_env WORKOUT_GOOGLE_CLIENT_IDS)}"
           WORKOUT_APPLE_CLIENT_IDS="${WORKOUT_APPLE_CLIENT_IDS:-$(read_deploy_env WORKOUT_APPLE_CLIENT_IDS)}"
 
-          : "${WORKOUT_GOOGLE_CLIENT_ID:?WORKOUT_GOOGLE_CLIENT_ID must be set in ~/deploy/.env}"
+          : "${WORKOUT_GOOGLE_CLIENT_ID:?WORKOUT_GOOGLE_CLIENT_ID must be set in $DEPLOY_DIR/.env}"
           : "${GOOGLE_IOS_CLIENT_ID:?GOOGLE_IOS_CLIENT_ID must be set in GitHub Secrets}"
           : "${APP_SESSION_SECRET:?APP_SESSION_SECRET must be set in GitHub Secrets}"
           : "${APPLE_CLIENT_IDS:?APPLE_CLIENT_IDS must be set}"
