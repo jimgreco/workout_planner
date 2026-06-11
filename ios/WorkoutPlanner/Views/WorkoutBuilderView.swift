@@ -1794,8 +1794,8 @@ private struct SetNumericField: View {
     var body: some View {
         let showsCaptionLine = reservesCaptionSpace || caption != nil
         let fieldHeight: CGFloat = showsCaptionLine ? 58 : 44
-        let captionHeight: CGFloat = caption == nil ? 0 : 14
-        let contentHeight = fieldHeight - captionHeight
+        let captionHeight: CGFloat = caption == nil ? 0 : 11
+        let valueHeight: CGFloat = caption == nil ? fieldHeight : 28
         let isFocused = focusedField == focus
 
         VStack(spacing: 0) {
@@ -1827,7 +1827,7 @@ private struct SetNumericField: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .disabled(isDisabled)
             }
-            .frame(height: contentHeight)
+            .frame(height: valueHeight)
             .frame(maxWidth: .infinity)
 
             if let caption {

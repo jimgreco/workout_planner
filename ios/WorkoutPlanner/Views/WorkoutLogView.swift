@@ -1202,9 +1202,20 @@ struct WorkoutLogView: View {
     }
 
     private func liveRepsLabel(for set: WorkoutSet) -> String? {
-        let reps = set.reps?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let left = liveRepText(value: set.repsLeft, placeholder: set.placeholderRepsLeft ?? set.placeholderReps)
+        let right = liveRepText(value: set.repsRight, placeholder: set.placeholderRepsRight ?? set.placeholderReps)
+        if left != nil || right != nil {
+            let leftText = left ?? right ?? "-"
+            let rightText = right ?? left ?? "-"
+            return leftText == rightText ? leftText : "\(leftText)/\(rightText)"
+        }
+        return liveRepText(value: set.reps, placeholder: set.placeholderReps)
+    }
+
+    private func liveRepText(value: String?, placeholder: String?) -> String? {
+        let reps = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let reps, !reps.isEmpty { return reps }
-        let placeholder = set.placeholderReps?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let placeholder = placeholder?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let placeholder, !placeholder.isEmpty else { return nil }
         if let context = RepsFieldPlaceholder(rawValue: placeholder) {
             if let goal = context.goal { return goal }
@@ -1616,22 +1627,47 @@ private struct WorkoutLiveActivityCard: View {
 
     private func currentSetSection(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, isUpNext: Bool) -> some View {
         let showsWeight = context.item.weightType != "none"
+        let usesSideReps = context.exercise.isUnilateral == true
         let weightCaption = calculatedWeightCaption(weight: set.wrappedValue.weight, weightType: context.item.weightType)
         let primaryTileHeight = weightCaption == nil ? livePrimaryTileHeight : liveCaptionTileHeight
+        let primaryFieldCount = (usesSideReps ? 2 : 1) + (showsWeight ? 2 : 1)
 
         return VStack(alignment: .leading, spacing: 8) {
             currentSetHeader(context, isUpNext: isUpNext)
 
             VStack(alignment: .leading, spacing: liveGridSpacing) {
-                LazyVGrid(columns: liveFieldColumns(count: showsWeight ? 3 : 2), alignment: .leading, spacing: liveGridSpacing) {
-                    WorkoutLiveInput(
-                        title: context.exercise.usesTime == true ? "Secs" : "Reps",
-                        text: stringBinding(set, \.reps),
-                        placeholder: repsLabel(for: context.set) ?? "0",
-                        keyboard: .numberPad,
-                        height: primaryTileHeight
-                    )
-                    .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                LazyVGrid(columns: liveFieldColumns(count: primaryFieldCount), alignment: .leading, spacing: liveGridSpacing) {
+                    if usesSideReps {
+                        WorkoutLiveInput(
+                            title: "Left",
+                            text: stringBinding(set, \.repsLeft),
+                            placeholder: sideRepsLabel(for: context.set, left: true) ?? "0",
+                            keyboard: .numberPad,
+                            reservesCaptionSpace: weightCaption != nil,
+                            height: primaryTileHeight
+                        )
+                        .focused($focusedField, equals: .repsLeft(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+
+                        WorkoutLiveInput(
+                            title: "Right",
+                            text: stringBinding(set, \.repsRight),
+                            placeholder: sideRepsLabel(for: context.set, left: false) ?? "0",
+                            keyboard: .numberPad,
+                            reservesCaptionSpace: weightCaption != nil,
+                            height: primaryTileHeight
+                        )
+                        .focused($focusedField, equals: .repsRight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    } else {
+                        WorkoutLiveInput(
+                            title: context.exercise.usesTime == true ? "Secs" : "Reps",
+                            text: stringBinding(set, \.reps),
+                            placeholder: repsLabel(for: context.set) ?? "0",
+                            keyboard: .numberPad,
+                            reservesCaptionSpace: weightCaption != nil,
+                            height: primaryTileHeight
+                        )
+                        .focused($focusedField, equals: .reps(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+                    }
 
                     if showsWeight {
                         WorkoutLiveInput(
@@ -1645,7 +1681,7 @@ private struct WorkoutLiveActivityCard: View {
                         .focused($focusedField, equals: .weight(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
                     }
 
-                    weightTypeMenu(context, height: primaryTileHeight)
+                    weightTypeMenu(context, height: primaryTileHeight, reservesCaptionSpace: weightCaption != nil)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -1791,7 +1827,7 @@ private struct WorkoutLiveActivityCard: View {
         .buttonStyle(.plain)
     }
 
-    private func weightTypeMenu(_ context: WorkoutLiveSetContext, height: CGFloat = livePrimaryTileHeight) -> some View {
+    private func weightTypeMenu(_ context: WorkoutLiveSetContext, height: CGFloat = livePrimaryTileHeight, reservesCaptionSpace: Bool = false) -> some View {
         Menu {
             ForEach(liveWeightTypeOptions, id: \.value) { option in
                 Button(option.label) {
@@ -1800,7 +1836,7 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
         } label: {
-            WorkoutLiveMenuMetric(title: "Load", value: weightTypeLabel(context.item.weightType), height: height)
+            WorkoutLiveMenuMetric(title: "Load", value: weightTypeLabel(context.item.weightType), height: height, reservesCaptionSpace: reservesCaptionSpace)
         }
         .buttonStyle(.plain)
     }
@@ -1879,7 +1915,18 @@ private struct WorkoutLiveActivityCard: View {
     private func repsLabel(for set: WorkoutSet) -> String? {
         let reps = cleaned(set.reps)
         if let reps { return reps }
-        guard let placeholder = cleaned(set.placeholderReps) else { return nil }
+        return repsPlaceholderLabel(cleaned(set.placeholderReps))
+    }
+
+    private func sideRepsLabel(for set: WorkoutSet, left: Bool) -> String? {
+        let reps = cleaned(left ? set.repsLeft : set.repsRight)
+        if let reps { return reps }
+        return repsPlaceholderLabel(cleaned(left ? set.placeholderRepsLeft : set.placeholderRepsRight) ?? cleaned(set.placeholderReps))
+            ?? cleaned(set.reps)
+    }
+
+    private func repsPlaceholderLabel(_ placeholder: String?) -> String? {
+        guard let placeholder else { return nil }
         if let context = RepsFieldPlaceholder(rawValue: placeholder) {
             if let goal = context.goal { return goal }
             return context.last
@@ -2065,6 +2112,7 @@ private struct WorkoutLiveMenuMetric: View {
     let title: String
     let value: String
     let height: CGFloat
+    var reservesCaptionSpace = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -2084,6 +2132,13 @@ private struct WorkoutLiveMenuMetric: View {
                     .font(.system(size: 9, weight: .heavy))
                     .foregroundStyle(Theme.muted.opacity(0.72))
             }
+            .frame(height: 22, alignment: .leading)
+
+            if reservesCaptionSpace {
+                Color.clear
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
+            }
         }
         .padding(.horizontal, 10)
         .frame(height: height, alignment: .center)
@@ -2099,6 +2154,7 @@ private struct WorkoutLiveInput: View {
     let placeholder: String
     let keyboard: UIKeyboardType
     var caption: String? = nil
+    var reservesCaptionSpace = false
     let height: CGFloat
 
     var body: some View {
@@ -2125,6 +2181,10 @@ private struct WorkoutLiveInput: View {
                     .minimumScaleFactor(0.72)
                     .monospacedDigit()
                     .frame(height: 12, alignment: .leading)
+            } else if reservesCaptionSpace {
+                Color.clear
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
             }
         }
         .padding(.horizontal, 10)
