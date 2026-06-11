@@ -115,7 +115,14 @@ jobs:
              BUILD_TIME='$BUILD_TIME' \
              bash -s" <<'REMOTE_DEPLOY'
           set -euo pipefail
-          cd ~/deploy
+          cd ~/consolidated-deploy
+
+          cleanup_deploy() {
+            rm -f "${OVERRIDE_FILE:-}"
+            docker system prune -f || true
+            docker builder prune -f || true
+          }
+          trap cleanup_deploy EXIT
 
           read_deploy_env() {
             local key="$1"
@@ -219,7 +226,6 @@ jobs:
           COMPOSE_PERSISTENT_OVERRIDE
 
           OVERRIDE_FILE="$(mktemp)"
-          trap 'rm -f "$OVERRIDE_FILE"' EXIT
           cat > "$OVERRIDE_FILE" <<'COMPOSE_OVERRIDE'
           services:
             workout_api:
@@ -235,6 +241,15 @@ jobs:
                 GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
                 APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
           COMPOSE_OVERRIDE
+
+          rm -rf \
+            ~/workout_planner/node_modules \
+            ~/workout_planner/backend/node_modules \
+            ~/workout_planner/dist \
+            ~/workout_planner/coverage \
+            ~/workout_planner/backend/coverage
+          docker system prune -af || true
+          docker builder prune -af || true
 
           docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" build --no-cache \
             --build-arg VITE_DEV_BYPASS_AUTH=false \
@@ -262,7 +277,6 @@ jobs:
           }
           console.log('workout_api runtime config verified');
           NODE
-          docker system prune -f
           REMOTE_DEPLOY
 
       - name: Smoke test live app
