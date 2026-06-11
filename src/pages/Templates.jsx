@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowRightLeft,
   CalendarDays,
   CheckCircle2,
   Eye,
   LayoutGrid,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
   RefreshCcw,
-  Rewind,
   Settings,
   SkipForward,
   Target,
@@ -132,6 +133,14 @@ function dateLabel(date) {
   if (localDateKey(date) === localDateKey(today)) return 'Today';
   if (localDateKey(date) === localDateKey(tomorrow)) return 'Tomorrow';
   return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+}
+
+function programStatusLabel(status) {
+  if (status === 'done') return 'Done';
+  if (status === 'skipped') return 'Skipped';
+  if (status === 'missed') return 'Missed';
+  if (status === 'planned') return 'Planned';
+  return 'Rest';
 }
 
 function activityId() {
@@ -339,31 +348,39 @@ function nextProgramWorkout(program, templates, logs) {
   return null;
 }
 
-function moveScheduledWorkout(schedule, startWeekday, direction) {
-  const normalized = (schedule ?? [])
-    .filter((item) => item.templateId)
+function weekdayByValue(value) {
+  return WEEKDAYS.find((weekday) => weekday.value === value) ?? WEEKDAYS[0];
+}
+
+function scheduleEntryFor(schedule, weekday) {
+  return (schedule ?? []).find((item) => Number(item.weekday) === weekday && item.templateId) ?? null;
+}
+
+function setScheduledWorkout(schedule, weekday, templateId) {
+  const next = (schedule ?? [])
+    .filter((item) => Number(item.weekday) !== weekday && item.templateId)
     .map((item) => ({ ...item, weekday: Number(item.weekday) }));
-  if (!normalized.length) return normalized;
+  if (templateId) next.push({ weekday, templateId });
+  return next.sort((a, b) => a.weekday - b.weekday);
+}
 
-  const scheduleByDay = new Map(normalized.map((item) => [item.weekday, item]));
-  const fallbackStart = normalized
-    .map((item) => item.weekday)
-    .sort((a, b) => a - b)[0];
-  const start = Number.isInteger(startWeekday) ? startWeekday : fallbackStart;
-  if (!scheduleByDay.has(start)) return normalized.sort((a, b) => a.weekday - b.weekday);
-
-  let carry = scheduleByDay.get(start);
-  scheduleByDay.delete(start);
-
-  for (let step = 1; step <= 7; step += 1) {
-    const targetDay = (start + (direction * step) + 7) % 7;
-    const displaced = scheduleByDay.get(targetDay);
-    scheduleByDay.set(targetDay, { ...carry, weekday: targetDay });
-    if (!displaced) break;
-    carry = displaced;
+function moveOrSwapScheduledWorkout(schedule, sourceWeekday, targetWeekday) {
+  if (sourceWeekday === targetWeekday) return schedule ?? [];
+  const byDay = new Map();
+  for (const item of schedule ?? []) {
+    const weekday = Number(item.weekday);
+    if (item.templateId && !byDay.has(weekday)) byDay.set(weekday, { ...item, weekday });
   }
 
-  return [...scheduleByDay.values()].sort((a, b) => a.weekday - b.weekday);
+  const source = byDay.get(sourceWeekday);
+  const target = byDay.get(targetWeekday);
+  if (!source && !target) return [...byDay.values()].sort((a, b) => a.weekday - b.weekday);
+
+  byDay.delete(sourceWeekday);
+  byDay.delete(targetWeekday);
+  if (source) byDay.set(targetWeekday, { ...source, weekday: targetWeekday });
+  if (target) byDay.set(sourceWeekday, { ...target, weekday: sourceWeekday });
+  return [...byDay.values()].sort((a, b) => a.weekday - b.weekday);
 }
 
 function weekPlan(program, templates, logs) {
@@ -552,6 +569,7 @@ export default function Templates({
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
   const [showAddMenu, setShowAddMenu]   = useState(false);
+  const [selectedProgramWeekday, setSelectedProgramWeekday] = useState(null);
   const addMenuRef = useRef(null);
   const showPrograms = mode === 'all' || mode === 'programs';
   const showRoutines = mode === 'all' || mode === 'routines';
@@ -570,6 +588,10 @@ export default function Templates({
   const currentWeek = useMemo(
     () => weekPlan(activeProgram, templates, logs),
     [activeProgram, templates, logs],
+  );
+  const selectedProgramDay = useMemo(
+    () => currentWeek.find((day) => day.value === selectedProgramWeekday) ?? null,
+    [currentWeek, selectedProgramWeekday],
   );
   const upcomingSchedule = useMemo(
     () => upcomingProgramSchedule(activeProgram, templates, logs),
@@ -701,13 +723,13 @@ export default function Templates({
     }
   }
 
-  async function handleSkipNextWorkout() {
-    if (!nextWorkout || saving) return;
+  async function handleSkipProgramWorkout(template, date, dayKey) {
+    if (!template || !activeProgram || saving) return;
     setSaving(true);
     try {
       const updated = await saveLog({
-        name: nextWorkout.template.name,
-        date: nextWorkout.dayKey,
+        name: template.name,
+        date: dayKey,
         notes: 'Skipped from program',
         exerciseItems: [],
         status: 'skipped',
@@ -716,50 +738,85 @@ export default function Templates({
       const updatedPrograms = await saveProgram(cleanProgram(withProgramActivity(
         activeProgram,
         'skip',
-        `Skipped ${nextWorkout.template.name}`,
-        dateLabel(nextWorkout.date),
+        `Skipped ${template.name}`,
+        dateLabel(date),
       )));
       onProgramsUpdate(updatedPrograms);
+      setSelectedProgramWeekday(null);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelayProgram() {
-    if (!activeProgram?.schedule?.length || saving) return;
+  async function handleSkipNextWorkout() {
+    if (!nextWorkout) return;
+    await handleSkipProgramWorkout(nextWorkout.template, nextWorkout.date, nextWorkout.dayKey);
+  }
+
+  async function handleSkipProgramDay(day) {
+    const template = day?.templates?.[0];
+    if (!template) return;
+    await handleSkipProgramWorkout(template, day.date, day.dayKey);
+  }
+
+  async function handleSetProgramDayRoutine(day, templateId) {
+    if (!activeProgram || !day || saving) return;
+    const currentTemplateId = scheduleEntryFor(activeProgram.schedule, day.value)?.templateId || '';
+    if (currentTemplateId === templateId) {
+      setSelectedProgramWeekday(null);
+      return;
+    }
+    const template = templates.find((item) => item.id === templateId);
+    const title = templateId ? `Set ${day.long}` : `Set ${day.long} as rest`;
+    const detail = templateId ? template?.name || 'Routine' : 'Rest';
     setSaving(true);
     try {
-      const delayed = {
+      const updatedProgram = {
         ...withProgramActivity(
           activeProgram,
-          'delay',
-          'Delayed schedule',
-          nextWorkout ? `${nextWorkout.template.name} moved later from ${dateLabel(nextWorkout.date)}` : 'Moved next scheduled workout later',
+          'schedule_edit',
+          title,
+          detail,
         ),
-        schedule: moveScheduledWorkout(activeProgram.schedule, nextWorkout?.entry?.weekday, 1),
+        schedule: setScheduledWorkout(activeProgram.schedule, day.value, templateId),
       };
-      const updated = await saveProgram(cleanProgram(delayed));
+      const updated = await saveProgram(cleanProgram(updatedProgram));
       onProgramsUpdate(updated);
+      setSelectedProgramWeekday(null);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handlePullForwardProgram() {
-    if (!activeProgram?.schedule?.length || saving) return;
+  async function handleMoveProgramDay(day, targetWeekday) {
+    if (!activeProgram || !day || saving || day.value === targetWeekday) return;
+    const sourceEntry = scheduleEntryFor(activeProgram.schedule, day.value);
+    const targetEntry = scheduleEntryFor(activeProgram.schedule, targetWeekday);
+    if (!sourceEntry && !targetEntry) return;
+
+    const targetDay = weekdayByValue(targetWeekday);
+    const sourceTemplate = templates.find((template) => template.id === sourceEntry?.templateId);
+    const targetTemplate = templates.find((template) => template.id === targetEntry?.templateId);
+    const type = sourceEntry && targetEntry ? 'swap' : 'move';
+    const movedTemplate = sourceTemplate ?? targetTemplate;
+    const title = type === 'swap'
+      ? `Swapped ${day.label} and ${targetDay.label}`
+      : `Moved ${movedTemplate?.name || 'Routine'}`;
+    const detail = type === 'swap'
+      ? `${sourceTemplate?.name || 'Rest'} <-> ${targetTemplate?.name || 'Rest'}`
+      : sourceEntry
+        ? `${day.long} -> ${targetDay.long}`
+        : `${targetDay.long} -> ${day.long}`;
+
     setSaving(true);
     try {
-      const pulled = {
-        ...withProgramActivity(
-          activeProgram,
-          'pull_forward',
-          'Pulled schedule forward',
-          nextWorkout ? `${nextWorkout.template.name} moved earlier from ${dateLabel(nextWorkout.date)}` : 'Moved next scheduled workout earlier',
-        ),
-        schedule: moveScheduledWorkout(activeProgram.schedule, nextWorkout?.entry?.weekday, -1),
+      const updatedProgram = {
+        ...withProgramActivity(activeProgram, type, title, detail),
+        schedule: moveOrSwapScheduledWorkout(activeProgram.schedule, day.value, targetWeekday),
       };
-      const updated = await saveProgram(cleanProgram(pulled));
+      const updated = await saveProgram(cleanProgram(updatedProgram));
       onProgramsUpdate(updated);
+      setSelectedProgramWeekday(null);
     } finally {
       setSaving(false);
     }
@@ -801,6 +858,9 @@ export default function Templates({
     || settingsForm.defaultReps !== settings.defaultReps
     || (settingsForm.defaultRestTargetSeconds || 0) !== (settings.defaultRestTargetSeconds || 0)
     || Boolean(settingsForm.advancedMode) !== Boolean(settings.advancedMode);
+  const selectedProgramTemplateId = selectedProgramDay && activeProgram
+    ? scheduleEntryFor(activeProgram.schedule, selectedProgramDay.value)?.templateId || ''
+    : '';
 
   return (
     <div className="page">
@@ -875,10 +935,10 @@ export default function Templates({
 
         {activeProgram ? (
           <>
-            <div className="program-next">
-              <div className="program-next-copy">
-                <Target size={18} />
-                <div>
+              <div className="program-next">
+                <div className="program-next-copy">
+                  <Target size={18} />
+                  <div>
                   <span>Next</span>
                   <strong>
                     {nextWorkout
@@ -891,22 +951,33 @@ export default function Templates({
                 <button className="btn btn-secondary btn-sm" onClick={handleSkipNextWorkout} disabled={!nextWorkout || saving}>
                   <SkipForward size={14} /> Skip
                 </button>
-                <button className="btn btn-secondary btn-sm" onClick={handleDelayProgram} disabled={!activeProgram?.schedule?.length || saving}>
-                  <RefreshCcw size={14} /> Delay
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={handlePullForwardProgram} disabled={!activeProgram?.schedule?.length || saving}>
-                  <Rewind size={14} /> Pull Forward
-                </button>
-                <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(nextWorkout.template)} disabled={!nextWorkout}>
+                <button className="btn btn-primary btn-sm" onClick={() => nextWorkout && onStartWorkout(nextWorkout.template)} disabled={!nextWorkout || saving}>
                   <Play size={14} fill="currentColor" /> Start
                 </button>
               </div>
             </div>
 
+            <div className="program-week-heading">
+              <strong>This Week</strong>
+              <span>Current week</span>
+            </div>
             <div className="program-week-grid">
               {currentWeek.map((day) => (
-                <div key={day.value} className={`program-day ${day.status}`}>
-                  <span>{day.label}</span>
+                <button
+                  key={day.value}
+                  type="button"
+                  className={`program-day ${day.status}`}
+                  onClick={() => setSelectedProgramWeekday(day.value)}
+                  aria-label={`Manage ${day.long}: ${day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}, ${day.status}`}
+                >
+                  <div className="program-day-top">
+                    <span>{day.label}</span>
+                    <div className="program-day-icons">
+                      {day.status === 'done' && <CheckCircle2 size={14} aria-label="Done" />}
+                      {day.status === 'skipped' && <SkipForward size={14} aria-label="Skipped" />}
+                      <MoreHorizontal size={14} aria-hidden="true" />
+                    </div>
+                  </div>
                   <div className="program-day-routines">
                     {day.templates.length > 0 ? (
                       <>
@@ -924,9 +995,7 @@ export default function Templates({
                       {day.completedCount + day.skippedCount}/{day.templates.length}{day.skippedCount > 0 ? ' handled' : ''}
                     </small>
                   )}
-                  {day.status === 'done' && <CheckCircle2 size={14} aria-label="Done" />}
-                  {day.status === 'skipped' && <SkipForward size={14} aria-label="Skipped" />}
-                </div>
+                </button>
               ))}
             </div>
 
@@ -1048,6 +1117,98 @@ export default function Templates({
           </div>
         )}
       </section>
+      )}
+
+      {activeProgram && selectedProgramDay && (
+        <Modal
+          title={`${selectedProgramDay.long} Plan`}
+          onClose={() => !saving && setSelectedProgramWeekday(null)}
+          footer={
+            <button className="btn btn-secondary" onClick={() => setSelectedProgramWeekday(null)} disabled={saving}>
+              Close
+            </button>
+          }
+        >
+          <div className="program-day-planner">
+            <div className={`program-day-current ${selectedProgramDay.status}`}>
+              <div>
+                <span>{dateLabel(selectedProgramDay.date)}</span>
+                <strong>
+                  {selectedProgramDay.templates.length > 0
+                    ? selectedProgramDay.templates.map((template) => template.name).join(', ')
+                    : 'Rest'}
+                </strong>
+              </div>
+              <em>{programStatusLabel(selectedProgramDay.status)}</em>
+            </div>
+
+            <div className="program-day-action-row">
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const template = selectedProgramDay.templates[0];
+                  if (template) {
+                    setSelectedProgramWeekday(null);
+                    onStartWorkout(template);
+                  }
+                }}
+                disabled={!selectedProgramDay.templates.length || saving}
+              >
+                <Play size={15} fill="currentColor" /> Start
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => handleSkipProgramDay(selectedProgramDay)}
+                disabled={!selectedProgramDay.templates.length || saving}
+              >
+                <SkipForward size={15} /> Skip
+              </button>
+            </div>
+
+            <div className="program-day-planner-section">
+              <label htmlFor="program-day-routine">Routine</label>
+              <select
+                id="program-day-routine"
+                value={selectedProgramTemplateId}
+                onChange={(event) => handleSetProgramDayRoutine(selectedProgramDay, event.target.value)}
+                disabled={saving}
+              >
+                <option value="">Rest day</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="program-day-planner-section">
+              <div className="program-day-planner-heading">
+                <strong>Move / Swap</strong>
+                <ArrowRightLeft size={15} />
+              </div>
+              <div className="program-day-target-grid">
+                {WEEKDAYS.filter((weekday) => weekday.value !== selectedProgramDay.value).map((weekday) => {
+                  const targetDay = currentWeek.find((day) => day.value === weekday.value);
+                  const targetHasRoutine = Boolean(targetDay?.templates?.length);
+                  const targetRoutine = targetDay?.templates?.[0]?.name || 'Rest';
+                  const disabled = saving || (!selectedProgramDay.templates.length && !targetHasRoutine);
+                  return (
+                    <button
+                      key={weekday.value}
+                      type="button"
+                      className="program-day-target"
+                      aria-label={`Move or swap with ${weekday.long}: ${targetRoutine}`}
+                      onClick={() => handleMoveProgramDay(selectedProgramDay, weekday.value)}
+                      disabled={disabled}
+                    >
+                      <span>{weekday.label}</span>
+                      <strong>{targetRoutine}</strong>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {showRoutines && (

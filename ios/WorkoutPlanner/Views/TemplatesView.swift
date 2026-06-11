@@ -98,6 +98,31 @@ struct TemplatesView: View {
                 ProgramFormSheet(program: program, templates: store.templates, isSaving: $isSaving)
             case let .exercise(exercise):
                 ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
+            case let .programDay(weekday):
+                if let program = ProgramPlanner.activeProgram(from: store.programs),
+                   let day = ProgramPlanner.weekPlan(program: program, templates: store.templates, logs: store.logs)
+                    .first(where: { $0.weekday.value == weekday }) {
+                    ProgramDayPlannerSheet(
+                        program: program,
+                        day: day,
+                        week: ProgramPlanner.weekPlan(program: program, templates: store.templates, logs: store.logs),
+                        templates: store.templates,
+                        isSaving: $isSaving,
+                        onStart: { template in
+                            store.setStartTemplate(template)
+                            selectedPage = .log
+                        },
+                        onSkip: { day in
+                            Task { await skip(day) }
+                        },
+                        onSetRoutine: { day, templateId in
+                            Task { await setProgramRoutine(program, weekday: day.weekday.value, templateId: templateId) }
+                        },
+                        onMoveOrSwap: { day, targetWeekday in
+                            Task { await moveProgramDay(program, from: day.weekday.value, to: targetWeekday) }
+                        }
+                    )
+                }
             }
         }
         .alert("Delete Template", isPresented: Binding(
@@ -175,11 +200,8 @@ struct TemplatesView: View {
                 onSkip: { workout in
                     Task { await skip(workout) }
                 },
-                onDelay: { program in
-                    Task { await delay(program) }
-                },
-                onPullForward: { program in
-                    Task { await pullForward(program) }
+                onSelectDay: { day in
+                    sheet = .programDay(day.weekday.value)
                 }
             )
             ProgramList(
@@ -247,13 +269,22 @@ struct TemplatesView: View {
     }
 
     private func skip(_ workout: NextProgramWorkout) async {
+        await skip(template: workout.template, date: workout.date)
+    }
+
+    private func skip(_ day: PlannedProgramDay) async {
+        guard let template = day.templates.first else { return }
+        await skip(template: template, date: day.date)
+    }
+
+    private func skip(template: WorkoutTemplate, date: Date) async {
         guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         do {
             try await store.saveLog(WorkoutLog(
-                name: workout.template.name,
-                date: DateHelpers.dayString(from: workout.date),
+                name: template.name,
+                date: DateHelpers.dayString(from: date),
                 notes: "Skipped from program",
                 exerciseItems: [],
                 status: "skipped"
@@ -262,8 +293,8 @@ struct TemplatesView: View {
                 let updatedProgram = programWithActivity(
                     activeProgram,
                     type: "skip",
-                    title: "Skipped \(workout.template.name)",
-                    detail: ProgramPlanner.displayDate(workout.date)
+                    title: "Skipped \(template.name)",
+                    detail: ProgramPlanner.displayDate(date)
                 )
                 try await store.saveProgram(updatedProgram)
             }
@@ -274,20 +305,23 @@ struct TemplatesView: View {
         }
     }
 
-    private func delay(_ program: TrainingProgram) async {
-        guard !isSaving, !program.schedule.isEmpty else { return }
+    private func setProgramRoutine(_ program: TrainingProgram, weekday: Int, templateId: String) async {
+        guard !isSaving else { return }
+        let currentTemplateId = ProgramPlanner.scheduleItem(in: program.schedule, weekday: weekday)?.templateId ?? ""
+        guard currentTemplateId != templateId else { return }
+        let weekdayLabel = ProgramPlanner.weekday(for: weekday)
+        let templateName = store.templates.first { $0.id == templateId }?.name
         isSaving = true
         defer { isSaving = false }
         do {
-            let nextWorkout = ProgramPlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs)
-            var delayed = programWithActivity(
+            var updated = programWithActivity(
                 program,
-                type: "delay",
-                title: "Delayed schedule",
-                detail: nextWorkout.map { "\($0.template.name) moved later from \(ProgramPlanner.displayDate($0.date))" } ?? "Moved next scheduled workout later"
+                type: "schedule_edit",
+                title: templateId.isEmpty ? "Set \(weekdayLabel.long) as rest" : "Set \(weekdayLabel.long)",
+                detail: templateId.isEmpty ? "Rest" : (templateName ?? "Routine")
             )
-            delayed.schedule = ProgramPlanner.movedSchedule(program.schedule, startingAt: nextWorkout?.weekday, direction: 1)
-            try await store.saveProgram(delayed)
+            updated.schedule = ProgramPlanner.setSchedule(program.schedule, weekday: weekday, templateId: templateId)
+            try await store.saveProgram(updated)
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
@@ -295,20 +329,35 @@ struct TemplatesView: View {
         }
     }
 
-    private func pullForward(_ program: TrainingProgram) async {
-        guard !isSaving, !program.schedule.isEmpty else { return }
+    private func moveProgramDay(_ program: TrainingProgram, from sourceWeekday: Int, to targetWeekday: Int) async {
+        guard !isSaving, sourceWeekday != targetWeekday else { return }
+        let sourceItem = ProgramPlanner.scheduleItem(in: program.schedule, weekday: sourceWeekday)
+        let targetItem = ProgramPlanner.scheduleItem(in: program.schedule, weekday: targetWeekday)
+        guard sourceItem != nil || targetItem != nil else { return }
+
+        let sourceLabel = ProgramPlanner.weekday(for: sourceWeekday)
+        let targetLabel = ProgramPlanner.weekday(for: targetWeekday)
+        let sourceTemplate = store.templates.first { $0.id == sourceItem?.templateId }
+        let targetTemplate = store.templates.first { $0.id == targetItem?.templateId }
+        let isSwap = sourceItem != nil && targetItem != nil
+
         isSaving = true
         defer { isSaving = false }
         do {
-            let nextWorkout = ProgramPlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs)
-            var pulled = programWithActivity(
+            var updated = programWithActivity(
                 program,
-                type: "pull_forward",
-                title: "Pulled schedule forward",
-                detail: nextWorkout.map { "\($0.template.name) moved earlier from \(ProgramPlanner.displayDate($0.date))" } ?? "Moved next scheduled workout earlier"
+                type: isSwap ? "swap" : "move",
+                title: isSwap
+                    ? "Swapped \(sourceLabel.label) and \(targetLabel.label)"
+                    : "Moved \(sourceTemplate?.name ?? targetTemplate?.name ?? "Routine")",
+                detail: isSwap
+                    ? "\(sourceTemplate?.name ?? "Rest") <-> \(targetTemplate?.name ?? "Rest")"
+                    : sourceItem != nil
+                        ? "\(sourceLabel.long) -> \(targetLabel.long)"
+                        : "\(targetLabel.long) -> \(sourceLabel.long)"
             )
-            pulled.schedule = ProgramPlanner.movedSchedule(program.schedule, startingAt: nextWorkout?.weekday, direction: -1)
-            try await store.saveProgram(pulled)
+            updated.schedule = ProgramPlanner.moveOrSwapSchedule(program.schedule, sourceWeekday: sourceWeekday, targetWeekday: targetWeekday)
+            try await store.saveProgram(updated)
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
@@ -367,6 +416,7 @@ private enum TemplateSheet: Identifiable {
     case settings
     case program(TrainingProgram)
     case exercise(Exercise)
+    case programDay(Int)
 
     var id: String {
         switch self {
@@ -375,6 +425,7 @@ private enum TemplateSheet: Identifiable {
         case .settings: return "settings"
         case let .program(program): return "program-\(program.id)"
         case let .exercise(exercise): return "exercise-\(exercise.id)"
+        case let .programDay(weekday): return "program-day-\(weekday)"
         }
     }
 }
@@ -476,34 +527,52 @@ private enum ProgramPlanner {
         return nil
     }
 
-    static func movedSchedule(_ schedule: [ProgramScheduleItem], startingAt startWeekday: Int?, direction: Int) -> [ProgramScheduleItem] {
-        let normalized = schedule
-            .filter { !$0.templateId.isEmpty }
-            .map { item -> ProgramScheduleItem in
-                var copy = item
-                copy.weekday = ((copy.weekday % 7) + 7) % 7
-                return copy
-            }
-        guard !normalized.isEmpty else { return normalized }
+    static func weekday(for value: Int) -> ProgramWeekday {
+        weekdays.first { $0.value == ((value % 7) + 7) % 7 } ?? weekdays[0]
+    }
 
-        var scheduleByDay = Dictionary(uniqueKeysWithValues: normalized.map { ($0.weekday, $0) })
-        let fallbackStart = normalized.map(\.weekday).min() ?? 0
-        let start = startWeekday ?? fallbackStart
-        guard var carry = scheduleByDay[start] else {
-            return normalized.sorted { $0.weekday < $1.weekday }
+    static func scheduleItem(in schedule: [ProgramScheduleItem], weekday: Int) -> ProgramScheduleItem? {
+        schedule.first { $0.weekday == weekday && !$0.templateId.isEmpty }
+    }
+
+    static func setSchedule(_ schedule: [ProgramScheduleItem], weekday: Int, templateId: String) -> [ProgramScheduleItem] {
+        var next = schedule.filter { $0.weekday != weekday && !$0.templateId.isEmpty }
+        if !templateId.isEmpty {
+            next.append(ProgramScheduleItem(weekday: weekday, templateId: templateId))
+        }
+        return next.sorted { $0.weekday < $1.weekday }
+    }
+
+    static func moveOrSwapSchedule(_ schedule: [ProgramScheduleItem], sourceWeekday: Int, targetWeekday: Int) -> [ProgramScheduleItem] {
+        guard sourceWeekday != targetWeekday else { return schedule.sorted { $0.weekday < $1.weekday } }
+
+        var byDay: [Int: ProgramScheduleItem] = [:]
+        for item in schedule where !item.templateId.isEmpty {
+            let weekday = ((item.weekday % 7) + 7) % 7
+            guard byDay[weekday] == nil else { continue }
+            var copy = item
+            copy.weekday = weekday
+            byDay[weekday] = copy
         }
 
-        scheduleByDay.removeValue(forKey: start)
-        for step in 1...7 {
-            let targetDay = (start + (direction * step) + 7) % 7
-            let displaced = scheduleByDay[targetDay]
-            carry.weekday = targetDay
-            scheduleByDay[targetDay] = carry
-            guard let displaced else { break }
-            carry = displaced
+        let source = byDay[sourceWeekday]
+        let target = byDay[targetWeekday]
+        guard source != nil || target != nil else {
+            return byDay.values.sorted { $0.weekday < $1.weekday }
         }
 
-        return scheduleByDay.values.sorted { $0.weekday < $1.weekday }
+        byDay[sourceWeekday] = nil
+        byDay[targetWeekday] = nil
+        if var source {
+            source.weekday = targetWeekday
+            byDay[targetWeekday] = source
+        }
+        if var target {
+            target.weekday = sourceWeekday
+            byDay[sourceWeekday] = target
+        }
+
+        return byDay.values.sorted { $0.weekday < $1.weekday }
     }
 
     static func upcomingSchedule(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], days: Int = 21) -> [UpcomingProgramDay] {
@@ -740,8 +809,7 @@ private struct ProgramSummaryCard: View {
     let onDelete: (TrainingProgram) -> Void
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
-    let onDelay: (TrainingProgram) -> Void
-    let onPullForward: (TrainingProgram) -> Void
+    let onSelectDay: (PlannedProgramDay) -> Void
 
     private var nextWorkout: NextProgramWorkout? {
         ProgramPlanner.nextWorkout(program: program, templates: templates, logs: logs)
@@ -794,15 +862,12 @@ private struct ProgramSummaryCard: View {
 
                 if let program {
                     ProgramNextWorkoutPanel(
-                        program: program,
                         nextWorkout: nextWorkout,
                         onStart: onStart,
-                        onSkip: onSkip,
-                        onDelay: onDelay,
-                        onPullForward: onPullForward
+                        onSkip: onSkip
                     )
 
-                    ProgramWeekGrid(week: week)
+                    ProgramWeekGrid(week: week, onSelectDay: onSelectDay)
 
                     ProgramUpcomingList(days: upcoming)
 
@@ -847,12 +912,9 @@ private struct ProgramSummaryCard: View {
 }
 
 private struct ProgramNextWorkoutPanel: View {
-    let program: TrainingProgram
     let nextWorkout: NextProgramWorkout?
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
-    let onDelay: (TrainingProgram) -> Void
-    let onPullForward: (TrainingProgram) -> Void
 
     private var title: String {
         guard let nextWorkout else { return "No scheduled workout" }
@@ -882,10 +944,7 @@ private struct ProgramNextWorkoutPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 10),
-                GridItem(.flexible(), spacing: 10)
-            ], spacing: 10) {
+            HStack(spacing: 10) {
                 Button {
                     if let nextWorkout {
                         onSkip(nextWorkout)
@@ -898,28 +957,6 @@ private struct ProgramNextWorkoutPanel: View {
                 }
                 .buttonStyle(SecondaryButtonStyle(compact: true))
                 .disabled(nextWorkout == nil)
-
-                Button {
-                    onDelay(program)
-                } label: {
-                    Label("Delay", systemImage: "arrow.triangle.2.circlepath")
-                        .frame(maxWidth: .infinity)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
-                .disabled(program.schedule.isEmpty)
-
-                Button {
-                    onPullForward(program)
-                } label: {
-                    Label("Pull Forward", systemImage: "backward.end.fill")
-                        .frame(maxWidth: .infinity)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .buttonStyle(SecondaryButtonStyle(compact: true))
-                .disabled(program.schedule.isEmpty)
 
                 Button {
                     if let template = nextWorkout?.template {
@@ -943,15 +980,31 @@ private struct ProgramNextWorkoutPanel: View {
 
 private struct ProgramWeekGrid: View {
     let week: [PlannedProgramDay]
+    let onSelectDay: (PlannedProgramDay) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 78), spacing: 8, alignment: .top)
     ]
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(week) { day in
-                ProgramDayChip(day: day)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("This Week")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Text("Current week")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+            }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(week) { day in
+                    ProgramDayChip(day: day) {
+                        onSelectDay(day)
+                    }
+                }
             }
         }
     }
@@ -1166,6 +1219,7 @@ private struct ProgramAdherenceRow: View {
 
 private struct ProgramDayChip: View {
     let day: PlannedProgramDay
+    let action: () -> Void
 
     private var borderColor: Color {
         switch day.status {
@@ -1186,56 +1240,285 @@ private struct ProgramDayChip: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(day.weekday.label)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Theme.muted)
-                Spacer()
-                if day.status == .done {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.success)
-                } else if day.status == .skipped {
-                    Image(systemName: "forward.end.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.accent)
-                }
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                if day.templates.isEmpty {
-                    Text("Rest")
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
+                    Text(day.weekday.label)
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Theme.muted)
-                        .lineLimit(1)
-                } else {
-                    Text(day.templates[0].name)
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if day.templates.count > 1 {
-                        Text("+\(day.templates.count - 1) more")
+                    Spacer()
+                    if day.status == .done {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.success)
+                    } else if day.status == .skipped {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.muted)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    if day.templates.isEmpty {
+                        Text("Rest")
                             .foregroundStyle(Theme.muted)
                             .lineLimit(1)
+                    } else {
+                        Text(day.templates[0].name)
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if day.templates.count > 1 {
+                            Text("+\(day.templates.count - 1) more")
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                        }
                     }
                 }
-            }
-            .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
 
-            if day.templates.count > 1 || day.skippedCount > 0 {
-                let handledCount = day.completedCount + day.skippedCount
-                Text(day.skippedCount > 0 ? "\(handledCount)/\(day.templates.count) handled" : "\(day.completedCount)/\(day.templates.count)")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                if day.templates.count > 1 || day.skippedCount > 0 {
+                    let handledCount = day.completedCount + day.skippedCount
+                    Text(day.skippedCount > 0 ? "\(handledCount)/\(day.templates.count) handled" : "\(day.completedCount)/\(day.templates.count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
+            .padding(7)
+            .background(backgroundColor)
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(borderColor, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(day.weekday.long), \(summary), \(statusLabel)")
+    }
+
+    private var summary: String {
+        day.templates.first?.name ?? "Rest"
+    }
+
+    private var statusLabel: String {
+        switch day.status {
+        case .done: return "Done"
+        case .skipped: return "Skipped"
+        case .missed: return "Missed"
+        case .planned: return "Planned"
+        case .rest: return "Rest"
+        }
+    }
+}
+
+private struct ProgramDayPlannerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let program: TrainingProgram
+    let day: PlannedProgramDay
+    let week: [PlannedProgramDay]
+    let templates: [WorkoutTemplate]
+    @Binding var isSaving: Bool
+    let onStart: (WorkoutTemplate) -> Void
+    let onSkip: (PlannedProgramDay) -> Void
+    let onSetRoutine: (PlannedProgramDay, String) -> Void
+    let onMoveOrSwap: (PlannedProgramDay, Int) -> Void
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
+    private var currentTemplateId: String {
+        ProgramPlanner.scheduleItem(in: program.schedule, weekday: day.weekday.value)?.templateId ?? ""
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    currentDayPanel
+
+                    HStack(spacing: 10) {
+                        Button {
+                            if let template = day.templates.first {
+                                onStart(template)
+                                dismiss()
+                            }
+                        } label: {
+                            Label("Start", systemImage: "play.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(day.templates.isEmpty || isSaving)
+
+                        Button {
+                            onSkip(day)
+                            dismiss()
+                        } label: {
+                            Label("Skip", systemImage: "forward.end.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(day.templates.isEmpty || isSaving)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Routine")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(Theme.text)
+
+                        Menu {
+                            Button {
+                                onSetRoutine(day, "")
+                                dismiss()
+                            } label: {
+                                Label("Rest Day", systemImage: "moon")
+                            }
+
+                            ForEach(templates) { template in
+                                Button {
+                                    onSetRoutine(day, template.id)
+                                    dismiss()
+                                } label: {
+                                    Label(template.name, systemImage: template.id == currentTemplateId ? "checkmark" : "square.grid.2x2")
+                                }
+                            }
+                        } label: {
+                            Label(currentTemplateId.isEmpty ? "Set Routine" : "Change Routine", systemImage: "calendar.badge.plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(isSaving || templates.isEmpty)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Move / Swap")
+                                .font(.system(size: 13, weight: .heavy))
+                                .foregroundStyle(Theme.text)
+                            Spacer()
+                            Image(systemName: "arrow.left.arrow.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Theme.muted)
+                        }
+
+                        LazyVGrid(columns: columns, spacing: 8) {
+                            ForEach(ProgramPlanner.weekdays.filter { $0.value != day.weekday.value }) { weekday in
+                                let target = week.first { $0.weekday.value == weekday.value }
+                                let targetName = target?.templates.first?.name ?? "Rest"
+                                let targetHasRoutine = target?.templates.isEmpty == false
+                                Button {
+                                    onMoveOrSwap(day, weekday.value)
+                                    dismiss()
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(weekday.label)
+                                            .font(.system(size: 11, weight: .heavy))
+                                            .foregroundStyle(Theme.muted)
+                                            .textCase(.uppercase)
+                                        Text(targetName)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(Theme.text)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.8)
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(Theme.background)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                            .stroke(Theme.border, lineWidth: 1)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isSaving || (day.templates.isEmpty && !targetHasRoutine))
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .navigationTitle("\(day.weekday.long) Plan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
-        .padding(7)
-        .background(backgroundColor)
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(borderColor, lineWidth: 1))
+    }
+
+    private var currentDayPanel: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(ProgramPlanner.displayDate(day.date))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                    .textCase(.uppercase)
+                Text(day.templates.first?.name ?? "Rest")
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(statusLabel)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(statusColor)
+                .textCase(.uppercase)
+        }
+        .padding(12)
+        .background(statusBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(statusBorder, lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+
+    private var statusLabel: String {
+        switch day.status {
+        case .done: return "Done"
+        case .skipped: return "Skipped"
+        case .missed: return "Missed"
+        case .planned: return "Planned"
+        case .rest: return "Rest"
+        }
+    }
+
+    private var statusColor: Color {
+        switch day.status {
+        case .done: return Theme.success
+        case .skipped: return Theme.accent
+        case .missed: return Theme.warning
+        case .planned: return Theme.text
+        case .rest: return Theme.muted
+        }
+    }
+
+    private var statusBorder: Color {
+        switch day.status {
+        case .done: return Theme.success.opacity(0.45)
+        case .skipped: return Theme.accent.opacity(0.45)
+        case .missed: return Theme.warning.opacity(0.55)
+        case .planned, .rest: return Theme.border
+        }
+    }
+
+    private var statusBackground: Color {
+        switch day.status {
+        case .done: return Theme.success.opacity(0.08)
+        case .skipped: return Theme.accent.opacity(0.08)
+        case .missed: return Theme.warning.opacity(0.08)
+        case .planned, .rest: return Theme.surface
+        }
     }
 }
 

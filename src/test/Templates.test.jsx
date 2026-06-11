@@ -137,11 +137,55 @@ describe('Routines page', () => {
     expect(onLogsChanged).toHaveBeenCalled();
   });
 
-  it('delays the next active program workout into a rest day before wrapping', async () => {
+  it('moves a scheduled program day into a rest day', async () => {
     const onProgramsUpdate = vi.fn();
     const today = new Date().getDay();
-    const restDay = (today + 1) % 7;
-    const laterWorkoutDay = (today + 2) % 7;
+    const targetDay = (today + 1) % 7;
+    render(
+      <Templates
+        templates={[
+          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [
+            { weekday: today, templateId: 'tmpl-1' },
+          ],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /manage .*push day/i }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`move or swap with .*${['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][targetDay]}.*rest`, 'i') }));
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    const expectedSchedule = [
+      { weekday: targetDay, templateId: 'tmpl-1' },
+    ];
+    expect(saveProgram.mock.calls[0][0]).toMatchObject({
+      id: 'program-1',
+      schedule: expectedSchedule,
+    });
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'move',
+      title: 'Moved Push Day',
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
+  });
+
+  it('swaps two scheduled program days', async () => {
+    const onProgramsUpdate = vi.fn();
+    const today = new Date().getDay();
+    const targetDay = (today + 1) % 7;
     render(
       <Templates
         templates={[
@@ -156,7 +200,7 @@ describe('Routines page', () => {
           active: true,
           schedule: [
             { weekday: today, templateId: 'tmpl-1' },
-            { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
+            { weekday: targetDay, templateId: 'tmpl-2' },
           ],
         }]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
@@ -167,68 +211,20 @@ describe('Routines page', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /delay/i }));
+    fireEvent.click(screen.getByRole('button', { name: /manage .*push day/i }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`move or swap with .*${['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][targetDay]}.*pull day`, 'i') }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
     const expectedSchedule = [
-      { weekday: restDay, templateId: 'tmpl-1' },
-      { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
+      { weekday: today, templateId: 'tmpl-2' },
+      { weekday: targetDay, templateId: 'tmpl-1' },
     ].sort((a, b) => a.weekday - b.weekday);
     expect(saveProgram.mock.calls[0][0]).toMatchObject({
       id: 'program-1',
       schedule: expectedSchedule,
     });
     expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
-      type: 'delay',
-      title: 'Delayed schedule',
-    });
-    expect(onProgramsUpdate).toHaveBeenCalled();
-  });
-
-  it('pulls the next active program workout forward and adds a rest day after it', async () => {
-    const onProgramsUpdate = vi.fn();
-    const today = new Date().getDay();
-    const nextWorkoutDay = (today + 1) % 7;
-    const laterWorkoutDay = (today + 3) % 7;
-    render(
-      <Templates
-        templates={[
-          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
-          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
-        ]}
-        exercises={exercises}
-        logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [
-            { weekday: nextWorkoutDay, templateId: 'tmpl-1' },
-            { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
-          ],
-        }]}
-        settings={{ defaultSets: 3, defaultReps: 10 }}
-        onUpdate={() => {}}
-        onProgramsUpdate={onProgramsUpdate}
-        onSettingsUpdate={() => {}}
-        onStartWorkout={() => {}}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /pull forward/i }));
-
-    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    const expectedSchedule = [
-      { weekday: today, templateId: 'tmpl-1' },
-      { weekday: laterWorkoutDay, templateId: 'tmpl-2' },
-    ].sort((a, b) => a.weekday - b.weekday);
-    expect(saveProgram.mock.calls[0][0]).toMatchObject({
-      id: 'program-1',
-      schedule: expectedSchedule,
-    });
-    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
-      type: 'pull_forward',
-      title: 'Pulled schedule forward',
+      type: 'swap',
     });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
