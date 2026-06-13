@@ -104,6 +104,42 @@ describe('Routines page', () => {
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
+  it('marks routine exercises that should increase weight next time', () => {
+    render(
+      <Templates
+        mode="routines"
+        templates={[{
+          id: 'tmpl-1',
+          name: 'Push Day',
+          description: '',
+          exerciseItems: [{
+            exerciseId: 'bench',
+            weightType: 'weight',
+            sets: [{ placeholderReps: '8-12' }, { placeholderReps: '8-12' }],
+          }],
+        }]}
+        exercises={exercises}
+        logs={[{
+          id: 'log-1',
+          name: 'Push Day',
+          date: '2026-05-20',
+          status: 'finished',
+          exerciseItems: [{
+            exerciseId: 'bench',
+            weightType: 'weight',
+            sets: [{ reps: '10', weight: '100' }, { reps: '12', weight: '100' }],
+          }],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText(/bench press: increase weight next time/i)).toBeInTheDocument();
+  });
+
   it('marks the next planned workout as skipped', async () => {
     const onLogsChanged = vi.fn();
     render(

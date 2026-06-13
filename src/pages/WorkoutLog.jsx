@@ -3,6 +3,8 @@ import { Check, X, Clock, Trophy, Clipboard, Trash2 } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Modal from '../components/Modal.jsx';
 import { saveLog, deleteLog, saveExercise } from '../api.js';
+import { ExerciseFormFields } from './Exercises.jsx';
+import { cleanExerciseForm } from '../exerciseForm.js';
 import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
 import {
   bestPersonalBestSet,
@@ -230,11 +232,12 @@ export default function WorkoutLog({
   const [readiness, setReadiness]   = useState('');
   const [items, setItems]           = useState([]);
   const [startTime, setStartTime]   = useState(null);
-    const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
+  const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [activeSetIdx, setActiveSetIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [finishModal, setFinishModal]       = useState(null); // null | { pbExercises }
+  const [exerciseForm, setExerciseForm] = useState(null);
   const [restAlert, setRestAlert] = useState(null);
   const [elapsed, setElapsed]       = useState('');
   const isEditing = useRef(false);
@@ -723,6 +726,18 @@ export default function WorkoutLog({
     }
   }
 
+  async function handleSaveExerciseEdit() {
+    if (!exerciseForm?.name?.trim() || saving) return;
+    setSaving(true);
+    try {
+      const updated = await saveExercise(cleanExerciseForm(exerciseForm));
+      onExercisesChanged(updated);
+      setExerciseForm(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // ── Discard workout ──────────────────────────────────────────────────────
   async function handleDiscard() {
     if (!workoutId) return;
@@ -924,6 +939,8 @@ export default function WorkoutLog({
         advancedMode={settings.advancedMode}
         lastWeightTypeByExerciseId={lastWeightTypeByExerciseId}
         planningMode={isPlanningMode}
+        onEditExercise={(exercise) => setExerciseForm({ ...exercise })}
+        logs={logs}
       />
 
       <hr className="divider" style={{ opacity: 0.3, margin: '16px 0' }} />
@@ -962,6 +979,25 @@ export default function WorkoutLog({
               : 'This will delete the in-progress workout. This cannot be undone.'
             }
           </p>
+        </Modal>
+      )}
+
+      {exerciseForm && (
+        <Modal
+          title="Edit Exercise"
+          onClose={() => !saving && setExerciseForm(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setExerciseForm(null)} disabled={saving}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveExerciseEdit} disabled={!exerciseForm.name.trim() || saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </>
+          }
+        >
+          <ExerciseFormFields form={exerciseForm} setForm={setExerciseForm} autoFocus />
         </Modal>
       )}
 

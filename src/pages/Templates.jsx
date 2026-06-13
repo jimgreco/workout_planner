@@ -20,7 +20,7 @@ import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Exercises, { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
 import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog, saveExercise } from '../api.js';
-import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
+import { lastWeightTypesByExerciseId, routineExerciseNeedsWeightIncrease } from '../workoutHistory.js';
 
 const WEEKDAYS = [
   { value: 0, label: 'Sun', long: 'Sunday' },
@@ -1260,9 +1260,19 @@ export default function Templates({
               {(t.exerciseItems || []).map((item) => {
                 const ex = exercises.find((e) => e.id === item.exerciseId);
                 if (!ex) return null;
+                const needsWeightIncrease = routineExerciseNeedsWeightIncrease(item, logs);
                 return (
-                  <span key={item.exerciseId} className="badge">
+                  <span
+                    key={item.exerciseId}
+                    className={`badge routine-exercise-badge ${needsWeightIncrease ? 'needs-weight-increase' : ''}`}
+                    title={needsWeightIncrease ? `${ex.name}: increase weight next time` : undefined}
+                  >
                     {item.supersetGroup ? `SS ${item.supersetGroup} · ` : ''}{ex.name} • {item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'}
+                    {needsWeightIncrease && (
+                      <span className="routine-progress-marker" aria-label={`${ex.name}: increase weight next time`}>
+                        <Target size={12} aria-hidden="true" /> Add weight
+                      </span>
+                    )}
                   </span>
                 );
               })}

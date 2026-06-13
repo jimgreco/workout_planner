@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import WorkoutLog from '../pages/WorkoutLog.jsx';
-import { saveLog } from '../api.js';
+import { saveLog, saveExercise } from '../api.js';
 
 vi.mock('../api.js', () => ({
   saveLog: vi.fn(async (log) => [log]),
@@ -133,6 +133,35 @@ describe('WorkoutLog', () => {
     });
     expect(screen.getByLabelText(/min reps/i)).toHaveValue('8');
     expect(screen.getByLabelText(/max reps/i)).toHaveValue('12');
+  });
+
+  it('edits an exercise from the workout planning screen', async () => {
+    const onExercisesChanged = vi.fn();
+    render(
+      <WorkoutLog
+        exercises={exercises}
+        templates={templates}
+        initialTemplate={templates[0]}
+        logs={[]}
+        programs={[]}
+        settings={settings}
+        onLogsChanged={() => {}}
+        onExercisesChanged={onExercisesChanged}
+        onClearTemplate={() => {}}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /edit exercise/i }));
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. bench press/i), { target: { value: 'Barbell Bench Press' } });
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(saveExercise).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'bench',
+      name: 'Barbell Bench Press',
+    })));
+    expect(onExercisesChanged).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ id: 'bench', name: 'Barbell Bench Press' }),
+    ]));
   });
 
   it('uses a shared unilateral routine target when planning a workout', async () => {

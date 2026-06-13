@@ -1,6 +1,7 @@
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
-import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil } from 'lucide-react';
+import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
 import { personalBestLabel } from '../progress.js';
+import { routineExerciseNeedsWeightIncrease } from '../workoutHistory.js';
 
 /**
  * WorkoutBuilder — reusable component for building a workout's exercise list.
@@ -199,6 +200,7 @@ export default function WorkoutBuilder({
   onEditExercise,
   planningMode = false,
   lastWeightTypeByExerciseId = {},
+  logs = [],
 }) {
   const [exerciseSearch, setExerciseSearch] = useState('');
   const exerciseListId = useId();
@@ -445,6 +447,7 @@ export default function WorkoutBuilder({
         const compactRepsValue = compactRepValue(firstSet, repsField);
         const compactRepsRange = repRange(compactRepsValue);
         const compactUsesRange = Boolean(compactRepsRange);
+        const needsWeightIncrease = routineExerciseNeedsWeightIncrease(item, logs);
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
           + (!readOnly && !planningMode ? 1 : 0)
@@ -456,6 +459,15 @@ export default function WorkoutBuilder({
                 <div className="exercise-meta">
                   <span className="exercise-name">{ex.name}</span>
                   <span className="badge">{ex.muscleGroup}</span>
+                  {needsWeightIncrease && (
+                    <span
+                      className="routine-progress-marker workout-progress-marker"
+                      aria-label={`${ex.name}: increase weight next time`}
+                      title={`${ex.name}: increase weight next time`}
+                    >
+                      <Target size={12} aria-hidden="true" /> Add weight
+                    </span>
+                  )}
                   {ex.personalBest?.weight && (
                     <span className="pb-label">
                       • PB: {personalBestLabel(ex.personalBest, ex.usesTime)}
@@ -519,7 +531,7 @@ export default function WorkoutBuilder({
                   {readOnly && item.restTargetSeconds > 0 && (
                     <span className="rest-target-chip">Rest {restTargetLabel(item.restTargetSeconds)}</span>
                   )}
-                  {!readOnly && planningMode && onEditExercise && (
+                  {!readOnly && onEditExercise && (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"

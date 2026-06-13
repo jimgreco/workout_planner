@@ -24,6 +24,7 @@ struct WorkoutLogView: View {
     @State private var isSaving = false
     @State private var showDiscardConfirm = false
     @State private var finishSummary: FinishSummary?
+    @State private var editingExercise: Exercise?
     @State private var restAlert: RestTargetAlert?
     @State private var restAlertTask: Task<Void, Never>?
     @State private var saveTask: Task<Void, Never>?
@@ -131,9 +132,8 @@ struct WorkoutLogView: View {
             if oldValue != nil, newValue != oldValue {
                 commitBuilderFieldsIfNeeded()
             }
-            if let newValue {
+            if newValue != nil {
                 focusedBuilderField = nil
-                clearBuilderFieldForEntry(newValue)
             }
         }
         .alert(isEditing ? "Cancel Editing?" : "Discard Workout?", isPresented: $showDiscardConfirm) {
@@ -149,6 +149,9 @@ struct WorkoutLogView: View {
                 finishSummary = nil
                 resetWorkout()
             }
+        }
+        .sheet(item: $editingExercise) { exercise in
+            ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
         }
     }
 
@@ -222,6 +225,7 @@ struct WorkoutLogView: View {
             exercises: store.exercises,
             startTime: startTime,
             advancedMode: store.settings.advancedMode,
+            logs: store.logs,
             activeExerciseIndex: $activeExerciseIndex,
             activeSetIndex: $activeSetIndex,
             focusedField: $focusedLiveActivityField,
@@ -229,7 +233,8 @@ struct WorkoutLogView: View {
             onEndRest: endRest,
             onExtendRest: extendRest,
             onChanged: liveCardChanged,
-            onTextChanged: builderTextChanged
+            onTextChanged: builderTextChanged,
+            onEditExercise: { exercise in editingExercise = exercise }
         )
     }
 
@@ -390,11 +395,13 @@ struct WorkoutLogView: View {
                 defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
                 advancedMode: store.settings.advancedMode,
                 lastWeightTypeByExerciseId: lastWeightTypesByExerciseId(from: store.logs),
+                logs: store.logs,
                 activeExerciseIndex: activeExerciseIndex,
                 activeSetIndex: activeSetIndex,
                 planningMode: isPlanningMode,
                 onSetCompleted: markSetCompleted,
                 onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
+                onEditExercise: { exercise in editingExercise = exercise },
                 onChanged: builderChanged,
                 onTextChanged: builderTextChanged,
                 onEditingDone: commitBuilderFieldsIfNeeded
@@ -1367,6 +1374,7 @@ private struct WorkoutLiveActivityCard: View {
     let exercises: [Exercise]
     let startTime: String?
     let advancedMode: Bool
+    let logs: [WorkoutLog]
     @Binding var activeExerciseIndex: Int
     @Binding var activeSetIndex: Int
     @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
@@ -1375,6 +1383,7 @@ private struct WorkoutLiveActivityCard: View {
     let onExtendRest: (Int, Int, Int) -> Void
     let onChanged: () -> Void
     let onTextChanged: () -> Void
+    let onEditExercise: (Exercise) -> Void
 
     private var totalSets: Int {
         items.reduce(0) { $0 + $1.sets.count }
@@ -1797,7 +1806,26 @@ private struct WorkoutLiveActivityCard: View {
                     Badge(text: context.exercise.muscleGroup)
                 }
 
+                if routineExerciseNeedsWeightIncrease(context.item, logs: logs) {
+                    Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
+                        .accessibilityLabel("\(context.exercise.name): increase weight next time")
+                }
+
                 Spacer(minLength: 4)
+
+                Button {
+                    onEditExercise(context.exercise)
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 28, height: 28)
+                        .background(Theme.background)
+                        .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit \(context.exercise.name)")
 
                 restTargetMenu(context)
             }

@@ -19,6 +19,42 @@ describe('WorkoutBuilder', () => {
     expect(screen.getByText('Chest')).toBeInTheDocument();
   });
 
+  it('shows the add weight marker while planning a workout', () => {
+    const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ placeholderReps: '8-12' }, { placeholderReps: '8-12' }] }];
+    const logs = [{
+      id: 'log-1',
+      date: '2026-06-10',
+      status: 'finished',
+      exerciseItems: [{
+        exerciseId: 'ex1',
+        weightType: 'weight',
+        sets: [{ reps: '10', weight: '135' }, { reps: '12', weight: '135' }],
+      }],
+    }];
+
+    render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} planningMode logs={logs} />);
+
+    expect(screen.getByLabelText(/bench press: increase weight next time/i)).toBeInTheDocument();
+  });
+
+  it('shows the add weight marker while logging a workout', () => {
+    const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ placeholderReps: '8-12' }, { placeholderReps: '8-12' }] }];
+    const logs = [{
+      id: 'log-1',
+      date: '2026-06-10',
+      status: 'finished',
+      exerciseItems: [{
+        exerciseId: 'ex1',
+        weightType: 'weight',
+        sets: [{ reps: '10', weight: '135' }, { reps: '12', weight: '135' }],
+      }],
+    }];
+
+    render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} logs={logs} />);
+
+    expect(screen.getByLabelText(/bench press: increase weight next time/i)).toBeInTheDocument();
+  });
+
   it('calls reset PB action from a workout exercise card', () => {
     const onResetPersonalBest = vi.fn();
     const exercisesWithPB = [
@@ -154,6 +190,21 @@ describe('WorkoutBuilder', () => {
         items={oneItem}
         onChange={() => {}}
         planningMode
+        onEditExercise={onEditExercise}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /edit exercise/i }));
+    expect(onEditExercise).toHaveBeenCalledWith(exercises[0]);
+  });
+
+  it('calls edit exercise from an active workout card', () => {
+    const onEditExercise = vi.fn();
+    render(
+      <WorkoutBuilder
+        exercises={exercises}
+        items={oneItem}
+        onChange={() => {}}
         onEditExercise={onEditExercise}
       />,
     );

@@ -47,6 +47,7 @@ struct WorkoutBuilderView: View {
     var defaultRestTargetSeconds: Int?
     var advancedMode = false
     var lastWeightTypeByExerciseId: [String: String] = [:]
+    var logs: [WorkoutLog] = []
     var activeExerciseIndex: Int?
     var activeSetIndex: Int?
     var planningMode = false
@@ -77,6 +78,7 @@ struct WorkoutBuilderView: View {
                         canMoveUp: index > 0,
                         canMoveDown: index < items.count - 1,
                         defaultReps: exercise.defaultReps ?? defaultReps,
+                        logs: logs,
                         onMove: { direction in move(index, direction) },
                         onReplace: { replacement in replaceExercise(index, with: replacement) },
                         onRemove: { removeExercise(index) },
@@ -475,6 +477,7 @@ private struct ExerciseSetsCard: View {
     let canMoveUp: Bool
     let canMoveDown: Bool
     let defaultReps: Int
+    let logs: [WorkoutLog]
     let onMove: (Int) -> Void
     let onReplace: (Exercise) -> Void
     let onRemove: () -> Void
@@ -503,7 +506,7 @@ private struct ExerciseSetsCard: View {
         !readOnly && !planningMode && exercise.personalBest != nil && onResetPersonalBest != nil
     }
     private var canEditExercise: Bool {
-        !readOnly && planningMode && onEditExercise != nil
+        !readOnly && onEditExercise != nil
     }
     private var repUnitTitle: String {
         exercise.usesTime == true ? "Secs" : "Reps"
@@ -656,6 +659,10 @@ private struct ExerciseSetsCard: View {
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                 Badge(text: exercise.muscleGroup)
+                if routineExerciseNeedsWeightIncrease(item, logs: logs) {
+                    Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
+                        .accessibilityLabel("\(exercise.name): increase weight next time")
+                }
             }
             if let pb = personalBestLabel(exercise.personalBest, usesTime: exercise.usesTime == true) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -701,6 +708,7 @@ private struct ExerciseSetsCard: View {
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Edit \(exercise.name)")
                 }
                 IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp, size: 26, iconSize: 11) { onMove(-1) }
                 IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown, size: 26, iconSize: 11) { onMove(1) }

@@ -373,6 +373,104 @@ func lastWeightTypesByExerciseId(from logs: [WorkoutLog]) -> [String: String] {
     return result
 }
 
+private func workoutCleanedText(_ value: String?) -> String {
+    value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+}
+
+private func workoutRepTargetText(_ value: String?) -> String {
+    let text = workoutCleanedText(value)
+    guard !text.isEmpty else { return "" }
+    if let open = text.firstIndex(of: "("),
+       let close = text.lastIndex(of: ")"),
+       open < close {
+        let goal = text[text.index(after: open)..<close].trimmingCharacters(in: .whitespacesAndNewlines)
+        if !goal.isEmpty { return goal }
+    }
+    return text
+}
+
+private func workoutRepRangeMax(_ value: String?) -> Double? {
+    let text = workoutRepTargetText(value)
+    let parts = text
+        .split(maxSplits: 1, omittingEmptySubsequences: false) { $0 == "-" || $0 == "–" }
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    guard parts.count == 2, !parts[1].isEmpty else { return nil }
+    return Double(parts[1])
+}
+
+private func workoutRepNumber(_ value: String?) -> Double? {
+    let text = workoutCleanedText(value)
+    let prefix = text.prefix { character in
+        character.isNumber || character == "."
+    }
+    guard !prefix.isEmpty else { return nil }
+    return Double(prefix)
+}
+
+private func workoutFirstRepRangeMax(_ values: [String?]) -> Double? {
+    for value in values {
+        if let max = workoutRepRangeMax(value) { return max }
+    }
+    return nil
+}
+
+private func workoutLastFinishedItem(exerciseId: String, logs: [WorkoutLog]) -> ExerciseItem? {
+    let finishedLogs = logs
+        .filter { $0.status == "finished" }
+        .sorted { workoutLogSortKey($0) > workoutLogSortKey($1) }
+
+    for log in finishedLogs {
+        if let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId }) {
+            return item
+        }
+    }
+    return nil
+}
+
+private func workoutLoggedRepValue(_ set: WorkoutSet) -> Double {
+    max(workoutRepNumber(set.reps) ?? 0, workoutRepNumber(set.repsLeft) ?? 0, workoutRepNumber(set.repsRight) ?? 0)
+}
+
+private func workoutLoggedSideRepValue(_ set: WorkoutSet, left: Bool) -> Double {
+    workoutRepNumber(left ? set.repsLeft : set.repsRight) ?? workoutRepNumber(set.reps) ?? 0
+}
+
+private func workoutRoutineLastSetRepCaps(_ set: WorkoutSet) -> (common: Double?, left: Double?, right: Double?) {
+    (
+        common: workoutFirstRepRangeMax([set.placeholderReps, set.reps]),
+        left: workoutFirstRepRangeMax([set.placeholderRepsLeft, set.repsLeft]),
+        right: workoutFirstRepRangeMax([set.placeholderRepsRight, set.repsRight])
+    )
+}
+
+func routineExerciseNeedsWeightIncrease(_ item: ExerciseItem, logs: [WorkoutLog]) -> Bool {
+    guard item.weightType != "none",
+          !item.exerciseId.isEmpty,
+          let targetSet = item.sets.last
+    else { return false }
+
+    let caps = workoutRoutineLastSetRepCaps(targetSet)
+    guard caps.common != nil || caps.left != nil || caps.right != nil else { return false }
+    guard let lastItem = workoutLastFinishedItem(exerciseId: item.exerciseId, logs: logs),
+          lastItem.weightType != "none",
+          lastItem.sets.count >= item.sets.count
+    else { return false }
+
+    let loggedSet = lastItem.sets[item.sets.count - 1]
+    if let common = caps.common {
+        return workoutLoggedRepValue(loggedSet) >= common
+    }
+
+    var checks: [Bool] = []
+    if let left = caps.left {
+        checks.append(workoutLoggedSideRepValue(loggedSet, left: true) >= left)
+    }
+    if let right = caps.right {
+        checks.append(workoutLoggedSideRepValue(loggedSet, left: false) >= right)
+    }
+    return !checks.isEmpty && checks.allSatisfy { $0 }
+}
+
 enum SyncConflictResource: String, Codable, CaseIterable {
     case exercises
     case templates

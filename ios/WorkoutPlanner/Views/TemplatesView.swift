@@ -238,6 +238,7 @@ struct TemplatesView: View {
                         TemplateCard(
                             template: template,
                             exercises: store.exercises,
+                            logs: store.logs,
                             onView: { sheet = .view(template) },
                             onStart: {
                                 store.setStartTemplate(template)
@@ -1525,6 +1526,7 @@ private struct ProgramDayPlannerSheet: View {
 private struct TemplateCard: View {
     let template: WorkoutTemplate
     let exercises: [Exercise]
+    let logs: [WorkoutLog]
     let onView: () -> Void
     let onStart: () -> Void
     let onEdit: () -> Void
@@ -1557,19 +1559,27 @@ private struct TemplateCard: View {
                 }
 
                 FlowLayout(spacing: 6) {
-                    let itemBadges = template.exerciseItems.compactMap { item -> String? in
+                    let visibleItems = template.exerciseItems.compactMap { item -> (item: ExerciseItem, exercise: Exercise)? in
                         guard let exercise = exercises.first(where: { $0.id == item.exerciseId }) else { return nil }
-                        let prefix = item.supersetGroup?.isEmpty == false ? "SS \(item.supersetGroup!) · " : ""
-                        return "\(prefix)\(exercise.name) • \(item.sets.count) \(item.sets.count == 1 ? "set" : "sets")"
+                        return (item, exercise)
                     }
 
-                    if itemBadges.isEmpty {
+                    if visibleItems.isEmpty {
                         Text("No exercises added")
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.muted)
                     } else {
-                        ForEach(itemBadges, id: \.self) { label in
-                            Badge(text: label)
+                        ForEach(visibleItems.indices, id: \.self) { index in
+                            let entry = visibleItems[index]
+                            let prefix = entry.item.supersetGroup?.isEmpty == false ? "SS \(entry.item.supersetGroup!) · " : ""
+                            let label = "\(prefix)\(entry.exercise.name) • \(entry.item.sets.count) \(entry.item.sets.count == 1 ? "set" : "sets")"
+                            HStack(spacing: 5) {
+                                Badge(text: label)
+                                if routineExerciseNeedsWeightIncrease(entry.item, logs: logs) {
+                                    Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
+                                        .accessibilityLabel("\(entry.exercise.name): increase weight next time")
+                                }
+                            }
                         }
                     }
                 }

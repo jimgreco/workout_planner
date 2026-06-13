@@ -463,6 +463,30 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   flex-direction: column;
   gap: 10px;
 }
+.routine-exercise-badge {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.routine-exercise-badge.needs-weight-increase {
+  color: var(--text);
+  background: color-mix(in srgb, var(--warn) 18%, var(--surface2));
+}
+.routine-progress-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+.workout-progress-marker {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
 .program-header,
 .program-next {
   display: flex;
