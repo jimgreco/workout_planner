@@ -411,6 +411,16 @@ describe('WorkoutBuilder', () => {
       expect(onSetCompleted).toHaveBeenCalledWith(0, 0);
     });
 
+    it('calls onSetCompleted again from a completed set button', () => {
+      const onSetCompleted = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100', restDuration: 45 }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} onSetCompleted={onSetCompleted} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /complete set 1 for bench press/i }));
+
+      expect(onSetCompleted).toHaveBeenCalledWith(0, 0);
+    });
+
     it('does not complete a weighted set just by editing the weight', () => {
       const onSetCompleted = vi.fn();
       const onChange = vi.fn();

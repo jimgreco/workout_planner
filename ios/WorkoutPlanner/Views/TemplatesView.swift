@@ -1247,6 +1247,9 @@ private struct ProgramDayChip: View {
                     Text(day.weekday.label)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: 24, alignment: .leading)
                     Spacer()
                     if day.status == .done {
                         Image(systemName: "checkmark.circle.fill")

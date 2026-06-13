@@ -950,10 +950,20 @@ struct WorkoutLogView: View {
 
     private func markSetCompleted(exerciseIndex: Int, setIndex: Int) {
         guard items.indices.contains(exerciseIndex),
-              items[exerciseIndex].sets.indices.contains(setIndex),
-              items[exerciseIndex].sets[setIndex].restStartTime == nil,
-              items[exerciseIndex].sets[setIndex].restDuration == nil
+              items[exerciseIndex].sets.indices.contains(setIndex)
         else { return }
+
+        if items[exerciseIndex].sets[setIndex].restStartTime != nil || items[exerciseIndex].sets[setIndex].restDuration != nil {
+            items[exerciseIndex].sets[setIndex].restStartTime = nil
+            items[exerciseIndex].sets[setIndex].restDuration = nil
+            activeExerciseIndex = exerciseIndex
+            activeSetIndex = setIndex
+            restAlertTask?.cancel()
+            restAlert = nil
+            updateExternalLiveActivityNow()
+            saveNow(status: currentStatus())
+            return
+        }
 
         let now = Date().timeIntervalSince1970 * 1000
         for exIndex in items.indices {
@@ -1395,6 +1405,12 @@ private struct WorkoutLiveActivityCard: View {
         }
     }
 
+    private var completedExercises: Int {
+        items.filter { item in
+            !item.sets.isEmpty && item.sets.allSatisfy(isCompleted)
+        }.count
+    }
+
     private var isWorkoutComplete: Bool {
         totalSets > 0 && completedSets >= totalSets
     }
@@ -1490,7 +1506,7 @@ private struct WorkoutLiveActivityCard: View {
                 HStack {
                     Text("\(completedSets) of \(totalSets) sets logged")
                     Spacer()
-                    Text("\(items.count) \(items.count == 1 ? "exercise" : "exercises")")
+                    Text("\(completedExercises)/\(items.count) \(items.count == 1 ? "exercise" : "exercises") complete")
                 }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.muted)
@@ -1764,7 +1780,6 @@ private struct WorkoutLiveActivityCard: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryButtonStyle(compact: true))
-                .disabled(isCompleted(context.set))
             }
         }
         .padding(12)
@@ -1828,6 +1843,7 @@ private struct WorkoutLiveActivityCard: View {
                 .accessibilityLabel("Edit \(context.exercise.name)")
 
                 restTargetMenu(context)
+                    .layoutPriority(2)
             }
 
             title
@@ -1907,13 +1923,15 @@ private struct WorkoutLiveActivityCard: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: true, vertical: false)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .heavy))
                     .foregroundStyle(Theme.muted.opacity(0.72))
             }
             .foregroundStyle(Theme.text)
             .padding(.horizontal, 9)
-            .frame(height: 30)
+            .frame(minWidth: 70, minHeight: 30)
+            .fixedSize(horizontal: true, vertical: false)
             .background(Theme.background.opacity(0.72))
             .clipShape(Capsule())
         }

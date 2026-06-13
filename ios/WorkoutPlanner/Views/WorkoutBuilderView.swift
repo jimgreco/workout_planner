@@ -695,6 +695,9 @@ private struct ExerciseSetsCard: View {
     private var headerButtons: some View {
         if !readOnly {
             HStack(spacing: 5) {
+                if replacementExercises.count > 1 {
+                    substitutionHeaderMenu
+                }
                 if canEditExercise {
                     Button {
                         onEditExercise?(exercise)
@@ -721,9 +724,6 @@ private struct ExerciseSetsCard: View {
     @ViewBuilder
     private var controlMenus: some View {
         VStack(spacing: 8) {
-            if replacementExercises.count > 1 {
-                substitutionMenu
-            }
             HStack(spacing: 8) {
                 restMenu
                 pairMenu
@@ -731,7 +731,7 @@ private struct ExerciseSetsCard: View {
         }
     }
 
-    private var substitutionMenu: some View {
+    private var substitutionHeaderMenu: some View {
         Menu {
             ForEach(replacementExercises) { replacement in
                 Button("\(replacement.name) (\(replacement.muscleGroup))") {
@@ -739,14 +739,15 @@ private struct ExerciseSetsCard: View {
                 }
             }
         } label: {
-            Label("Sub \(exercise.name)", systemImage: "arrow.triangle.2.circlepath")
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 26, height: 26)
+                .background(Theme.background)
+                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                .clipShape(Circle())
         }
-        .buttonStyle(ExerciseCardMenuButtonStyle())
-        .frame(maxWidth: .infinity)
-        .disabled(replacementExercises.count <= 1)
+        .accessibilityLabel("Substitute \(exercise.name)")
     }
 
     private var restMenu: some View {
@@ -1699,10 +1700,8 @@ private struct ExerciseSetsCard: View {
     }
 
     private func setCanComplete(_ setIndex: Int) -> Bool {
-        guard item.sets.indices.contains(setIndex),
-              item.sets[setIndex].restStartTime == nil,
-              item.sets[setIndex].restDuration == nil
-        else { return false }
+        guard item.sets.indices.contains(setIndex) else { return false }
+        if setIsComplete(setIndex) { return true }
         if item.weightType == "none" {
             return !(item.sets[setIndex].reps ?? "").isEmpty
                 || !(item.sets[setIndex].repsLeft ?? "").isEmpty

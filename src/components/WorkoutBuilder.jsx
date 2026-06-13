@@ -417,7 +417,8 @@ export default function WorkoutBuilder({
   }
 
   function setCanComplete(item, set) {
-    if (planningMode || readOnly || set.restStartTime || set.restDuration) return false;
+    if (planningMode || readOnly) return false;
+    if (setIsCompleted(set)) return true;
     if (item.weightType === 'none') return Boolean(set.reps || set.repsLeft || set.repsRight);
     return Boolean(set.weight);
   }

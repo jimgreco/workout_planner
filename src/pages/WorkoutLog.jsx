@@ -446,8 +446,29 @@ export default function WorkoutLog({
 
     const targetEx = items[exIdx];
     const targetSet = targetEx.sets[setIdx];
+    if (targetSet.restStartTime || targetSet.restDuration) {
+      const newItems = items.map((item, itemIdx) => {
+        if (itemIdx !== exIdx) return item;
+        return {
+          ...item,
+          sets: item.sets.map((set, currentSetIdx) => (
+            currentSetIdx === setIdx ? { ...set, restStartTime: null, restDuration: null } : set
+          )),
+        };
+      });
+
+      setActiveExerciseIdx(exIdx);
+      setActiveSetIdx(setIdx);
+      setRestAlert(null);
+      clearTimeout(restAlertTimer.current);
+      setItems(newItems);
+      const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
+      scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
+      return;
+    }
+
     const hasValue = targetEx.weightType === 'none' ? !!targetSet.reps : !!targetSet.weight;
-    if (!hasValue || targetSet.restStartTime || targetSet.restDuration) return;
+    if (!hasValue) return;
 
     const now = Date.now();
     const newItems = items.map((ex, i) => ({
