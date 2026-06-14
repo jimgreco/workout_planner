@@ -94,6 +94,11 @@ struct WorkoutLogView: View {
             }
         }
         .onAppear(perform: loadInitialState)
+        .onChange(of: store.pendingWorkoutStart) { _, start in
+            guard let start else { return }
+            applyTemplate(start.template, replace: !isActive, program: start.program)
+            store.pendingWorkoutStart = nil
+        }
         .onChange(of: store.pendingTemplate) { _, template in
             guard let template else { return }
             applyTemplate(template, replace: !isActive)
@@ -440,6 +445,11 @@ struct WorkoutLogView: View {
         if let active = store.activeWorkout(), workoutId == nil {
             load(log: active, editing: false)
         }
+        if let start = store.pendingWorkoutStart, workoutId == nil {
+            applyTemplate(start.template, replace: true, program: start.program)
+            store.pendingWorkoutStart = nil
+            return
+        }
         if let template = store.pendingTemplate, workoutId == nil {
             applyTemplate(template, replace: true)
             store.pendingTemplate = nil
@@ -713,12 +723,13 @@ struct WorkoutLogView: View {
         let isUnilateral = store.exercise(id: item.exerciseId)?.isUnilateral == true
         let hitTarget = program != nil ? exerciseHitTarget(templateSets: item.sets, lastSets: last?.sets ?? []) : false
         let hitCap = program != nil ? exerciseHitRepCap(templateSets: item.sets, lastSets: last?.sets ?? [], cap: Double(program?.progression?.maxReps ?? 12)) : false
+        let preferredWeightType = last?.weightType ?? item.weightType ?? "weight"
         let sets = item.sets.enumerated().map { offset, set in
             let targetReps = plannedRepText(set, fallback: String(store.settings.defaultReps))
             let targetLeft = plannedSideRepText(set, side: .left, fallback: targetReps)
             let targetRight = plannedSideRepText(set, side: .right, fallback: targetReps)
             let targets = programTargets(for: set, lastSet: last?.sets.indices.contains(offset) == true ? last?.sets[offset] : nil, program: program, hitTarget: hitTarget, hitCap: hitCap)
-            let progressedReps = program == nil ? "" : targets.reps
+            let progressedReps = program == nil ? "" : (programRepRangeGoal(for: program) ?? targets.reps)
             let targetPlaceholder = progressedReps.isEmpty ? targetReps : progressedReps
             let targetLeftPlaceholder = progressedReps.isEmpty ? targetLeft : progressedReps
             let targetRightPlaceholder = progressedReps.isEmpty ? targetRight : progressedReps
@@ -727,9 +738,7 @@ struct WorkoutLogView: View {
                 let lastLeft = last.sets[offset].repsLeft?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
                 let lastRight = last.sets[offset].repsRight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
                 let placeholderWeight = program == nil || targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
-                let placeholderWeightType = program == nil || targets.weight.isEmpty
-                    ? last.weightType
-                    : (last.weightType ?? item.weightType ?? "weight")
+                let placeholderWeightType = last.weightType ?? preferredWeightType
                 return WorkoutSet(
                     reps: "",
                     repsLeft: isUnilateral ? "" : nil,
@@ -751,12 +760,12 @@ struct WorkoutLogView: View {
                 placeholderRepsLeft: isUnilateral ? targetLeftPlaceholder : nil,
                 placeholderRepsRight: isUnilateral ? targetRightPlaceholder : nil,
                 placeholderWeight: targets.weight,
-                placeholderWeightType: item.weightType ?? last?.weightType ?? "weight"
+                placeholderWeightType: preferredWeightType
             )
         }
         return ExerciseItem(
             exerciseId: item.exerciseId,
-            weightType: item.weightType ?? last?.weightType ?? "weight",
+            weightType: preferredWeightType,
             restTargetSeconds: item.restTargetSeconds,
             supersetGroup: item.supersetGroup,
             description: item.description,
@@ -848,6 +857,21 @@ struct WorkoutLogView: View {
         let startOfDay = Calendar.current.startOfDay(for: value)
         let weekdayOffset = Calendar.current.component(.weekday, from: startOfDay) - 1
         return Calendar.current.date(byAdding: .day, value: -weekdayOffset, to: startOfDay) ?? startOfDay
+    }
+
+    private func programRepRangeGoal(for program: TrainingProgram?) -> String? {
+        guard let progression = program?.progression,
+              progression.type == "double_progression"
+        else { return nil }
+
+        var minReps = Double(progression.minReps ?? 8)
+        var maxReps = Double(max(progression.maxReps ?? 12, progression.minReps ?? 8))
+        if let deload = activeDeload(for: program) {
+            let percent = Double(deload.repPercent ?? 100) / 100
+            minReps = max(1, (minReps * percent).rounded())
+            maxReps = max(minReps, (maxReps * percent).rounded())
+        }
+        return "\(formatProgressionNumber(minReps))-\(formatProgressionNumber(maxReps))"
     }
 
     private func programTargets(
@@ -1503,13 +1527,11 @@ private struct WorkoutLiveActivityCard: View {
                 ProgressView(value: Double(completedSets), total: Double(max(totalSets, 1)))
                     .tint(isWorkoutComplete ? Theme.success : Theme.accent)
 
-                HStack {
-                    Text("\(completedSets) of \(totalSets) sets logged")
-                    Spacer()
-                    Text("\(completedExercises)/\(items.count) \(items.count == 1 ? "exercise" : "exercises") complete")
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.muted)
+                Text("\(completedSets)/\(totalSets) sets, \(completedExercises)/\(items.count) \(items.count == 1 ? "exercise" : "exercises") complete")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1807,43 +1829,58 @@ private struct WorkoutLiveActivityCard: View {
             .foregroundStyle(Theme.text)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
+        let needsWeightIncrease = routineExerciseNeedsWeightIncrease(context.item, logs: logs)
 
-        return VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .center, spacing: 6) {
-                Text(isCompleted(context.set) ? "Selected" : isUpNext ? "Up next" : "Current")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(Theme.muted)
-                    .textCase(.uppercase)
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .center, spacing: 6) {
+                        Text(isCompleted(context.set) ? "Selected" : isUpNext ? "Up next" : "Current")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundStyle(Theme.muted)
+                            .textCase(.uppercase)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
 
-                badge
+                        badge
+                    }
 
-                if !context.exercise.muscleGroup.isEmpty {
-                    Badge(text: context.exercise.muscleGroup)
+                    if !context.exercise.muscleGroup.isEmpty || needsWeightIncrease {
+                        HStack(alignment: .center, spacing: 6) {
+                            if !context.exercise.muscleGroup.isEmpty {
+                                Badge(text: context.exercise.muscleGroup)
+                            }
+
+                            if needsWeightIncrease {
+                                Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
+                                    .accessibilityLabel("\(context.exercise.name): increase weight next time")
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .layoutPriority(1)
 
-                if routineExerciseNeedsWeightIncrease(context.item, logs: logs) {
-                    Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
-                        .accessibilityLabel("\(context.exercise.name): increase weight next time")
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    Button {
+                        onEditExercise(context.exercise)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                            .frame(width: 28, height: 28)
+                            .background(Theme.background)
+                            .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit \(context.exercise.name)")
+
+                    restTargetMenu(context)
                 }
-
-                Spacer(minLength: 4)
-
-                Button {
-                    onEditExercise(context.exercise)
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                        .frame(width: 28, height: 28)
-                        .background(Theme.background)
-                        .overlay(Circle().stroke(Theme.border, lineWidth: 1))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit \(context.exercise.name)")
-
-                restTargetMenu(context)
-                    .layoutPriority(2)
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             title

@@ -199,6 +199,7 @@ export default function App() {
   const [programs, setPrograms]   = useState([]);
   const [settings, setSettings]   = useState({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
   const [pendingTemplate, setPendingTemplate] = useState(null);
+  const [pendingProgram, setPendingProgram] = useState(null);
   const [editingLog, setEditingLog] = useState(null);
 
   // ── Load data after login (or on first render with a valid session) ────────
@@ -376,8 +377,9 @@ export default function App() {
     }
   }
 
-  function handleStartWorkout(template) {
+  function handleStartWorkout(template, program = null) {
     setPendingTemplate(template);
+    setPendingProgram(program);
     setPage('log');
   }
 
@@ -722,7 +724,11 @@ export default function App() {
             onLogsChanged={setLogs}
             onExercisesChanged={setExercises}
             initialTemplate={pendingTemplate}
-            onClearTemplate={() => setPendingTemplate(null)}
+            initialProgram={pendingProgram}
+            onClearTemplate={() => {
+              setPendingTemplate(null);
+              setPendingProgram(null);
+            }}
             editingLog={editingLog}
             onClearEditing={() => setEditingLog(null)}
           />

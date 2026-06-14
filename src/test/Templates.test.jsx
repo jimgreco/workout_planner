@@ -173,6 +173,35 @@ describe('Routines page', () => {
     expect(onLogsChanged).toHaveBeenCalled();
   });
 
+  it('starts the next workout with active program context', () => {
+    const onStartWorkout = vi.fn();
+    const program = {
+      id: 'program-1',
+      name: 'Strength Plan',
+      active: true,
+      schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+      progression: { type: 'double_progression', minReps: 8, maxReps: 12 },
+    };
+    const template = { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] };
+    render(
+      <Templates
+        mode="programs"
+        templates={[template]}
+        exercises={exercises}
+        logs={[]}
+        programs={[program]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={() => {}}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={onStartWorkout}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^start$/i }));
+    expect(onStartWorkout).toHaveBeenCalledWith(template, program);
+  });
+
   it('moves a scheduled program day into a rest day', async () => {
     const onProgramsUpdate = vi.fn();
     const today = new Date().getDay();

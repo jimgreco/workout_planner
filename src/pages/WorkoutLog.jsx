@@ -146,6 +146,21 @@ function programDeloadActive(program, workoutDate) {
   return weeks >= 0 && weeks % everyWeeks === 0 ? deload : null;
 }
 
+function programRepRangeText(program, workoutDate) {
+  const progression = program?.progression;
+  if (!progression || progression.type !== 'double_progression') return '';
+  const parsedMin = Number(progression.minReps);
+  const parsedMax = Number(progression.maxReps);
+  const minReps = Number.isFinite(parsedMin) && parsedMin > 0 ? parsedMin : 8;
+  const maxReps = Math.max(minReps, Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 12);
+  const deload = programDeloadActive(program, workoutDate);
+  if (!deload) return `${formatProgramNumber(minReps)}-${formatProgramNumber(maxReps)}`;
+  const repPercent = (deload.repPercent || 100) / 100;
+  const deloadMin = Math.max(1, Math.round(minReps * repPercent));
+  const deloadMax = Math.max(deloadMin, Math.round(maxReps * repPercent));
+  return `${formatProgramNumber(deloadMin)}-${formatProgramNumber(deloadMax)}`;
+}
+
 function exerciseHitTarget(templateSets, lastSets, fallbackReps) {
   if (!lastSets?.length || lastSets.length < templateSets.length) return false;
   return templateSets.every((set, index) => setRepValue(lastSets[index]) >= plannedRepValue(set, fallbackReps));
@@ -218,6 +233,7 @@ export default function WorkoutLog({
   onLogsChanged,
   onExercisesChanged,
   initialTemplate,
+  initialProgram,
   onClearTemplate,
   editingLog,
   onClearEditing,
@@ -286,9 +302,12 @@ export default function WorkoutLog({
   // ── Load initial template ────────────────────────────────────────────────
   useEffect(() => {
     if (!initialTemplate || isActive) return;
+    const program = initialProgram || null;
     const templateItems = (initialTemplate.exerciseItems || []).map((item) => {
       const lastItem = getLastItemForExercise(item.exerciseId, logs);
-      const weightType = item.weightType || lastItem?.weightType || 'weight';
+      const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
+      const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
+      const weightType = lastItem?.weightType || item.weightType || 'weight';
       return {
         exerciseId: item.exerciseId,
         weightType,
@@ -300,17 +319,22 @@ export default function WorkoutLog({
           const targetReps = plannedRepText(s, String(settings.defaultReps));
           const targetLeft = plannedSideRepText(s, 'left', targetReps);
           const targetRight = plannedSideRepText(s, 'right', targetReps);
+          const programTargets = programTargetsForSet(s, lastItem?.sets?.[si], program, hitTarget, hitCap, settings.defaultReps, date);
+          const programReps = program ? (programRepRangeText(program, date) || programTargets.reps) : '';
+          const goalReps = programReps || targetReps;
+          const goalLeft = programReps || targetLeft;
+          const goalRight = programReps || targetRight;
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
             return {
               reps: '',
               repsLeft: '',
               repsRight: '',
               weight: '',
-              placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`,
-              placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${targetLeft})`,
-              placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${targetRight})`,
-              placeholderWeight: lastItem.sets[si].weight,
-              placeholderWeightType: lastItem.weightType,
+              placeholderReps: `${lastItem.sets[si].reps} (${goalReps})`,
+              placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${goalLeft})`,
+              placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${goalRight})`,
+              placeholderWeight: program ? programTargets.weight : lastItem.sets[si].weight,
+              placeholderWeightType: lastItem.weightType || weightType,
             };
           }
           return {
@@ -318,10 +342,10 @@ export default function WorkoutLog({
             repsLeft: '',
             repsRight: '',
             weight: '',
-            placeholderReps: targetReps,
-            placeholderRepsLeft: targetLeft,
-            placeholderRepsRight: targetRight,
-            placeholderWeight: '',
+            placeholderReps: goalReps,
+            placeholderRepsLeft: goalLeft,
+            placeholderRepsRight: goalRight,
+            placeholderWeight: program ? programTargets.weight : '',
             placeholderWeightType: weightType,
           };
         }),
@@ -400,15 +424,16 @@ export default function WorkoutLog({
       
       newItems = newItems.map((item, i) => {
         if (i !== newItems.length - 1) return item;
+        const weightType = lastItem?.weightType || item.weightType || 'weight';
         
         const merged = item.sets.map((s, si) => {
           const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType };
+            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType || weightType };
           }
-          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: item.weightType || lastItem?.weightType || 'weight' };
+          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
         });
-        return { ...item, sets: merged, weightType: item.weightType || lastItem?.weightType || 'weight' };
+        return { ...item, sets: merged, weightType };
       });
     }
 
@@ -614,11 +639,12 @@ export default function WorkoutLog({
         const lastItem = getLastItemForExercise(item.exerciseId, logs);
         const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
         const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
-        const weightType = item.weightType || lastItem?.weightType || 'weight';
+        const weightType = lastItem?.weightType || item.weightType || 'weight';
         return {
           exerciseId: item.exerciseId,
           weightType,
           restTargetSeconds: item.restTargetSeconds,
+          supersetGroup: item.supersetGroup,
           description: item.description,
           useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
@@ -626,17 +652,21 @@ export default function WorkoutLog({
             const targetLeft = plannedSideRepText(s, 'left', targetReps);
             const targetRight = plannedSideRepText(s, 'right', targetReps);
             const programTargets = programTargetsForSet(s, lastItem?.sets?.[si], program, hitTarget, hitCap, settings.defaultReps, date);
+            const programReps = program ? (programRepRangeText(program, date) || programTargets.reps) : '';
+            const goalReps = programReps || targetReps;
+            const goalLeft = programReps || targetLeft;
+            const goalRight = programReps || targetRight;
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
               return {
                 reps: '',
                 repsLeft: '',
                 repsRight: '',
                 weight: '',
-                placeholderReps: `${lastItem.sets[si].reps} (${program ? programTargets.reps : targetReps})`,
-                placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${program ? programTargets.repsLeft : targetLeft})`,
-                placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${program ? programTargets.repsRight : targetRight})`,
+                placeholderReps: `${lastItem.sets[si].reps} (${goalReps})`,
+                placeholderRepsLeft: `${lastItem.sets[si].repsLeft || lastItem.sets[si].reps || ''} (${goalLeft})`,
+                placeholderRepsRight: `${lastItem.sets[si].repsRight || lastItem.sets[si].reps || ''} (${goalRight})`,
                 placeholderWeight: program ? programTargets.weight : lastItem.sets[si].weight,
-                placeholderWeightType: lastItem.weightType,
+                placeholderWeightType: lastItem.weightType || weightType,
               };
             }
             return {
@@ -644,9 +674,9 @@ export default function WorkoutLog({
               repsLeft: '',
               repsRight: '',
               weight: '',
-              placeholderReps: program ? programTargets.reps : targetReps,
-              placeholderRepsLeft: program ? programTargets.repsLeft : targetLeft,
-              placeholderRepsRight: program ? programTargets.repsRight : targetRight,
+              placeholderReps: goalReps,
+              placeholderRepsLeft: goalLeft,
+              placeholderRepsRight: goalRight,
               placeholderWeight: program ? programTargets.weight : '',
               placeholderWeightType: weightType,
             };

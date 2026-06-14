@@ -89,7 +89,9 @@ function contextualWeightPlaceholder(weight, sourceWeightType, targetWeightType)
 }
 
 function repRange(value) {
-  const text = String(value ?? '').trim();
+  const rawText = String(value ?? '').trim();
+  const contextMatch = rawText.match(/\(([^)]*)\)\s*$/);
+  const text = (contextMatch?.[1] || rawText).trim();
   const match = text.match(/^(.*?)\s*[-–]\s*(.*?)$/);
   if (!match) return null;
   return { min: match[1], max: match[2] };

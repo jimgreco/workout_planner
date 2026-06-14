@@ -95,9 +95,48 @@ describe('WorkoutLog', () => {
 
     await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
     expect(saveLog.mock.calls[0][0].exerciseItems[0].sets[0]).toMatchObject({
-      placeholderReps: '12 (8)',
+      placeholderReps: '12 (8-12)',
       placeholderWeight: '105',
     });
+  });
+
+  it('preserves program rep range when launched from the program page', async () => {
+    render(
+      <WorkoutLog
+        exercises={exercises}
+        templates={templates}
+        initialTemplate={templates[0]}
+        initialProgram={{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+          progression: { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 },
+        }}
+        logs={[{
+          id: 'last-log',
+          name: 'Push Day',
+          date: '2026-05-20',
+          status: 'finished',
+          exerciseItems: [
+            { exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '12', weight: '100' }] },
+          ],
+        }]}
+        programs={[]}
+        settings={settings}
+        onLogsChanged={() => {}}
+        onExercisesChanged={() => {}}
+        onClearTemplate={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0].exerciseItems[0].sets[0]).toMatchObject({
+      placeholderReps: '12 (8-12)',
+      placeholderWeight: '105',
+    });
+    expect(screen.getByLabelText(/min reps/i)).toHaveValue('8');
+    expect(screen.getByLabelText(/max reps/i)).toHaveValue('12');
   });
 
   it('preserves a routine rep range when launched into planning', async () => {
@@ -133,6 +172,50 @@ describe('WorkoutLog', () => {
     });
     expect(screen.getByLabelText(/min reps/i)).toHaveValue('8');
     expect(screen.getByLabelText(/max reps/i)).toHaveValue('12');
+  });
+
+  it('uses the last logged load setting when repeating an exercise', async () => {
+    render(
+      <WorkoutLog
+        exercises={exercises}
+        templates={templates}
+        initialTemplate={{
+          id: 'tmpl-load',
+          name: 'Repeat Load Day',
+          description: '',
+          exerciseItems: [
+            {
+              exerciseId: 'bench',
+              weightType: 'weight',
+              sets: [{ reps: '8', weight: '' }],
+            },
+          ],
+        }}
+        logs={[{
+          id: 'last-log',
+          name: 'Push Day',
+          date: '2026-05-20',
+          status: 'finished',
+          exerciseItems: [
+            { exerciseId: 'bench', weightType: 'bar_double', sets: [{ reps: '8', weight: '55' }] },
+          ],
+        }]}
+        programs={[]}
+        settings={settings}
+        onLogsChanged={() => {}}
+        onExercisesChanged={() => {}}
+        onClearTemplate={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0].exerciseItems[0]).toMatchObject({
+      weightType: 'bar_double',
+      sets: [expect.objectContaining({
+        placeholderWeight: '55',
+        placeholderWeightType: 'bar_double',
+      })],
+    });
   });
 
   it('edits an exercise from the workout planning screen', async () => {

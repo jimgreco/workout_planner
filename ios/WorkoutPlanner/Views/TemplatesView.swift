@@ -109,7 +109,7 @@ struct TemplatesView: View {
                         templates: store.templates,
                         isSaving: $isSaving,
                         onStart: { template in
-                            store.setStartTemplate(template)
+                            store.setStartTemplate(template, program: program)
                             selectedPage = .log
                         },
                         onSkip: { day in
@@ -182,19 +182,21 @@ struct TemplatesView: View {
     }
 
     private var programTab: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let activeProgram = ProgramPlanner.activeProgram(from: store.programs)
+
+        return VStack(alignment: .leading, spacing: 10) {
             ProgramSectionHeader(
                 title: "Programs",
                 subtitle: programCountLabel
             )
             ProgramSummaryCard(
-                program: ProgramPlanner.activeProgram(from: store.programs),
+                program: activeProgram,
                 templates: store.templates,
                 logs: store.logs,
                 onEdit: { program in sheet = .program(program) },
                 onDelete: { program in deleteProgramTarget = program },
                 onStart: { template in
-                    store.setStartTemplate(template)
+                    store.setStartTemplate(template, program: activeProgram)
                     selectedPage = .log
                 },
                 onSkip: { workout in

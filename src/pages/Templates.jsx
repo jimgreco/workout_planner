@@ -951,7 +951,7 @@ export default function Templates({
                 <button className="btn btn-secondary btn-sm" onClick={handleSkipNextWorkout} disabled={!nextWorkout || saving}>
                   <SkipForward size={14} /> Skip
                 </button>
-                <button className="btn btn-primary btn-sm" onClick={() => nextWorkout && onStartWorkout(nextWorkout.template)} disabled={!nextWorkout || saving}>
+                <button className="btn btn-primary btn-sm" onClick={() => nextWorkout && onStartWorkout(nextWorkout.template, activeProgram)} disabled={!nextWorkout || saving}>
                   <Play size={14} fill="currentColor" /> Start
                 </button>
               </div>
@@ -1149,7 +1149,7 @@ export default function Templates({
                   const template = selectedProgramDay.templates[0];
                   if (template) {
                     setSelectedProgramWeekday(null);
-                    onStartWorkout(template);
+                    onStartWorkout(template, activeProgram);
                   }
                 }}
                 disabled={!selectedProgramDay.templates.length || saving}

@@ -44,6 +44,9 @@ struct AppShell: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.background)
             .tint(Theme.accent)
+            .onChange(of: store.pendingWorkoutStart) { _, start in
+                if start != nil { page = .log }
+            }
             .onChange(of: store.pendingTemplate) { _, template in
                 if template != nil { page = .log }
             }

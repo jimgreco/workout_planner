@@ -1,5 +1,10 @@
 import Foundation
 
+struct PendingWorkoutStart: Equatable {
+    var template: WorkoutTemplate
+    var program: TrainingProgram?
+}
+
 @MainActor
 final class WorkoutStore: ObservableObject {
     @Published var exercises: [Exercise] = []
@@ -10,6 +15,7 @@ final class WorkoutStore: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var pendingTemplate: WorkoutTemplate?
+    @Published var pendingWorkoutStart: PendingWorkoutStart?
     @Published var editingLog: WorkoutLog?
     @Published var pendingSyncCount = 0
     @Published var pendingConflictCount = 0
@@ -76,6 +82,7 @@ final class WorkoutStore: ObservableObject {
         programs = []
         settings = .defaults
         pendingTemplate = nil
+        pendingWorkoutStart = nil
         editingLog = nil
         errorMessage = nil
         isUsingOfflineSnapshot = false
@@ -579,8 +586,9 @@ final class WorkoutStore: ObservableObject {
         exercises.first { $0.id == id }
     }
 
-    func setStartTemplate(_ template: WorkoutTemplate) {
-        pendingTemplate = template
+    func setStartTemplate(_ template: WorkoutTemplate, program: TrainingProgram? = nil) {
+        pendingWorkoutStart = PendingWorkoutStart(template: template, program: program)
+        pendingTemplate = nil
     }
 
     func setEditingLog(_ log: WorkoutLog) {
