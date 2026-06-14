@@ -644,9 +644,13 @@ private struct ExerciseSetsCard: View {
     }
 
     private var cardHeader: some View {
-        HStack(alignment: .top, spacing: 10) {
-            exerciseTitle
-            headerButtons
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                exerciseTitle
+                managementHeaderButtons
+            }
+
+            secondaryHeaderButtons
         }
     }
 
@@ -692,32 +696,31 @@ private struct ExerciseSetsCard: View {
     }
 
     @ViewBuilder
-    private var headerButtons: some View {
+    private var managementHeaderButtons: some View {
         if !readOnly {
             HStack(spacing: 5) {
-                if replacementExercises.count > 1 {
-                    substitutionHeaderMenu
-                }
-                if canEditExercise {
-                    Button {
-                        onEditExercise?(exercise)
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.text)
-                            .frame(width: 26, height: 26)
-                            .background(Theme.background)
-                            .overlay(Circle().stroke(Theme.border, lineWidth: 1))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Edit \(exercise.name)")
-                }
                 IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp, size: 26, iconSize: 11) { onMove(-1) }
                 IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown, size: 26, iconSize: 11) { onMove(1) }
                 IconCircleButton(systemName: "xmark", tint: Theme.danger, size: 26, iconSize: 11, action: onRemove)
             }
             .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    @ViewBuilder
+    private var secondaryHeaderButtons: some View {
+        if !readOnly && (replacementExercises.count > 1 || canEditExercise) {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+
+                if replacementExercises.count > 1 {
+                    substitutionHeaderMenu
+                }
+
+                if canEditExercise {
+                    editExerciseHeaderButton
+                }
+            }
         }
     }
 
@@ -748,6 +751,22 @@ private struct ExerciseSetsCard: View {
                 .clipShape(Circle())
         }
         .accessibilityLabel("Substitute \(exercise.name)")
+    }
+
+    private var editExerciseHeaderButton: some View {
+        Button {
+            onEditExercise?(exercise)
+        } label: {
+            Image(systemName: "pencil")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 26, height: 26)
+                .background(Theme.background)
+                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit \(exercise.name)")
     }
 
     private var restMenu: some View {
