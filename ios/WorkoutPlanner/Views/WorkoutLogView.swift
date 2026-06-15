@@ -737,7 +737,6 @@ struct WorkoutLogView: View {
                 let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let lastLeft = last.sets[offset].repsLeft?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
                 let lastRight = last.sets[offset].repsRight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
-                let placeholderWeight = program == nil || targets.weight.isEmpty ? last.sets[offset].weight : targets.weight
                 let placeholderWeightType = last.weightType ?? preferredWeightType
                 return WorkoutSet(
                     reps: "",
@@ -747,7 +746,7 @@ struct WorkoutLogView: View {
                     placeholderReps: lastReps.isEmpty ? targetPlaceholder : "\(lastReps) (\(targetPlaceholder))",
                     placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? targetLeftPlaceholder : "\(lastLeft) (\(targetLeftPlaceholder))") : nil,
                     placeholderRepsRight: isUnilateral ? (lastRight.isEmpty ? targetRightPlaceholder : "\(lastRight) (\(targetRightPlaceholder))") : nil,
-                    placeholderWeight: placeholderWeight,
+                    placeholderWeight: last.sets[offset].weight,
                     placeholderWeightType: placeholderWeightType
                 )
             }

@@ -58,9 +58,12 @@ struct WorkoutBuilderView: View {
     var onTextChanged: (() -> Void)?
     var onEditingDone: (() -> Void)?
     @State private var showingExercisePicker = false
+    private var exerciseCardSpacing: CGFloat {
+        readOnly ? 16 : 28
+    }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: exerciseCardSpacing) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 if let exercise = exercise(for: item.exerciseId) {
                     ExerciseSetsCard(
