@@ -507,6 +507,12 @@ private struct ExerciseSetsCard: View {
     private var headerActionVerticalOffset: CGFloat {
         -(cardPadding + managementHeaderActionButtonSize / 2)
     }
+    private var managementHeaderActionBorderColor: Color {
+        isActiveExercise ? Theme.accent : Theme.border
+    }
+    private var managementHeaderActionBorderWidth: CGFloat {
+        isActiveExercise ? 1.5 : 1
+    }
     private var showsWeightColumn: Bool {
         showWeight && item.weightType != "none" && !planningMode
     }
@@ -718,9 +724,31 @@ private struct ExerciseSetsCard: View {
 
     private var managementHeaderButtons: some View {
         HStack(spacing: 5) {
-            IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp, size: managementHeaderActionButtonSize, iconSize: managementHeaderActionIconSize) { onMove(-1) }
-            IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown, size: managementHeaderActionButtonSize, iconSize: managementHeaderActionIconSize) { onMove(1) }
-            IconCircleButton(systemName: "xmark", tint: Theme.danger, size: managementHeaderActionButtonSize, iconSize: managementHeaderActionIconSize, action: onRemove)
+            IconCircleButton(
+                systemName: "arrow.up",
+                disabled: !canMoveUp,
+                size: managementHeaderActionButtonSize,
+                iconSize: managementHeaderActionIconSize,
+                borderTint: managementHeaderActionBorderColor,
+                borderLineWidth: managementHeaderActionBorderWidth
+            ) { onMove(-1) }
+            IconCircleButton(
+                systemName: "arrow.down",
+                disabled: !canMoveDown,
+                size: managementHeaderActionButtonSize,
+                iconSize: managementHeaderActionIconSize,
+                borderTint: managementHeaderActionBorderColor,
+                borderLineWidth: managementHeaderActionBorderWidth
+            ) { onMove(1) }
+            IconCircleButton(
+                systemName: "xmark",
+                tint: Theme.danger,
+                size: managementHeaderActionButtonSize,
+                iconSize: managementHeaderActionIconSize,
+                borderTint: managementHeaderActionBorderColor,
+                borderLineWidth: managementHeaderActionBorderWidth,
+                action: onRemove
+            )
         }
     }
 

@@ -132,6 +132,8 @@ struct IconCircleButton: View {
     var disabled = false
     var size: CGFloat = 32
     var iconSize: CGFloat = 14
+    var borderTint: Color = Theme.border
+    var borderLineWidth: CGFloat = 1
     let action: () -> Void
 
     var body: some View {
@@ -141,7 +143,7 @@ struct IconCircleButton: View {
                 .foregroundStyle(disabled ? Theme.muted.opacity(0.4) : tint)
                 .frame(width: size, height: size)
                 .background(Theme.background)
-                .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                .overlay(Circle().stroke(borderTint, lineWidth: borderLineWidth))
                 .clipShape(Circle())
         }
         .disabled(disabled)
