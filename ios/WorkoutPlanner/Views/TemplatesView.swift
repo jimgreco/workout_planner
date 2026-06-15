@@ -1668,6 +1668,7 @@ private struct TemplateFormSheet: View {
                         defaultRestTargetSeconds: store.settings.defaultRestTargetSeconds,
                         advancedMode: store.settings.advancedMode,
                         lastWeightTypeByExerciseId: lastWeightTypesByExerciseId(from: store.logs),
+                        logs: store.logs,
                         planningMode: true,
                         onEditExercise: { exercise in editingExercise = exercise }
                     )
@@ -2062,7 +2063,8 @@ private struct TemplateViewSheet: View {
                         items: .constant(template.exerciseItems),
                         focusedField: $focusedBuilderField,
                         readOnly: true,
-                        showWeight: false
+                        showWeight: false,
+                        logs: store.logs
                     )
                 }
                 .padding(16)

@@ -491,11 +491,19 @@ private struct ExerciseSetsCard: View {
     @FocusState private var notesFocused: Bool
     @State private var editedCompactFields: Set<CompactRepField> = []
 
+    private let cardPadding: CGFloat = 16
+    private let managementHeaderActionButtonSize: CGFloat = 30
+    private let managementHeaderActionIconSize: CGFloat = 13
+    private let secondaryHeaderActionButtonSize: CGFloat = 26
+    private let secondaryHeaderActionIconSize: CGFloat = 11
     private let setColumnWidth: CGFloat = 28
     private let restColumnWidth: CGFloat = 54
     private let doneColumnWidth: CGFloat = 34
     private let removeColumnWidth: CGFloat = 32
     private let rowSpacing: CGFloat = 6
+    private var headerActionVerticalOffset: CGFloat {
+        -(cardPadding + managementHeaderActionButtonSize / 2)
+    }
     private var showsWeightColumn: Bool {
         showWeight && item.weightType != "none" && !planningMode
     }
@@ -612,14 +620,16 @@ private struct ExerciseSetsCard: View {
                 .buttonStyle(SecondaryButtonStyle(compact: true))
             }
         }
-        .padding(16)
-        .background(Theme.background)
-        .overlay(
+        .padding(cardPadding)
+        .background {
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .stroke(cardStrokeColor, lineWidth: isActiveExercise ? 2 : 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .shadow(color: .black.opacity(isActiveExercise ? 0.12 : 0.06), radius: isActiveExercise ? 10 : 4, x: 0, y: 2)
+                .fill(Theme.background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                        .stroke(cardStrokeColor, lineWidth: isActiveExercise ? 2 : 1)
+                )
+                .shadow(color: .black.opacity(isActiveExercise ? 0.12 : 0.06), radius: isActiveExercise ? 10 : 4, x: 0, y: 2)
+        }
         .toolbar {
             if focusedCompactField != nil || notesFocused {
                 ToolbarItem(placement: .keyboard) {
@@ -644,13 +654,9 @@ private struct ExerciseSetsCard: View {
     }
 
     private var cardHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                exerciseTitle
-                managementHeaderButtons
-            }
-
-            secondaryHeaderButtons
+        HStack(alignment: .top, spacing: 10) {
+            exerciseTitle
+            headerActionButtons
         }
     }
 
@@ -696,14 +702,22 @@ private struct ExerciseSetsCard: View {
     }
 
     @ViewBuilder
-    private var managementHeaderButtons: some View {
+    private var headerActionButtons: some View {
         if !readOnly {
-            HStack(spacing: 5) {
-                IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp, size: 26, iconSize: 11) { onMove(-1) }
-                IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown, size: 26, iconSize: 11) { onMove(1) }
-                IconCircleButton(systemName: "xmark", tint: Theme.danger, size: 26, iconSize: 11, action: onRemove)
+            VStack(alignment: .trailing, spacing: 8) {
+                managementHeaderButtons
+                secondaryHeaderButtons
             }
-            .fixedSize(horizontal: true, vertical: false)
+            .fixedSize(horizontal: true, vertical: true)
+            .offset(y: headerActionVerticalOffset)
+        }
+    }
+
+    private var managementHeaderButtons: some View {
+        HStack(spacing: 5) {
+            IconCircleButton(systemName: "arrow.up", disabled: !canMoveUp, size: managementHeaderActionButtonSize, iconSize: managementHeaderActionIconSize) { onMove(-1) }
+            IconCircleButton(systemName: "arrow.down", disabled: !canMoveDown, size: managementHeaderActionButtonSize, iconSize: managementHeaderActionIconSize) { onMove(1) }
+            IconCircleButton(systemName: "xmark", tint: Theme.danger, size: managementHeaderActionButtonSize, iconSize: managementHeaderActionIconSize, action: onRemove)
         }
     }
 
@@ -711,8 +725,6 @@ private struct ExerciseSetsCard: View {
     private var secondaryHeaderButtons: some View {
         if !readOnly && (replacementExercises.count > 1 || canEditExercise) {
             HStack(spacing: 8) {
-                Spacer(minLength: 0)
-
                 if replacementExercises.count > 1 {
                     substitutionHeaderMenu
                 }
@@ -743,9 +755,9 @@ private struct ExerciseSetsCard: View {
             }
         } label: {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: secondaryHeaderActionIconSize, weight: .semibold))
                 .foregroundStyle(Theme.text)
-                .frame(width: 26, height: 26)
+                .frame(width: secondaryHeaderActionButtonSize, height: secondaryHeaderActionButtonSize)
                 .background(Theme.background)
                 .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                 .clipShape(Circle())
@@ -758,9 +770,9 @@ private struct ExerciseSetsCard: View {
             onEditExercise?(exercise)
         } label: {
             Image(systemName: "pencil")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: secondaryHeaderActionIconSize, weight: .semibold))
                 .foregroundStyle(Theme.text)
-                .frame(width: 26, height: 26)
+                .frame(width: secondaryHeaderActionButtonSize, height: secondaryHeaderActionButtonSize)
                 .background(Theme.background)
                 .overlay(Circle().stroke(Theme.border, lineWidth: 1))
                 .clipShape(Circle())

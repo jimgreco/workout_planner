@@ -28,6 +28,9 @@ struct WorkoutPlannerLiveActivity: Widget {
                             .font(.headline.weight(.heavy))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
+                        if context.state.needsWeightIncrease && !context.state.isComplete {
+                            LiveActivityAddWeightChip(compact: true)
+                        }
                     }
                 }
 
@@ -181,6 +184,10 @@ private struct LockScreenWorkoutView: View {
                         .foregroundStyle(liveActivitySecondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
+
+                    if state.needsWeightIncrease && !state.isComplete {
+                        LiveActivityAddWeightChip()
+                    }
                 }
 
                 Spacer(minLength: 6)
@@ -281,6 +288,27 @@ private struct CompactMetric: View {
                 .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct LiveActivityAddWeightChip: View {
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: compact ? 3 : 4) {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: compact ? 9 : 10, weight: .heavy))
+            Text("Add Weight")
+                .font(.system(size: compact ? 9 : 10, weight: .heavy))
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(forgeAccent)
+        .padding(.horizontal, compact ? 6 : 8)
+        .padding(.vertical, compact ? 3 : 4)
+        .background(forgeAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .accessibilityLabel("Add weight")
     }
 }
 

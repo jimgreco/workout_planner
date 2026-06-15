@@ -1156,6 +1156,7 @@ struct WorkoutLogView: View {
         let restTargetEnd = restStartedAt.flatMap { start in
             restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
         }
+        let weightIncreaseContext = resting ?? context
 
         return WorkoutLiveActivityAttributes.ContentState(
             workoutName: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Workout" : name,
@@ -1166,6 +1167,7 @@ struct WorkoutLogView: View {
             weight: liveWeightLabel(for: context) ?? "",
             setType: store.settings.advancedMode ? setTypeLabel(context.set.setType) : "",
             personalBest: personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true),
+            needsWeightIncrease: routineExerciseNeedsWeightIncrease(weightIncreaseContext.item, logs: store.logs),
             completedSets: completed,
             totalSets: total,
             exerciseCount: items.count,

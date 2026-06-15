@@ -11,6 +11,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var weight: String
         var setType: String
         var personalBest: String?
+        var needsWeightIncrease: Bool
         var completedSets: Int
         var totalSets: Int
         var exerciseCount: Int
