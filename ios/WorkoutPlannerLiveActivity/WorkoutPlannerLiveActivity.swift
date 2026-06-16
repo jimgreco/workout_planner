@@ -57,19 +57,20 @@ private struct DynamicIslandExpandedWorkoutView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        ZStack(alignment: .trailing) {
+            VStack(alignment: .center, spacing: 2) {
                 Text(state.isComplete ? "Workout complete" : state.exerciseName)
                     .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundStyle(liveActivityText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.66)
+                    .multilineTextAlignment(.center)
                     .layoutPriority(1)
 
                 metadataRow
             }
-
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 62)
 
             VStack(alignment: .trailing, spacing: 1) {
                 LiveActivityTimer(state: state)
@@ -146,7 +147,9 @@ private struct DynamicIslandSummaryStrip: View {
             DynamicIslandMetric(
                 title: "Reps",
                 value: state.reps,
-                caption: repsCaption
+                caption: repsCaption,
+                alignment: .trailing,
+                frameAlignment: .trailing
             )
 
             Rectangle()
@@ -171,9 +174,11 @@ private struct DynamicIslandMetric: View {
     let value: String
     var caption: String?
     var badge: String?
+    var alignment: HorizontalAlignment = .leading
+    var frameAlignment: Alignment = .leading
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: alignment, spacing: 2) {
             HStack(spacing: 5) {
                 Text(title)
                     .font(.system(size: 8, weight: .heavy, design: .rounded))
@@ -199,7 +204,7 @@ private struct DynamicIslandMetric: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: frameAlignment)
     }
 
     private var metricValue: some View {
@@ -225,40 +230,41 @@ private struct DynamicIslandControlRow: View {
     let workoutID: String
 
     var body: some View {
-        HStack(spacing: 7) {
-            DynamicIslandControlButton(
-                label: "-1",
-                intent: WorkoutLiveActivityDecreaseRepsIntent(workoutID: workoutID)
-            )
+        HStack(spacing: 6) {
+            HStack(spacing: 5) {
+                DynamicIslandControlButton(
+                    label: "-1",
+                    intent: WorkoutLiveActivityDecreaseRepsIntent(workoutID: workoutID)
+                )
 
-            DynamicIslandControlButton(
-                label: "+1",
-                intent: WorkoutLiveActivityIncreaseRepsIntent(workoutID: workoutID)
-            )
-
-            Spacer(minLength: 2)
+                DynamicIslandControlButton(
+                    label: "+1",
+                    intent: WorkoutLiveActivityIncreaseRepsIntent(workoutID: workoutID)
+                )
+            }
 
             DynamicIslandCheckButton(
                 intent: WorkoutLiveActivityLogSetIntent(workoutID: workoutID)
             )
 
-            Spacer(minLength: 2)
+            HStack(spacing: 5) {
+                if state.allowsWeightEntry {
+                    DynamicIslandControlButton(
+                        label: "-5",
+                        intent: WorkoutLiveActivityDecreaseWeightIntent(workoutID: workoutID)
+                    )
 
-            if state.allowsWeightEntry {
-                DynamicIslandControlButton(
-                    label: "-5",
-                    intent: WorkoutLiveActivityDecreaseWeightIntent(workoutID: workoutID)
-                )
-
-                DynamicIslandControlButton(
-                    label: "+5",
-                    intent: WorkoutLiveActivityIncreaseWeightIntent(workoutID: workoutID)
-                )
-            } else {
-                Color.clear
-                    .frame(width: 71, height: 26)
+                    DynamicIslandControlButton(
+                        label: "+5",
+                        intent: WorkoutLiveActivityIncreaseWeightIntent(workoutID: workoutID)
+                    )
+                } else {
+                    Color.clear
+                        .frame(width: 69, height: 26)
+                }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
