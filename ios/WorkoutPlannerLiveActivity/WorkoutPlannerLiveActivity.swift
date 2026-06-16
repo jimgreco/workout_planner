@@ -273,23 +273,40 @@ private struct LiveActivityQuickEntryPanel: View {
         VStack(spacing: 7) {
             LiveActivitySummaryStrip(state: state)
 
-            HStack(spacing: 7) {
-                LiveActivityActionButton(
+            HStack(alignment: .center, spacing: 8) {
+                LiveActivityStepperButton(
                     label: "-1",
                     intent: WorkoutLiveActivityDecreaseRepsIntent(workoutID: workoutID)
                 )
 
-                LiveActivityActionButton(
-                    label: "Log Set",
-                    systemImage: "checkmark",
-                    intent: WorkoutLiveActivityLogSetIntent(workoutID: workoutID),
-                    filled: true
-                )
-
-                LiveActivityActionButton(
+                LiveActivityStepperButton(
                     label: "+1",
                     intent: WorkoutLiveActivityIncreaseRepsIntent(workoutID: workoutID)
                 )
+
+                Spacer(minLength: 3)
+
+                LiveActivityIconActionButton(
+                    systemImage: "checkmark",
+                    intent: WorkoutLiveActivityLogSetIntent(workoutID: workoutID)
+                )
+
+                Spacer(minLength: 3)
+
+                if state.allowsWeightEntry {
+                    LiveActivityStepperButton(
+                        label: "-5",
+                        intent: WorkoutLiveActivityDecreaseWeightIntent(workoutID: workoutID)
+                    )
+
+                    LiveActivityStepperButton(
+                        label: "+5",
+                        intent: WorkoutLiveActivityIncreaseWeightIntent(workoutID: workoutID)
+                    )
+                } else {
+                    Color.clear
+                        .frame(width: 84, height: 34)
+                }
             }
         }
     }
@@ -362,28 +379,36 @@ private struct LiveActivitySummaryStrip: View {
     }
 }
 
-private struct LiveActivityActionButton<I: LiveActivityIntent>: View {
+private struct LiveActivityStepperButton<I: LiveActivityIntent>: View {
     let label: String
-    var systemImage: String?
     let intent: I
-    var filled = false
 
     var body: some View {
         Button(intent: intent) {
-            HStack(spacing: 4) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 12, weight: .black))
-                }
-                Text(label)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(filled ? .white : liveActivityText)
-            .frame(maxWidth: .infinity)
-            .frame(height: 34)
-            .background(filled ? forgeAccent : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(label)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(liveActivityText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: 38)
+                .frame(height: 34)
+                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct LiveActivityIconActionButton<I: LiveActivityIntent>: View {
+    let systemImage: String
+    let intent: I
+
+    var body: some View {
+        Button(intent: intent) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: 58, height: 34)
+                .background(forgeAccent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -429,15 +454,15 @@ private struct DynamicIslandAdjustmentButtons: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
             HStack(spacing: 4) {
-                miniButton("-5", intent: WorkoutLiveActivityAdjustWeightIntent(workoutID: workoutID, delta: -5))
-                miniButton("0", intent: WorkoutLiveActivityAdjustWeightIntent(workoutID: workoutID, delta: 0, resetToBaseline: true), filled: true)
-                miniButton("+5", intent: WorkoutLiveActivityAdjustWeightIntent(workoutID: workoutID, delta: 5))
+                miniButton("-5", intent: WorkoutLiveActivityDecreaseWeightIntent(workoutID: workoutID))
+                miniButton("0", intent: WorkoutLiveActivityResetWeightIntent(workoutID: workoutID), filled: true)
+                miniButton("+5", intent: WorkoutLiveActivityIncreaseWeightIntent(workoutID: workoutID))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func miniButton(_ label: String, intent: WorkoutLiveActivityAdjustWeightIntent, filled: Bool = false) -> some View {
+    private func miniButton<I: LiveActivityIntent>(_ label: String, intent: I, filled: Bool = false) -> some View {
         Button(intent: intent) {
             Text(label)
                 .font(.caption2.weight(.heavy))

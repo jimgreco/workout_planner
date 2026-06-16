@@ -456,25 +456,57 @@ struct WorkoutLiveActivityIncreaseRepsIntent: LiveActivityIntent {
     }
 }
 
-struct WorkoutLiveActivityAdjustWeightIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Adjust Workout Weight"
+struct WorkoutLiveActivityDecreaseWeightIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Decrease Workout Weight"
     static var isDiscoverable = false
 
     @Parameter(title: "Workout ID") var workoutID: String
-    @Parameter(title: "Delta") var delta: Double
-    @Parameter(title: "Reset to Baseline") var resetToBaseline: Bool
 
     init() {}
 
-    init(workoutID: String, delta: Double, resetToBaseline: Bool = false) {
+    init(workoutID: String) {
         self.workoutID = workoutID
-        self.delta = delta
-        self.resetToBaseline = resetToBaseline
+    }
+
+    func perform() async throws -> some IntentResult {
+        await adjustWorkoutLiveActivityWeight(workoutID: workoutID, delta: -5)
+        return .result()
+    }
+}
+
+struct WorkoutLiveActivityIncreaseWeightIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Increase Workout Weight"
+    static var isDiscoverable = false
+
+    @Parameter(title: "Workout ID") var workoutID: String
+
+    init() {}
+
+    init(workoutID: String) {
+        self.workoutID = workoutID
+    }
+
+    func perform() async throws -> some IntentResult {
+        await adjustWorkoutLiveActivityWeight(workoutID: workoutID, delta: 5)
+        return .result()
+    }
+}
+
+struct WorkoutLiveActivityResetWeightIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Reset Workout Weight"
+    static var isDiscoverable = false
+
+    @Parameter(title: "Workout ID") var workoutID: String
+
+    init() {}
+
+    init(workoutID: String) {
+        self.workoutID = workoutID
     }
 
     func perform() async throws -> some IntentResult {
         await mutateSharedWorkout(workoutID: workoutID) { state in
-            state.adjustWeight(delta: delta, resetToBaseline: resetToBaseline)
+            state.adjustWeight(delta: nil, resetToBaseline: true)
         }
         return .result()
     }
@@ -516,5 +548,11 @@ private func mutateSharedWorkout(
 private func adjustWorkoutLiveActivityReps(workoutID: String, delta: Int) async {
     await mutateSharedWorkout(workoutID: workoutID) { state in
         state.adjustReps(delta: delta)
+    }
+}
+
+private func adjustWorkoutLiveActivityWeight(workoutID: String, delta: Double) async {
+    await mutateSharedWorkout(workoutID: workoutID) { state in
+        state.adjustWeight(delta: delta, resetToBaseline: false)
     }
 }
