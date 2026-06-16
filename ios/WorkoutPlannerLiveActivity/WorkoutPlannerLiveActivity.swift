@@ -89,7 +89,6 @@ private struct DynamicIslandExerciseHeader: View {
                 .minimumScaleFactor(0.78)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var shouldShowMetadata: Bool {
@@ -126,7 +125,6 @@ private struct DynamicIslandTimerSummary: View {
                 .lineLimit(1)
         }
         .fixedSize(horizontal: true, vertical: false)
-        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
@@ -172,11 +170,10 @@ private struct DynamicIslandWorkoutDashboard: View {
                 )
             }
 
-            LockScreenProgressBar(value: state.progress, tint: progressTint)
+            ProgressView(value: state.progress)
+                .tint(progressTint)
                 .frame(height: 4)
-                .padding(.horizontal, 2)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -206,31 +203,22 @@ private struct DynamicIslandMetricTile: View {
                 }
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    metricValue
-                    if let caption {
-                        metricCaption(caption)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    metricValue
-                    if let caption {
-                        metricCaption(caption)
-                    }
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                metricValue
+                if let caption {
+                    metricCaption(caption)
                 }
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private var metricValue: some View {
         Text(value.isEmpty ? "-" : value)
-            .font(.system(size: 16, weight: .heavy, design: .rounded))
+            .font(.system(size: 14, weight: .heavy, design: .rounded))
             .foregroundStyle(liveActivityText)
             .monospacedDigit()
             .lineLimit(1)
@@ -239,7 +227,7 @@ private struct DynamicIslandMetricTile: View {
 
     private func metricCaption(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .font(.system(size: 8, weight: .heavy, design: .rounded))
             .foregroundStyle(liveActivitySecondaryText)
             .lineLimit(1)
             .minimumScaleFactor(0.62)
