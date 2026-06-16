@@ -142,8 +142,7 @@ private struct LockScreenWorkoutView: View {
                             .minimumScaleFactor(0.68)
                     }
                 }
-
-                Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 2) {
                     LiveActivityTimer(state: state)
@@ -160,7 +159,9 @@ private struct LockScreenWorkoutView: View {
                             .minimumScaleFactor(0.7)
                     }
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
 
             if state.isComplete {
                 HStack(spacing: 7) {
