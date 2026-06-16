@@ -1392,14 +1392,21 @@ struct WorkoutLogView: View {
     }
 
     private func liveRepsLabel(for set: WorkoutSet) -> String? {
-        let left = liveRepText(value: set.repsLeft, placeholder: set.placeholderRepsLeft ?? set.placeholderReps)
-        let right = liveRepText(value: set.repsRight, placeholder: set.placeholderRepsRight ?? set.placeholderReps)
-        if left != nil || right != nil {
+        if liveUsesSideReps(set) {
+            let left = liveRepText(value: set.repsLeft, placeholder: set.placeholderRepsLeft ?? set.placeholderReps)
+            let right = liveRepText(value: set.repsRight, placeholder: set.placeholderRepsRight ?? set.placeholderReps)
             let leftText = left ?? right ?? "-"
             let rightText = right ?? left ?? "-"
             return leftText == rightText ? leftText : "\(leftText)/\(rightText)"
         }
         return liveRepText(value: set.reps, placeholder: set.placeholderReps)
+    }
+
+    private func liveUsesSideReps(_ set: WorkoutSet) -> Bool {
+        liveCleaned(set.repsLeft) != nil
+            || liveCleaned(set.repsRight) != nil
+            || set.placeholderRepsLeft != nil
+            || set.placeholderRepsRight != nil
     }
 
     private func liveRepText(value: String?, placeholder: String?) -> String? {

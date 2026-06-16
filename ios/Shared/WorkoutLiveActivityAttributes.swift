@@ -240,9 +240,9 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
     }
 
     private static func repsLabel(for set: WorkoutLiveActivitySharedSet) -> String {
-        let left = repText(value: set.repsLeft, placeholder: set.placeholderRepsLeft ?? set.placeholderReps)
-        let right = repText(value: set.repsRight, placeholder: set.placeholderRepsRight ?? set.placeholderReps)
-        if left != nil || right != nil {
+        if set.usesSideReps {
+            let left = repText(value: set.repsLeft, placeholder: set.placeholderRepsLeft ?? set.placeholderReps)
+            let right = repText(value: set.repsRight, placeholder: set.placeholderRepsRight ?? set.placeholderReps)
             let leftText = left ?? right ?? "-"
             let rightText = right ?? left ?? "-"
             return leftText == rightText ? leftText : "\(leftText)/\(rightText)"
