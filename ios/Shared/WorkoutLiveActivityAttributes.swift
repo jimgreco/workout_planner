@@ -128,7 +128,19 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
             set.weight = Self.weightBaseline(for: set, item: items[position.exerciseIndex]).map(Self.formatNumber)
         }
 
-        set.restStartTime = Date().timeIntervalSince1970 * 1000
+        let now = Date().timeIntervalSince1970 * 1000
+        for exerciseIndex in items.indices {
+            for setIndex in items[exerciseIndex].sets.indices {
+                guard exerciseIndex != position.exerciseIndex || setIndex != position.setIndex,
+                      let start = items[exerciseIndex].sets[setIndex].restStartTime,
+                      items[exerciseIndex].sets[setIndex].restDuration == nil
+                else { continue }
+                items[exerciseIndex].sets[setIndex].restDuration = Int((now - start) / 1000)
+                items[exerciseIndex].sets[setIndex].restStartTime = nil
+            }
+        }
+
+        set.restStartTime = now
         set.restDuration = nil
         items[position.exerciseIndex].sets[position.setIndex] = set
 
