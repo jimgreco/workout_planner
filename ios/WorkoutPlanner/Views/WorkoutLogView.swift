@@ -1263,6 +1263,7 @@ struct WorkoutLogView: View {
             repsGoal: liveRepsGoalLabel(for: context.set),
             weight: liveWeightLabel(for: context) ?? "",
             weightCaption: liveWeightCaption(for: context),
+            weightLast: liveWeightLastLabel(for: context),
             loadLabel: liveLoadLabel(context.item.weightType),
             allowsWeightEntry: context.item.weightType != "none",
             weightBaseline: liveWeightPlaceholder(for: context).flatMap { Double($0) },
@@ -1350,6 +1351,11 @@ struct WorkoutLogView: View {
         guard context.item.weightType != "none" else { return nil }
         let weight = liveCleaned(context.set.weight) ?? liveWeightPlaceholder(for: context)
         return calculatedWeightCaption(weight: weight, weightType: context.item.weightType)
+    }
+
+    private func liveWeightLastLabel(for context: WorkoutLiveSetContext) -> String? {
+        guard context.item.weightType != "none" else { return nil }
+        return liveWeightPlaceholder(for: context)
     }
 
     private func liveRepsGoalLabel(for set: WorkoutSet) -> String? {

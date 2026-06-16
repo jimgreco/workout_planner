@@ -12,6 +12,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var repsGoal: String?
         var weight: String
         var weightCaption: String?
+        var weightLast: String?
         var loadLabel: String
         var allowsWeightEntry: Bool
         var weightBaseline: Double?
@@ -157,6 +158,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.repsGoal = Self.repsGoalLabel(for: set)
         contentState.weight = Self.weightLabel(for: set, item: item)
         contentState.weightCaption = Self.weightCaption(for: set, item: item)
+        contentState.weightLast = Self.weightLastLabel(for: set, item: item)
         contentState.loadLabel = Self.loadLabel(item.weightType)
         contentState.allowsWeightEntry = item.weightType != "none"
         contentState.weightBaseline = Self.weightBaseline(for: set, item: item)
@@ -278,6 +280,13 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         default: total = nil
         }
         return total.map { "Total \(formatNumber($0)) lbs" }
+    }
+
+    private static func weightLastLabel(for set: WorkoutLiveActivitySharedSet, item: WorkoutLiveActivitySharedItem) -> String? {
+        guard item.weightType != "none",
+              let baseline = weightBaseline(for: set, item: item)
+        else { return nil }
+        return formatNumber(baseline)
     }
 
     private static func weightBaseline(for set: WorkoutLiveActivitySharedSet, item: WorkoutLiveActivitySharedItem) -> Double? {

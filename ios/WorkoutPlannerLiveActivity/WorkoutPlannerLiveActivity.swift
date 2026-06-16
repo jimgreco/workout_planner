@@ -312,13 +312,18 @@ private struct LiveActivitySummaryStrip: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            summaryMetric(title: "Reps", value: state.reps, caption: repsCaption)
+            summaryMetric(title: "Reps", value: state.reps, inlineCaption: repsCaption)
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(width: 1, height: 26)
 
-            summaryMetric(title: "Load", value: loadValue, badge: state.allowsWeightEntry ? state.loadLabel : nil)
+            summaryMetric(
+                title: "Load",
+                value: loadValue,
+                inlineCaption: weightLastCaption,
+                badge: state.allowsWeightEntry ? state.loadLabel : nil
+            )
         }
         .padding(.horizontal, 11)
         .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
@@ -335,7 +340,15 @@ private struct LiveActivitySummaryStrip: View {
         state.allowsWeightEntry ? (state.weight.isEmpty ? "-" : state.weight) : "No load"
     }
 
-    private func summaryMetric(title: String, value: String, caption: String? = nil, badge: String? = nil) -> some View {
+    private var weightLastCaption: String? {
+        guard state.allowsWeightEntry,
+              let weightLast = state.weightLast,
+              !weightLast.isEmpty
+        else { return nil }
+        return "Last \(weightLast)"
+    }
+
+    private func summaryMetric(title: String, value: String, inlineCaption: String? = nil, badge: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 Text(title)
@@ -355,19 +368,21 @@ private struct LiveActivitySummaryStrip: View {
                 }
             }
 
-            Text(value.isEmpty ? "-" : value)
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
-                .foregroundStyle(liveActivityText)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-
-            if let caption {
-                Text(caption)
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundStyle(liveActivitySecondaryText)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(value.isEmpty ? "-" : value)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(liveActivityText)
+                    .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.72)
+
+                if let inlineCaption {
+                    Text(inlineCaption)
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(liveActivitySecondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
