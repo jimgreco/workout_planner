@@ -123,29 +123,39 @@ private struct LockScreenWorkoutView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: statusIcon)
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(progressTint, in: Circle())
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Image(systemName: statusIcon)
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(progressTint, in: Circle())
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Forge")
-                            .font(.caption.weight(.heavy))
+                        Text(headline)
+                            .font(.system(size: 16, weight: .heavy))
                             .foregroundStyle(liveActivityText)
-                        Text("\(state.exerciseCount) \(state.exerciseCount == 1 ? "exercise" : "exercises")")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(liveActivityTertiaryText)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                    }
+
+                    if !detailLine.isEmpty {
+                        Text(detailLine)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(liveActivitySecondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.76)
+                    }
+
+                    if !state.isComplete {
+                        LiveActivityMetadataRow(state: state, compact: true, showsAddWeight: false)
                     }
                 }
 
                 Spacer(minLength: 8)
 
-                VStack(alignment: .trailing, spacing: 0) {
+                VStack(alignment: .trailing, spacing: 2) {
                     Text(timerTitle)
                         .font(.system(size: 9, weight: .heavy))
                         .foregroundStyle(liveActivityTertiaryText)
@@ -155,40 +165,14 @@ private struct LockScreenWorkoutView: View {
                         .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
-                }
-            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(headline)
-                            .font(.system(size: 17, weight: .heavy))
-                            .foregroundStyle(liveActivityText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.68)
-
-                        if !detailLine.isEmpty {
-                            Text(detailLine)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(liveActivitySecondaryText)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.78)
-                        }
-                    }
-
-                    Spacer(minLength: 6)
-
-                    if let personalBest = state.personalBest {
-                        Label("PB \(personalBest)", systemImage: "star.fill")
-                            .font(.caption2.weight(.heavy))
+                    if !state.isResting, let personalBest = state.personalBest {
+                        Text("PB \(personalBest)")
+                            .font(.system(size: 9, weight: .heavy))
                             .foregroundStyle(forgeAccent)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.72)
+                            .minimumScaleFactor(0.7)
                     }
-                }
-
-                if !state.isComplete {
-                    LiveActivityMetadataRow(state: state)
                 }
             }
 
@@ -202,23 +186,25 @@ private struct LockScreenWorkoutView: View {
                 LiveActivityQuickEntryPanel(state: state, workoutID: workoutID)
             }
 
-            HStack(alignment: .center, spacing: 8) {
-                Text("Progress")
-                    .font(.caption2.weight(.heavy))
-                    .foregroundStyle(liveActivityTertiaryText)
-                    .textCase(.uppercase)
-                    .frame(width: 48, alignment: .leading)
+            if state.isComplete {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("Progress")
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(liveActivityTertiaryText)
+                        .textCase(.uppercase)
+                        .frame(width: 48, alignment: .leading)
 
-                LockScreenProgressBar(value: state.progress, tint: progressTint)
+                    LockScreenProgressBar(value: state.progress, tint: progressTint)
 
-                Text(progressLabel)
-                    .font(.caption2.weight(.heavy).monospacedDigit())
-                    .foregroundStyle(liveActivitySecondaryText)
-                    .frame(minWidth: 38, alignment: .trailing)
+                    Text(progressLabel)
+                        .font(.caption2.weight(.heavy).monospacedDigit())
+                        .foregroundStyle(liveActivitySecondaryText)
+                        .frame(minWidth: 38, alignment: .trailing)
+                }
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 11)
     }
 }
 
@@ -248,6 +234,7 @@ private struct LockScreenMetric: View {
 private struct LiveActivityMetadataRow: View {
     let state: WorkoutLiveActivityAttributes.ContentState
     var compact = false
+    var showsAddWeight = true
 
     var body: some View {
         HStack(spacing: compact ? 4 : 6) {
@@ -261,7 +248,7 @@ private struct LiveActivityMetadataRow: View {
                 LiveActivityTag(text: state.setType, compact: compact)
             }
 
-            if state.needsWeightIncrease && !state.isComplete {
+            if showsAddWeight && state.needsWeightIncrease && !state.isComplete {
                 LiveActivityAddWeightChip(compact: compact)
             }
         }
@@ -292,118 +279,129 @@ private struct LiveActivityQuickEntryPanel: View {
     let workoutID: String
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(alignment: .top, spacing: 6) {
-                LiveActivityQuickTile(title: "Reps") {
-                    HStack(spacing: 5) {
-                        LiveActivityIntentPill(
-                            label: "-",
-                            intent: WorkoutLiveActivityAdjustRepsIntent(workoutID: workoutID, delta: -1)
-                        )
+        VStack(spacing: 7) {
+            HStack(spacing: 7) {
+                LiveActivityReadout(
+                    title: "Reps",
+                    value: state.reps,
+                    caption: state.repsGoal
+                )
 
-                        Text(state.reps.isEmpty ? "-" : state.reps)
-                            .font(.system(size: 20, weight: .heavy, design: .rounded))
-                            .foregroundStyle(liveActivityText)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .frame(maxWidth: .infinity)
-
-                        LiveActivityIntentPill(
-                            label: "+",
-                            intent: WorkoutLiveActivityAdjustRepsIntent(workoutID: workoutID, delta: 1)
-                        )
-                    }
-
-                    if let goal = state.repsGoal {
-                        Text(goal)
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundStyle(liveActivitySecondaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                    }
-                }
-
-                LiveActivityQuickTile(title: "Weight", trailing: state.loadLabel) {
-                    if state.allowsWeightEntry {
-                        HStack(alignment: .firstTextBaseline, spacing: 5) {
-                            Text(state.weight.isEmpty ? "-" : state.weight)
-                                .font(.system(size: 19, weight: .heavy, design: .rounded))
-                                .foregroundStyle(liveActivityText)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-
-                            if let caption = state.weightCaption {
-                                Text(caption)
-                                    .font(.system(size: 8, weight: .heavy))
-                                    .foregroundStyle(liveActivitySecondaryText)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.68)
-                            }
-                        }
-
-                        LiveActivityAdjustmentChips(workoutID: workoutID)
-                    } else {
-                        HStack(spacing: 5) {
-                            Image(systemName: "nosign")
-                                .font(.system(size: 10, weight: .heavy))
-                            Text("No load")
-                                .font(.system(size: 11, weight: .heavy))
-                        }
-                        .foregroundStyle(liveActivitySecondaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 27)
-                        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    }
-                }
+                LiveActivityReadout(
+                    title: "Load",
+                    value: state.allowsWeightEntry ? (state.weight.isEmpty ? "-" : state.weight) : "No load",
+                    caption: state.allowsWeightEntry ? weightCaption : nil,
+                    badge: state.allowsWeightEntry ? state.loadLabel : nil
+                )
             }
 
-            Button(intent: WorkoutLiveActivityLogSetIntent(workoutID: workoutID)) {
-                Label("Log Set", systemImage: "checkmark")
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 28)
-                    .background(forgeAccent, in: Capsule())
+            HStack(spacing: 7) {
+                LiveActivityActionButton(
+                    label: "-1",
+                    intent: WorkoutLiveActivityAdjustRepsIntent(workoutID: workoutID, delta: -1)
+                )
+
+                LiveActivityActionButton(
+                    label: "Log Set",
+                    systemImage: "checkmark",
+                    intent: WorkoutLiveActivityLogSetIntent(workoutID: workoutID),
+                    filled: true
+                )
+
+                LiveActivityActionButton(
+                    label: "+1",
+                    intent: WorkoutLiveActivityAdjustRepsIntent(workoutID: workoutID, delta: 1)
+                )
             }
-            .buttonStyle(.plain)
+
+            if state.allowsWeightEntry {
+                LiveActivityAdjustmentChips(workoutID: workoutID)
+            }
         }
+    }
+
+    private var weightCaption: String? {
+        if let weightCaption = state.weightCaption {
+            return weightCaption
+        }
+        return state.loadLabel
     }
 }
 
-private struct LiveActivityQuickTile<Content: View>: View {
+private struct LiveActivityReadout: View {
     let title: String
-    var trailing: String?
-    @ViewBuilder var content: Content
+    let value: String
+    var caption: String?
+    var badge: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
                 Text(title)
-                    .font(.system(size: 9, weight: .heavy))
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
                     .foregroundStyle(liveActivityTertiaryText)
                     .textCase(.uppercase)
                     .lineLimit(1)
 
                 Spacer(minLength: 4)
 
-                if let trailing {
-                    Text(trailing)
-                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
                         .foregroundStyle(forgeAccent)
-                        .padding(.horizontal, 7)
-                        .frame(height: 20)
+                        .padding(.horizontal, 6)
+                        .frame(height: 18)
                         .background(forgeAccent.opacity(0.16), in: Capsule())
                         .lineLimit(1)
                 }
             }
 
-            content
+            Text(value.isEmpty ? "-" : value)
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .foregroundStyle(liveActivityText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            if let caption {
+                Text(caption)
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(liveActivitySecondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
-        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
+        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct LiveActivityActionButton<I: AppIntent>: View {
+    let label: String
+    var systemImage: String?
+    let intent: I
+    var filled = false
+
+    var body: some View {
+        Button(intent: intent) {
+            HStack(spacing: 4) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 12, weight: .black))
+                }
+                Text(label)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(filled ? .white : liveActivityText)
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .background(filled ? forgeAccent : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -412,15 +410,15 @@ private struct LiveActivityAdjustmentChips: View {
     private let labels = ["-5", "0", "+5"]
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 7) {
             ForEach(labels, id: \.self) { label in
                 Button(intent: intent(for: label)) {
                     Text(label)
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
                         .foregroundStyle(label == "0" ? .white : liveActivityText)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 19)
-                        .background(label == "0" ? forgeAccent : Color.white.opacity(0.08), in: Capsule())
+                        .frame(height: 30)
+                        .background(label == "0" ? forgeAccent : Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -463,22 +461,6 @@ private struct DynamicIslandQuickEntryRow: View {
         guard state.allowsWeightEntry else { return "No load" }
         if state.weight.isEmpty { return state.loadLabel }
         return "\(state.weight) \(state.loadLabel)"
-    }
-}
-
-private struct LiveActivityIntentPill<I: AppIntent>: View {
-    let label: String
-    let intent: I
-
-    var body: some View {
-        Button(intent: intent) {
-            Text(label)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(liveActivityText)
-                .frame(width: 26, height: 24)
-                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
 

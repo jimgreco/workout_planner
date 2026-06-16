@@ -15,6 +15,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var loadLabel: String
         var allowsWeightEntry: Bool
         var weightBaseline: Double?
+        var interactionRevision: Int
         var setType: String
         var personalBest: String?
         var needsWeightIncrease: Bool
@@ -159,6 +160,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.loadLabel = Self.loadLabel(item.weightType)
         contentState.allowsWeightEntry = item.weightType != "none"
         contentState.weightBaseline = Self.weightBaseline(for: set, item: item)
+        contentState.interactionRevision = revision
         contentState.completedSets = completedSetCount
         contentState.totalSets = totalSetCount
         contentState.exerciseCount = items.count
@@ -418,8 +420,9 @@ enum WorkoutLiveActivitySharedStore {
     }
 }
 
-struct WorkoutLiveActivityAdjustRepsIntent: AppIntent {
+struct WorkoutLiveActivityAdjustRepsIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Adjust Workout Reps"
+    static var isDiscoverable = false
 
     @Parameter(title: "Workout ID") var workoutID: String
     @Parameter(title: "Delta") var delta: Int
@@ -439,8 +442,9 @@ struct WorkoutLiveActivityAdjustRepsIntent: AppIntent {
     }
 }
 
-struct WorkoutLiveActivityAdjustWeightIntent: AppIntent {
+struct WorkoutLiveActivityAdjustWeightIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Adjust Workout Weight"
+    static var isDiscoverable = false
 
     @Parameter(title: "Workout ID") var workoutID: String
     @Parameter(title: "Delta") var delta: Double
@@ -462,8 +466,9 @@ struct WorkoutLiveActivityAdjustWeightIntent: AppIntent {
     }
 }
 
-struct WorkoutLiveActivityLogSetIntent: AppIntent {
+struct WorkoutLiveActivityLogSetIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Log Workout Set"
+    static var isDiscoverable = false
 
     @Parameter(title: "Workout ID") var workoutID: String
 

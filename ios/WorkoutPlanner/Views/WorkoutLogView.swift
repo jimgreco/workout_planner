@@ -1266,6 +1266,7 @@ struct WorkoutLogView: View {
             loadLabel: liveLoadLabel(context.item.weightType),
             allowsWeightEntry: context.item.weightType != "none",
             weightBaseline: liveWeightPlaceholder(for: context).flatMap { Double($0) },
+            interactionRevision: appliedLiveActivityInteractionRevision,
             setType: store.settings.advancedMode ? setTypeLabel(context.set.setType) : "",
             personalBest: personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true),
             needsWeightIncrease: routineExerciseNeedsWeightIncrease(weightIncreaseContext.item, logs: store.logs),
