@@ -29,10 +29,7 @@ struct WorkoutPlannerLiveActivity: Widget {
                 Image(systemName: context.state.isResting ? "timer" : "bolt.fill")
                     .foregroundStyle(forgeAccent)
             } compactTrailing: {
-                Text(context.state.isResting ? restShortLabel(context.state) : context.state.setLabel)
-                    .font(.caption2.weight(.heavy))
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.8)
+                LiveActivityCompactTimerLabel(state: context.state)
             } minimal: {
                 Image(systemName: context.state.isResting ? "timer" : "flame.fill")
                     .foregroundStyle(forgeAccent)
@@ -697,24 +694,87 @@ private struct LiveActivityTimer: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
     var body: some View {
-        if let restTargetEnd = state.restTargetEnd, restTargetEnd > Date() {
-            Text(timerInterval: Date()...restTargetEnd, countsDown: true)
-        } else if let restStartedAt = state.restStartedAt {
-            Text(timerInterval: restStartedAt...Date.distantFuture, countsDown: false)
-        } else if let startedAt = state.startedAt {
-            Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
-        } else {
-            Text("0m")
+        TimelineView(.periodic(from: Date(), by: 1)) { context in
+            Text(timerLabel(at: context.date))
+                .monospacedDigit()
         }
+    }
+
+    private func timerLabel(at date: Date) -> String {
+        if let restTargetEnd = state.restTargetEnd,
+           state.restStartedAt != nil {
+            if restTargetEnd > date {
+                return formatLiveActivityDuration(restTargetEnd.timeIntervalSince(date), roundsUp: true)
+            }
+            return "+\(formatLiveActivityDuration(date.timeIntervalSince(restTargetEnd), padsMinutes: true))"
+        }
+
+        if let restStartedAt = state.restStartedAt {
+            return formatLiveActivityDuration(date.timeIntervalSince(restStartedAt))
+        }
+
+        if let startedAt = state.startedAt {
+            return formatLiveActivityDuration(date.timeIntervalSince(startedAt))
+        }
+
+        return "0:00"
     }
 }
 
-private func restShortLabel(_ state: WorkoutLiveActivityAttributes.ContentState) -> String {
-    if let end = state.restTargetEnd, end > Date() {
-        let remaining = max(0, Int(end.timeIntervalSinceNow))
-        return remaining >= 60 ? "\(remaining / 60)m" : "\(remaining)s"
+private struct LiveActivityCompactTimerLabel: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+
+    var body: some View {
+        if state.isResting {
+            TimelineView(.periodic(from: Date(), by: 1)) { context in
+                Text(compactRestLabel(at: context.date))
+                    .font(.caption2.weight(.heavy))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.8)
+            }
+        } else {
+            Text(state.setLabel)
+                .font(.caption2.weight(.heavy))
+                .monospacedDigit()
+                .minimumScaleFactor(0.8)
+        }
     }
-    return state.setLabel
+
+    private func compactRestLabel(at date: Date) -> String {
+        guard let restTargetEnd = state.restTargetEnd else {
+            return state.setLabel
+        }
+
+        if restTargetEnd > date {
+            let remaining = max(0, Int(ceil(restTargetEnd.timeIntervalSince(date))))
+            return remaining >= 60 ? "\(remaining / 60)m" : "\(remaining)s"
+        }
+
+        let elapsed = max(0, Int(date.timeIntervalSince(restTargetEnd)))
+        return elapsed >= 60 ? "+\(elapsed / 60)m" : "+\(elapsed)s"
+    }
+}
+
+private func formatLiveActivityDuration(
+    _ interval: TimeInterval,
+    padsMinutes: Bool = false,
+    roundsUp: Bool = false
+) -> String {
+    let roundedInterval = roundsUp ? interval.rounded(.up) : interval.rounded(.down)
+    let seconds = max(0, Int(roundedInterval))
+    let hours = seconds / 3600
+    let minutes = (seconds % 3600) / 60
+    let remainder = seconds % 60
+
+    if hours > 0 {
+        return "\(hours):\(String(format: "%02d", minutes)):\(String(format: "%02d", remainder))"
+    }
+
+    if padsMinutes {
+        return "\(String(format: "%02d", minutes)):\(String(format: "%02d", remainder))"
+    }
+
+    return "\(minutes):\(String(format: "%02d", remainder))"
 }
 
 private func shouldShowSetType(_ state: WorkoutLiveActivityAttributes.ContentState) -> Bool {
