@@ -47,31 +47,23 @@ private struct DynamicIslandExpandedWorkoutView: View {
     let workoutID: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             header
 
             DynamicIslandSummaryStrip(state: state)
 
-            if state.isComplete {
-                ProgressView(value: state.progress)
-                    .tint(forgeSuccess)
-                    .frame(height: 3)
-            } else {
+            if !state.isComplete {
                 DynamicIslandControlRow(state: state, workoutID: workoutID)
-
-                ProgressView(value: state.progress)
-                    .tint(forgeAccent)
-                    .frame(height: 3)
             }
         }
-        .padding(.top, 2)
+        .padding(.top, 1)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(state.isComplete ? "Workout complete" : state.exerciseName)
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundStyle(liveActivityText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.66)
@@ -82,9 +74,9 @@ private struct DynamicIslandExpandedWorkoutView: View {
 
             Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 1) {
                 LiveActivityTimer(state: state)
-                    .font(.system(size: 18, weight: .heavy, design: .rounded).monospacedDigit())
+                    .font(.system(size: 17, weight: .heavy, design: .rounded).monospacedDigit())
                     .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -103,11 +95,11 @@ private struct DynamicIslandExpandedWorkoutView: View {
     private var metadataRow: some View {
         HStack(spacing: 5) {
             Text(state.setLabel)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
                 .foregroundStyle(forgeAccent)
                 .monospacedDigit()
-                .padding(.horizontal, 7)
-                .frame(height: 20)
+                .padding(.horizontal, 6)
+                .frame(height: 18)
                 .background(forgeAccent.opacity(0.16), in: Capsule())
                 .lineLimit(1)
 
@@ -121,13 +113,13 @@ private struct DynamicIslandExpandedWorkoutView: View {
 
             if state.needsWeightIncrease && !state.isComplete {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 12, weight: .heavy))
+                    .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(forgeAccent)
                     .accessibilityLabel("Add weight")
             }
         }
         .lineLimit(1)
-        .minimumScaleFactor(0.72)
+        .minimumScaleFactor(0.68)
     }
 }
 
@@ -162,7 +154,7 @@ private struct DynamicIslandSummaryStrip: View {
 
             Rectangle()
                 .fill(Color.white.opacity(0.12))
-                .frame(width: 1, height: 28)
+                .frame(width: 1, height: 24)
 
             DynamicIslandMetric(
                 title: "Load",
@@ -171,9 +163,9 @@ private struct DynamicIslandSummaryStrip: View {
                 badge: state.allowsWeightEntry ? state.loadLabel : nil
             )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(liveActivityRaised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
 
@@ -184,10 +176,10 @@ private struct DynamicIslandMetric: View {
     var badge: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 Text(title)
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
                     .foregroundStyle(liveActivityTertiaryText)
                     .textCase(.uppercase)
                     .lineLimit(1)
@@ -197,13 +189,13 @@ private struct DynamicIslandMetric: View {
                         .font(.system(size: 8, weight: .heavy, design: .rounded))
                         .foregroundStyle(forgeAccent)
                         .padding(.horizontal, 5)
-                        .frame(height: 16)
+                        .frame(height: 14)
                         .background(forgeAccent.opacity(0.16), in: Capsule())
                         .lineLimit(1)
                 }
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 metricValue
                 if let caption {
                     metricCaption(caption)
@@ -215,7 +207,7 @@ private struct DynamicIslandMetric: View {
 
     private var metricValue: some View {
         Text(value.isEmpty ? "-" : value)
-            .font(.system(size: 16, weight: .heavy, design: .rounded))
+            .font(.system(size: 14, weight: .heavy, design: .rounded))
             .foregroundStyle(liveActivityText)
             .monospacedDigit()
             .lineLimit(1)
@@ -224,7 +216,7 @@ private struct DynamicIslandMetric: View {
 
     private func metricCaption(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 8, weight: .heavy, design: .rounded))
+            .font(.system(size: 7, weight: .heavy, design: .rounded))
             .foregroundStyle(liveActivitySecondaryText)
             .lineLimit(1)
             .minimumScaleFactor(0.62)
@@ -236,7 +228,7 @@ private struct DynamicIslandControlRow: View {
     let workoutID: String
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             DynamicIslandControlButton(
                 label: "-1",
                 intent: WorkoutLiveActivityDecreaseRepsIntent(workoutID: workoutID)
@@ -247,13 +239,13 @@ private struct DynamicIslandControlRow: View {
                 intent: WorkoutLiveActivityIncreaseRepsIntent(workoutID: workoutID)
             )
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
             DynamicIslandCheckButton(
                 intent: WorkoutLiveActivityLogSetIntent(workoutID: workoutID)
             )
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
             if state.allowsWeightEntry {
                 DynamicIslandControlButton(
@@ -267,7 +259,7 @@ private struct DynamicIslandControlRow: View {
                 )
             } else {
                 Color.clear
-                    .frame(width: 84, height: 31)
+                    .frame(width: 71, height: 26)
             }
         }
     }
@@ -280,10 +272,10 @@ private struct DynamicIslandControlButton<I: LiveActivityIntent>: View {
     var body: some View {
         Button(intent: intent) {
             Text(label)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(liveActivityText)
-                .frame(width: 36, height: 31)
-                .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .frame(width: 32, height: 26)
+                .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -295,10 +287,10 @@ private struct DynamicIslandCheckButton<I: LiveActivityIntent>: View {
     var body: some View {
         Button(intent: intent) {
             Image(systemName: "checkmark")
-                .font(.system(size: 15, weight: .black))
+                .font(.system(size: 14, weight: .black))
                 .foregroundStyle(liveActivityText)
-                .frame(width: 52, height: 31)
-                .background(forgeAccent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 46, height: 26)
+                .background(forgeAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
     }
