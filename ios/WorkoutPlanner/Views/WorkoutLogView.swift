@@ -1770,40 +1770,37 @@ private struct WorkoutLiveActivityCard: View {
     @ViewBuilder
     private func quickEntryPanel(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, recordsSideReps: Bool, showsWeight: Bool) -> some View {
         let repRange = quickRepRange(for: context.exercise)
-        if showsWeight {
-            let weightBinding = weightValueBinding(set, context: context)
-            let weightSeed = weightSeedValue(for: context)
-            let weightCaption = calculatedWeightCaption(weight: formatProgressionNumber(weightBinding.wrappedValue), weightType: context.item.weightType)
+        let weightBinding = weightValueBinding(set, context: context)
+        let weightSeed = showsWeight ? weightSeedValue(for: context) : nil
+        let weightCaption = showsWeight ? calculatedWeightCaption(weight: formatProgressionNumber(weightBinding.wrappedValue), weightType: context.item.weightType) : nil
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .top, spacing: liveGridSpacing) {
-                    repEntryPanel(context, set: set, recordsSideReps: recordsSideReps, range: repRange)
-                        .frame(maxWidth: .infinity)
-
-                    WorkoutLiveWeightAdjuster(
-                        value: weightBinding,
-                        baseline: weightSeed ?? 0,
-                        hasBaseline: weightSeed != nil,
-                        caption: weightCaption,
-                        loadLabel: abbreviatedWeightTypeLabel(context.item.weightType),
-                        onLoadChange: { weightType in
-                            updateWeightType(weightType, for: context)
-                            onChanged()
-                        }
-                    )
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: liveGridSpacing) {
+                repEntryPanel(context, set: set, recordsSideReps: recordsSideReps, range: repRange)
                     .frame(maxWidth: .infinity)
-                }
+
+                WorkoutLiveWeightAdjuster(
+                    value: weightBinding,
+                    baseline: weightSeed ?? 0,
+                    hasBaseline: weightSeed != nil,
+                    caption: weightCaption,
+                    loadLabel: abbreviatedWeightTypeLabel(context.item.weightType),
+                    allowsEntry: showsWeight,
+                    onLoadChange: { weightType in
+                        updateWeightType(weightType, for: context)
+                        onChanged()
+                    }
+                )
+                .frame(maxWidth: .infinity)
             }
-            .padding(7)
-            .background(Theme.surface.opacity(0.72))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                    .stroke(Theme.border.opacity(0.72), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        } else {
-            repEntryPanel(context, set: set, recordsSideReps: recordsSideReps, range: repRange)
         }
+        .padding(7)
+        .background(Theme.surface.opacity(0.72))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.border.opacity(0.72), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
     @ViewBuilder
@@ -1914,15 +1911,16 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func repCaption(for set: WorkoutSet) -> String? {
-        repCaption(from: set.placeholderReps)
+        guard let target = repTargetText(from: set.placeholderReps) else { return nil }
+        return "Goal \(target)"
     }
 
     private func sideRepCaption(for set: WorkoutSet, left: Bool) -> String? {
-        repCaption(from: left ? set.placeholderRepsLeft : set.placeholderRepsRight)
-            ?? repCaption(from: set.placeholderReps)
+        repTargetText(from: left ? set.placeholderRepsLeft : set.placeholderRepsRight)
+            ?? repTargetText(from: set.placeholderReps)
     }
 
-    private func repCaption(from rawValue: String?) -> String? {
+    private func repTargetText(from rawValue: String?) -> String? {
         if let placeholder = RepsFieldPlaceholder(rawValue: cleaned(rawValue) ?? ""),
            let goal = placeholder.goal {
             return goal
@@ -2079,24 +2077,19 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func currentSetHeader(_ context: WorkoutLiveSetContext, isUpNext _: Bool) -> some View {
-        let badge = Text("\(context.setIndex + 1)/\(context.item.sets.count)")
-            .font(.system(size: 14, weight: .heavy, design: .rounded))
-            .foregroundStyle(Theme.accent)
-            .monospacedDigit()
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Theme.accent.opacity(0.11))
-            .clipShape(Capsule())
-            .accessibilityLabel("Set \(context.setIndex + 1) of \(context.item.sets.count)")
+        let setBadge = WorkoutLiveSetBadge(
+            index: context.setIndex + 1,
+            total: context.item.sets.count
+        )
 
         let title = Text(context.exercise.name)
-            .font(.system(size: 20, weight: .heavy))
+            .font(.system(size: 16, weight: .heavy))
             .foregroundStyle(Theme.text)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
         let needsWeightIncrease = routineExerciseNeedsWeightIncrease(context.item, logs: logs)
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: 10) {
                 title
                     .layoutPriority(1)
@@ -2123,28 +2116,19 @@ private struct WorkoutLiveActivityCard: View {
                 .fixedSize(horizontal: true, vertical: false)
             }
 
-            HStack(alignment: .center, spacing: 6) {
-                badge
+            FlowLayout(spacing: 6) {
+                setBadge
 
-                VStack(alignment: .leading, spacing: 6) {
-                    if !context.exercise.muscleGroup.isEmpty || needsWeightIncrease {
-                        HStack(alignment: .center, spacing: 6) {
-                            if !context.exercise.muscleGroup.isEmpty {
-                                Badge(text: context.exercise.muscleGroup)
-                            }
-
-                            if needsWeightIncrease {
-                                Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
-                                    .accessibilityLabel("\(context.exercise.name): increase weight next time")
-                            }
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
+                if !context.exercise.muscleGroup.isEmpty {
+                    WorkoutLiveInlineTag(text: context.exercise.muscleGroup)
                 }
-                .layoutPriority(1)
 
-                Spacer(minLength: 0)
+                if needsWeightIncrease {
+                    WorkoutLiveInlineTag(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
+                        .accessibilityLabel("\(context.exercise.name): increase weight next time")
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -2366,6 +2350,54 @@ private struct WorkoutLiveSetContext {
     let set: WorkoutSet
     let exerciseIndex: Int
     let setIndex: Int
+}
+
+private struct WorkoutLiveSetBadge: View {
+    let index: Int
+    let total: Int
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 1) {
+            Text("\(index)")
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+            Text("/\(total)")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(Theme.accent.opacity(0.68))
+        }
+        .monospacedDigit()
+        .foregroundStyle(Theme.accent)
+        .padding(.horizontal, 7)
+        .frame(height: 24)
+        .background(Theme.accent.opacity(0.09))
+        .clipShape(Capsule())
+        .accessibilityLabel("Set \(index) of \(total)")
+    }
+}
+
+private struct WorkoutLiveInlineTag: View {
+    let text: String
+    var icon: String?
+    var accent = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .heavy))
+            }
+
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(accent ? Theme.accent : Theme.muted.opacity(0.9))
+        .padding(.horizontal, 7)
+        .frame(height: 24)
+        .background(accent ? Theme.accent.opacity(0.07) : Theme.surface2.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .fixedSize(horizontal: true, vertical: false)
+    }
 }
 
 private struct WorkoutProgramStart: Identifiable {
@@ -2812,6 +2844,7 @@ private struct WorkoutLiveWeightAdjuster: View {
     let hasBaseline: Bool
     let caption: String?
     let loadLabel: String
+    let allowsEntry: Bool
     let onLoadChange: (String) -> Void
 
     private var controls: [(label: String, delta: Double?)] {
@@ -2861,55 +2894,73 @@ private struct WorkoutLiveWeightAdjuster: View {
                 .accessibilityValue(loadLabel)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(formatProgressionNumber(value))
-                    .font(.system(size: 24, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Theme.text)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let caption {
-                    Text(caption)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.muted)
+            if allowsEntry {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(formatProgressionNumber(value))
+                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Theme.text)
+                        .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 5) {
-                ForEach(controls, id: \.label) { control in
-                    Button {
-                        apply(control.delta)
-                    } label: {
-                        Text(control.label)
-                            .font(.system(size: 11, weight: .heavy))
-                            .monospacedDigit()
+                    if let caption {
+                        Text(caption)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.muted)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: liveQuickChipHeight)
+                            .minimumScaleFactor(0.72)
+                            .monospacedDigit()
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(control.delta == nil ? .white : Theme.text)
-                    .background(control.delta == nil ? Theme.accent : Theme.surface)
-                    .overlay(
-                        Capsule()
-                            .stroke(control.delta == nil ? Color.clear : Theme.border.opacity(0.75), lineWidth: 1)
-                    )
-                    .clipShape(Capsule())
-                    .disabled(control.delta == nil && !hasBaseline)
-                    .opacity(control.delta == nil && !hasBaseline ? 0.45 : 1)
-                    .accessibilityLabel(accessibilityLabel(for: control))
                 }
+
+                HStack(spacing: 5) {
+                    ForEach(controls, id: \.label) { control in
+                        Button {
+                            apply(control.delta)
+                        } label: {
+                            Text(control.label)
+                                .font(.system(size: 11, weight: .heavy))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: liveQuickChipHeight)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(control.delta == nil ? .white : Theme.text)
+                        .background(control.delta == nil ? Theme.accent : Theme.surface)
+                        .overlay(
+                            Capsule()
+                                .stroke(control.delta == nil ? Color.clear : Theme.border.opacity(0.75), lineWidth: 1)
+                        )
+                        .clipShape(Capsule())
+                        .disabled(control.delta == nil && !hasBaseline)
+                        .opacity(control.delta == nil && !hasBaseline ? 0.45 : 1)
+                        .accessibilityLabel(accessibilityLabel(for: control))
+                    }
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "nosign")
+                        .font(.system(size: 12, weight: .heavy))
+                    Text("No load")
+                        .font(.system(size: 13, weight: .heavy))
+                }
+                .foregroundStyle(Theme.muted)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(Theme.surface.opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Theme.border.opacity(0.72), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
         .padding(8)
-        .frame(height: liveQuickControlHeight, alignment: .center)
+        .frame(height: liveQuickControlHeight, alignment: .top)
         .frame(maxWidth: .infinity)
         .background(Theme.background)
         .overlay(
