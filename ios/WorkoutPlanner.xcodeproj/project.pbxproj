@@ -409,6 +409,7 @@
 		879F4E253AE51D4DDA04DF76 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = WorkoutPlannerLiveActivity/WorkoutPlannerLiveActivity.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				INFOPLIST_FILE = WorkoutPlannerLiveActivity/Info.plist;
@@ -454,6 +455,7 @@
 		D97737692D7E6F25044ED870 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = WorkoutPlannerLiveActivity/WorkoutPlannerLiveActivity.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;

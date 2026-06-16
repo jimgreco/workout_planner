@@ -5,6 +5,7 @@ private let workoutLiveActivityUpdateDelayNanoseconds: UInt64 = 250_000_000
 
 struct WorkoutLogView: View {
     @EnvironmentObject private var store: WorkoutStore
+    @Environment(\.scenePhase) private var scenePhase
 
     private enum FocusedTextField: Hashable {
         case name
@@ -33,6 +34,7 @@ struct WorkoutLogView: View {
     @State private var hasPendingBuilderCommit = false
     @State private var liveActivityUpdateTask: Task<Void, Never>?
     @State private var liveActivityUpdateGeneration = 0
+    @State private var appliedLiveActivityInteractionRevision = 0
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
     @FocusState private var focusedLiveActivityField: WorkoutBuilderFocusedField?
@@ -94,6 +96,11 @@ struct WorkoutLogView: View {
             }
         }
         .onAppear(perform: loadInitialState)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                applyLiveActivityInteractionChanges()
+            }
+        }
         .onChange(of: store.pendingWorkoutStart) { _, start in
             guard let start else { return }
             applyTemplate(start.template, replace: !isActive, program: start.program)
@@ -454,6 +461,7 @@ struct WorkoutLogView: View {
             applyTemplate(template, replace: true)
             store.pendingTemplate = nil
         }
+        applyLiveActivityInteractionChanges()
     }
 
     private func load(log: WorkoutLog, editing: Bool) {
@@ -590,6 +598,7 @@ struct WorkoutLogView: View {
                 workoutID: workoutId,
                 finalState: liveActivityState(isCompleteOverride: true)
             )
+            WorkoutLiveActivitySharedStore.clear(workoutID: workoutId)
 
             if isEditing {
                 resetWorkout()
@@ -619,6 +628,7 @@ struct WorkoutLogView: View {
         do {
             if !isEditing {
                 WorkoutLiveActivityController.shared.end(workoutID: id)
+                WorkoutLiveActivitySharedStore.clear(workoutID: id)
                 try await store.deleteLog(id)
             }
             resetWorkout()
@@ -1136,9 +1146,96 @@ struct WorkoutLogView: View {
     private func updateExternalLiveActivity() {
         guard shouldShowLiveActivityCard else {
             WorkoutLiveActivityController.shared.end(workoutID: workoutId)
+            WorkoutLiveActivitySharedStore.clear(workoutID: workoutId)
             return
         }
-        WorkoutLiveActivityController.shared.update(workoutID: workoutId, state: liveActivityState())
+        guard let state = liveActivityState() else { return }
+        WorkoutLiveActivityController.shared.update(workoutID: workoutId, state: state)
+        persistLiveActivitySharedState(contentState: state)
+    }
+
+    private func applyLiveActivityInteractionChanges() {
+        guard let workoutId,
+              let sharedState = WorkoutLiveActivitySharedStore.load(workoutID: workoutId),
+              sharedState.revision > appliedLiveActivityInteractionRevision
+        else { return }
+
+        items = sharedState.items.map { item in
+            ExerciseItem(
+                exerciseId: item.exerciseId,
+                weightType: item.weightType,
+                restTargetSeconds: item.restTargetSeconds,
+                sets: item.sets.map { set in
+                    WorkoutSet(
+                        reps: set.reps,
+                        repsLeft: set.repsLeft,
+                        repsRight: set.repsRight,
+                        weight: set.weight,
+                        placeholderReps: set.placeholderReps,
+                        placeholderRepsLeft: set.placeholderRepsLeft,
+                        placeholderRepsRight: set.placeholderRepsRight,
+                        placeholderWeight: set.placeholderWeight,
+                        placeholderWeightType: set.placeholderWeightType,
+                        restStartTime: set.restStartTime,
+                        restDuration: set.restDuration,
+                        restTargetSeconds: set.restTargetSeconds,
+                        setType: set.setType
+                    )
+                }
+            )
+        }
+        activeExerciseIndex = min(sharedState.activeExerciseIndex, max(0, items.count - 1))
+        activeSetIndex = items.indices.contains(activeExerciseIndex)
+            ? min(sharedState.activeSetIndex, max(0, items[activeExerciseIndex].sets.count - 1))
+            : 0
+        appliedLiveActivityInteractionRevision = sharedState.revision
+        rescheduleRestAlertIfNeeded()
+        saveNow(status: currentStatus())
+        updateExternalLiveActivityNow()
+    }
+
+    private func persistLiveActivitySharedState(contentState: WorkoutLiveActivityAttributes.ContentState) {
+        guard let workoutId else { return }
+        let existingRevision = WorkoutLiveActivitySharedStore.load(workoutID: workoutId)?.revision ?? 0
+        let sharedItems = items.map { item in
+            let exercise = store.exercise(id: item.exerciseId)
+            return WorkoutLiveActivitySharedItem(
+                exerciseId: item.exerciseId,
+                exerciseName: exercise?.name ?? "Exercise",
+                muscleGroup: exercise?.muscleGroup ?? "",
+                weightType: item.weightType,
+                restTargetSeconds: item.restTargetSeconds,
+                sets: item.sets.map { set in
+                    WorkoutLiveActivitySharedSet(
+                        reps: set.reps,
+                        repsLeft: set.repsLeft,
+                        repsRight: set.repsRight,
+                        weight: set.weight,
+                        placeholderReps: set.placeholderReps,
+                        placeholderRepsLeft: set.placeholderRepsLeft,
+                        placeholderRepsRight: set.placeholderRepsRight,
+                        placeholderWeight: set.placeholderWeight,
+                        placeholderWeightType: set.placeholderWeightType,
+                        restStartTime: set.restStartTime,
+                        restDuration: set.restDuration,
+                        restTargetSeconds: set.restTargetSeconds,
+                        setType: set.setType
+                    )
+                }
+            )
+        }
+
+        let sharedState = WorkoutLiveActivitySharedState(
+            workoutID: workoutId,
+            workoutName: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Workout" : name,
+            items: sharedItems,
+            activeExerciseIndex: activeExerciseIndex,
+            activeSetIndex: activeSetIndex,
+            startedAt: startTime.flatMap { ISO8601DateFormatter().date(from: $0) },
+            revision: max(appliedLiveActivityInteractionRevision, existingRevision),
+            contentState: contentState
+        )
+        WorkoutLiveActivitySharedStore.save(sharedState)
     }
 
     private func liveActivityState(isCompleteOverride: Bool = false) -> WorkoutLiveActivityAttributes.ContentState? {
@@ -1163,7 +1260,12 @@ struct WorkoutLogView: View {
             muscleGroup: context.exercise.muscleGroup,
             setLabel: "\(context.setIndex + 1)/\(context.item.sets.count)",
             reps: liveRepsLabel(for: context.set) ?? "-",
+            repsGoal: liveRepsGoalLabel(for: context.set),
             weight: liveWeightLabel(for: context) ?? "",
+            weightCaption: liveWeightCaption(for: context),
+            loadLabel: liveLoadLabel(context.item.weightType),
+            allowsWeightEntry: context.item.weightType != "none",
+            weightBaseline: liveWeightPlaceholder(for: context).flatMap { Double($0) },
             setType: store.settings.advancedMode ? setTypeLabel(context.set.setType) : "",
             personalBest: personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true),
             needsWeightIncrease: routineExerciseNeedsWeightIncrease(weightIncreaseContext.item, logs: store.logs),
@@ -1237,10 +1339,55 @@ struct WorkoutLogView: View {
     private func liveWeightLabel(for context: WorkoutLiveSetContext) -> String? {
         guard context.item.weightType != "none" else { return nil }
         let weight = (context.set.weight?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-            ?? (context.set.placeholderWeight?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? liveWeightPlaceholder(for: context)
         guard let weight else { return nil }
         if context.item.weightType == "bar_double" { return "\(weight) + bar" }
         return context.item.weightType == "double" ? "\(weight) each" : "\(weight) lb"
+    }
+
+    private func liveWeightCaption(for context: WorkoutLiveSetContext) -> String? {
+        guard context.item.weightType != "none" else { return nil }
+        let weight = liveCleaned(context.set.weight) ?? liveWeightPlaceholder(for: context)
+        return calculatedWeightCaption(weight: weight, weightType: context.item.weightType)
+    }
+
+    private func liveRepsGoalLabel(for set: WorkoutSet) -> String? {
+        if let left = liveRepTargetText(from: set.placeholderRepsLeft),
+           let right = liveRepTargetText(from: set.placeholderRepsRight) {
+            return left == right ? left : "\(left)/\(right)"
+        }
+        guard let target = liveRepTargetText(from: set.placeholderReps) else { return nil }
+        return "Goal \(target)"
+    }
+
+    private func liveLoadLabel(_ weightType: String?) -> String {
+        switch weightType ?? "weight" {
+        case "double": return "2x"
+        case "bar_double": return "Bar"
+        case "none": return "None"
+        default: return "1x"
+        }
+    }
+
+    private func liveWeightPlaceholder(for context: WorkoutLiveSetContext) -> String? {
+        contextualWeightPlaceholder(
+            weight: context.set.placeholderWeight,
+            sourceWeightType: context.set.placeholderWeightType ?? context.item.weightType,
+            targetWeightType: context.item.weightType
+        )
+    }
+
+    private func liveRepTargetText(from rawValue: String?) -> String? {
+        if let placeholder = RepsFieldPlaceholder(rawValue: liveCleaned(rawValue) ?? ""),
+           let goal = placeholder.goal {
+            return goal
+        }
+        return nil
+    }
+
+    private func liveCleaned(_ value: String?) -> String? {
+        let cleaned = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned?.isEmpty == false ? cleaned : nil
     }
 
     private func liveRepsLabel(for set: WorkoutSet) -> String? {
@@ -1316,6 +1463,7 @@ struct WorkoutLogView: View {
         liveActivityUpdateTask = nil
         restAlert = nil
         WorkoutLiveActivityController.shared.end(workoutID: workoutId)
+        WorkoutLiveActivitySharedStore.clear(workoutID: workoutId)
         hasPendingTextCommit = false
         hasPendingBuilderCommit = false
         workoutId = nil
