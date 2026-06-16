@@ -276,7 +276,7 @@ private struct LiveActivityQuickEntryPanel: View {
             HStack(spacing: 7) {
                 LiveActivityActionButton(
                     label: "-1",
-                    intent: WorkoutLiveActivityAdjustRepsIntent(workoutID: workoutID, delta: -1)
+                    intent: WorkoutLiveActivityDecreaseRepsIntent(workoutID: workoutID)
                 )
 
                 LiveActivityActionButton(
@@ -288,7 +288,7 @@ private struct LiveActivityQuickEntryPanel: View {
 
                 LiveActivityActionButton(
                     label: "+1",
-                    intent: WorkoutLiveActivityAdjustRepsIntent(workoutID: workoutID, delta: 1)
+                    intent: WorkoutLiveActivityIncreaseRepsIntent(workoutID: workoutID)
                 )
             }
         }
@@ -362,7 +362,7 @@ private struct LiveActivitySummaryStrip: View {
     }
 }
 
-private struct LiveActivityActionButton<I: AppIntent>: View {
+private struct LiveActivityActionButton<I: LiveActivityIntent>: View {
     let label: String
     var systemImage: String?
     let intent: I

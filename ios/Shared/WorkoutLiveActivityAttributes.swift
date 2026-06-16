@@ -420,24 +420,38 @@ enum WorkoutLiveActivitySharedStore {
     }
 }
 
-struct WorkoutLiveActivityAdjustRepsIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Adjust Workout Reps"
+struct WorkoutLiveActivityDecreaseRepsIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Decrease Workout Reps"
     static var isDiscoverable = false
 
     @Parameter(title: "Workout ID") var workoutID: String
-    @Parameter(title: "Delta") var delta: Int
 
     init() {}
 
-    init(workoutID: String, delta: Int) {
+    init(workoutID: String) {
         self.workoutID = workoutID
-        self.delta = delta
     }
 
     func perform() async throws -> some IntentResult {
-        await mutateSharedWorkout(workoutID: workoutID) { state in
-            state.adjustReps(delta: delta)
-        }
+        await adjustWorkoutLiveActivityReps(workoutID: workoutID, delta: -1)
+        return .result()
+    }
+}
+
+struct WorkoutLiveActivityIncreaseRepsIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Increase Workout Reps"
+    static var isDiscoverable = false
+
+    @Parameter(title: "Workout ID") var workoutID: String
+
+    init() {}
+
+    init(workoutID: String) {
+        self.workoutID = workoutID
+    }
+
+    func perform() async throws -> some IntentResult {
+        await adjustWorkoutLiveActivityReps(workoutID: workoutID, delta: 1)
         return .result()
     }
 }
@@ -496,5 +510,11 @@ private func mutateSharedWorkout(
     let content = ActivityContent(state: state.contentState, staleDate: nil)
     for activity in Activity<WorkoutLiveActivityAttributes>.activities where activity.attributes.workoutID == workoutID {
         await activity.update(content)
+    }
+}
+
+private func adjustWorkoutLiveActivityReps(workoutID: String, delta: Int) async {
+    await mutateSharedWorkout(workoutID: workoutID) { state in
+        state.adjustReps(delta: delta)
     }
 }
