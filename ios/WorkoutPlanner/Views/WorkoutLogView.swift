@@ -1405,13 +1405,28 @@ struct WorkoutLogView: View {
     private func liveRepText(value: String?, placeholder: String?) -> String? {
         let reps = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let reps, !reps.isEmpty { return reps }
-        let placeholder = placeholder?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let placeholder, !placeholder.isEmpty else { return nil }
-        if let context = RepsFieldPlaceholder(rawValue: placeholder) {
-            if let goal = context.goal { return goal }
-            return context.last
+        return liveRepSeedText(from: placeholder)
+    }
+
+    private func liveRepSeedText(from rawValue: String?) -> String? {
+        guard let rawValue = liveCleaned(rawValue) else { return nil }
+        if let placeholder = RepsFieldPlaceholder(rawValue: rawValue) {
+            if let last = liveCleaned(placeholder.last) { return last }
+            return liveRepNumberText(from: placeholder.goal)
         }
-        return placeholder
+        return liveRepNumberText(from: rawValue)
+    }
+
+    private func liveRepNumberText(from rawValue: String?) -> String? {
+        guard let rawValue = liveCleaned(rawValue) else { return nil }
+        let prefix = rawValue.prefix { character in
+            character.isNumber || character == "."
+        }
+        guard !prefix.isEmpty, let value = Double(prefix) else { return nil }
+        if value.rounded() == value {
+            return String(Int(value))
+        }
+        return String(format: "%.1f", value)
     }
 
     private func scheduleRestAlert(exerciseIndex: Int, setIndex: Int, startTime: Double) {

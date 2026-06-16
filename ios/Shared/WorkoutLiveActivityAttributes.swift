@@ -311,9 +311,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
 
     private static func repText(value: String?, placeholder: String?) -> String? {
         if let value = cleaned(value) { return value }
-        if let parsed = ParsedRepPlaceholder(rawValue: placeholder), let goal = parsed.goal { return goal }
-        if let parsed = ParsedRepPlaceholder(rawValue: placeholder), let last = parsed.last { return last }
-        return cleaned(placeholder)
+        return repSeed(from: placeholder).map { "\($0)" }
     }
 
     private static func repSeed(from rawValue: String?) -> Int? {

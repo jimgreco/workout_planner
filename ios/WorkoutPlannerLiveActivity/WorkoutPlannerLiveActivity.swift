@@ -21,7 +21,7 @@ struct WorkoutPlannerLiveActivity: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(context.state.isResting ? "Rest" : "Current")
+                        Text(context.state.isResting ? "Next" : "Current")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
@@ -76,16 +76,11 @@ private struct LockScreenWorkoutView: View {
 
     private var headline: String {
         if state.isComplete { return "Workout complete" }
-        return state.isResting ? "Rest" : state.exerciseName
+        return state.exerciseName
     }
 
     private var detailLine: String {
         if state.isComplete { return state.workoutName }
-        if state.isResting {
-            let exercise = state.restExerciseName ?? state.exerciseName
-            return exercise.isEmpty ? "Between sets" : "After \(exercise)"
-        }
-
         return ""
     }
 
@@ -431,9 +426,6 @@ private struct DynamicIslandQuickEntryRow: View {
     }
 
     private var compactRepsValue: String {
-        if let repsGoal = state.repsGoal, !repsGoal.isEmpty {
-            return "\(state.reps) / \(repsGoal.replacingOccurrences(of: "Goal ", with: ""))"
-        }
         return state.reps
     }
 
