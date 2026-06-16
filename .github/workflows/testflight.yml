@@ -14,6 +14,7 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || 'V6JPQCD336' }}
       IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'com.workoutplanner.ios' }}
       IOS_LIVE_ACTIVITY_BUNDLE_ID: ${{ vars.IOS_LIVE_ACTIVITY_BUNDLE_ID || 'com.workoutplanner.ios.LiveActivity' }}
+      IOS_APP_GROUP_ID: ${{ vars.IOS_APP_GROUP_ID || 'group.com.workoutplanner.ios' }}
       IOS_SCHEME: ${{ vars.IOS_SCHEME || 'WorkoutPlanner' }}
       XCODE_PROJECT: ios/WorkoutPlanner.xcodeproj
 
@@ -82,12 +83,10 @@ jobs:
         env:
           CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
           CERT_PWD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
-          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           KC_PWD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "$CERT_P12"
-          test -n "$PROFILE"
           test -n "$KC_PWD"
 
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
@@ -114,34 +113,52 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PWD" "$KEYCHAIN_PATH"
 
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          printf '%s' "$PROFILE" | base64 -d > "$RUNNER_TEMP/profile.mobileprovision"
+
+          node .github/scripts/ensure-app-store-profile.mjs \
+            --bundle-id "$IOS_BUNDLE_ID" \
+            --profile-name "Forge App Store ${GITHUB_RUN_ID}" \
+            --certificate-der "$RUNNER_TEMP/distribution-cert.der" \
+            --output "$RUNNER_TEMP/profile.mobileprovision"
+
+          validate_profile() {
+            local profile_path="$1"
+            local expected_app_id="$2"
+            local label="$3"
+            local plist_path="$RUNNER_TEMP/$label.plist"
+
+            security cms -D -i "$profile_path" > "$plist_path"
+
+            local profile_app_id
+            profile_app_id="$(plutil -extract Entitlements.application-identifier raw -o - "$plist_path")"
+            if [ "$profile_app_id" != "$expected_app_id" ]; then
+              echo "$label provisioning profile App ID '$profile_app_id' does not match '$expected_app_id'."
+              exit 1
+            fi
+
+            if ! /usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$plist_path" 2>/dev/null | grep -Fq "$IOS_APP_GROUP_ID"; then
+              echo "$label provisioning profile does not include App Group '$IOS_APP_GROUP_ID'."
+              echo "Enable App Groups on the '$expected_app_id' App ID, assign '$IOS_APP_GROUP_ID', then rerun this workflow."
+              exit 1
+            fi
+          }
+
           PROFILE_UUID="$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract UUID raw -o - -)"
           PROFILE_NAME="$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract Name raw -o - -)"
-          PROFILE_APP_ID="$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract Entitlements.application-identifier raw -o - -)"
           EXPECTED_APP_ID="$APPLE_TEAM_ID.$IOS_BUNDLE_ID"
-
-          if [ "$PROFILE_APP_ID" != "$EXPECTED_APP_ID" ]; then
-            echo "Provisioning profile App ID '$PROFILE_APP_ID' does not match '$EXPECTED_APP_ID'."
-            exit 1
-          fi
+          validate_profile "$RUNNER_TEMP/profile.mobileprovision" "$EXPECTED_APP_ID" "App"
 
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
 
           node .github/scripts/ensure-app-store-profile.mjs \
             --bundle-id "$IOS_LIVE_ACTIVITY_BUNDLE_ID" \
-            --profile-name "Forge Live Activity App Store" \
+            --profile-name "Forge Live Activity App Store ${GITHUB_RUN_ID}" \
             --certificate-der "$RUNNER_TEMP/distribution-cert.der" \
             --output "$RUNNER_TEMP/live-activity-profile.mobileprovision"
 
           LIVE_ACTIVITY_PROFILE_UUID="$(security cms -D -i "$RUNNER_TEMP/live-activity-profile.mobileprovision" | plutil -extract UUID raw -o - -)"
           LIVE_ACTIVITY_PROFILE_NAME="$(security cms -D -i "$RUNNER_TEMP/live-activity-profile.mobileprovision" | plutil -extract Name raw -o - -)"
-          LIVE_ACTIVITY_PROFILE_APP_ID="$(security cms -D -i "$RUNNER_TEMP/live-activity-profile.mobileprovision" | plutil -extract Entitlements.application-identifier raw -o - -)"
           EXPECTED_LIVE_ACTIVITY_APP_ID="$APPLE_TEAM_ID.$IOS_LIVE_ACTIVITY_BUNDLE_ID"
-
-          if [ "$LIVE_ACTIVITY_PROFILE_APP_ID" != "$EXPECTED_LIVE_ACTIVITY_APP_ID" ]; then
-            echo "Live Activity provisioning profile App ID '$LIVE_ACTIVITY_PROFILE_APP_ID' does not match '$EXPECTED_LIVE_ACTIVITY_APP_ID'."
-            exit 1
-          fi
+          validate_profile "$RUNNER_TEMP/live-activity-profile.mobileprovision" "$EXPECTED_LIVE_ACTIVITY_APP_ID" "Live Activity"
 
           cp "$RUNNER_TEMP/live-activity-profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$LIVE_ACTIVITY_PROFILE_UUID.mobileprovision"
           echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
