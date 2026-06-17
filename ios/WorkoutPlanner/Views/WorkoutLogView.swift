@@ -3040,6 +3040,8 @@ private struct WorkoutLiveWeightAdjuster: View {
     let loadLabel: String
     let allowsEntry: Bool
     let onLoadChange: (String) -> Void
+    @State private var draftValue = ""
+    @FocusState private var isWeightFocused: Bool
 
     private var controls: [(label: String, delta: Double?)] {
         [
@@ -3090,13 +3092,18 @@ private struct WorkoutLiveWeightAdjuster: View {
 
             if allowsEntry {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(formatProgressionNumber(value))
+                    TextField("0", text: weightText)
                         .font(.system(size: 24, weight: .heavy, design: .rounded))
                         .foregroundStyle(Theme.text)
                         .monospacedDigit()
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.leading)
+                        .focused($isWeightFocused)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("Weight")
 
                     if let caption {
                         Text(caption)
@@ -3162,6 +3169,33 @@ private struct WorkoutLiveWeightAdjuster: View {
                 .stroke(Theme.border.opacity(0.75), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .onAppear {
+            draftValue = formatProgressionNumber(value)
+        }
+        .onChange(of: value) { _, newValue in
+            if !isWeightFocused {
+                draftValue = formatProgressionNumber(newValue)
+            }
+        }
+        .onChange(of: isWeightFocused) { _, isFocused in
+            if isFocused {
+                draftValue = formatProgressionNumber(value)
+            } else {
+                normalizeDraftValue()
+            }
+        }
+    }
+
+    private var weightText: Binding<String> {
+        Binding(
+            get: { draftValue },
+            set: { nextValue in
+                let sanitized = sanitizedWeightText(nextValue)
+                draftValue = sanitized
+                guard let parsed = Double(sanitized) else { return }
+                value = max(0, parsed)
+            }
+        )
     }
 
     private func apply(_ delta: Double?) {
@@ -3177,6 +3211,29 @@ private struct WorkoutLiveWeightAdjuster: View {
             return "\(delta > 0 ? "Add" : "Subtract") \(formatProgressionNumber(abs(delta))) pounds"
         }
         return "Use baseline weight"
+    }
+
+    private func sanitizedWeightText(_ text: String) -> String {
+        var hasDecimal = false
+        var result = ""
+        for character in text {
+            if character.isNumber {
+                result.append(character)
+            } else if character == ".", !hasDecimal {
+                hasDecimal = true
+                result.append(character)
+            }
+        }
+        return result
+    }
+
+    private func normalizeDraftValue() {
+        guard let parsed = Double(draftValue) else {
+            draftValue = formatProgressionNumber(value)
+            return
+        }
+        value = max(0, parsed)
+        draftValue = formatProgressionNumber(max(0, parsed))
     }
 }
 

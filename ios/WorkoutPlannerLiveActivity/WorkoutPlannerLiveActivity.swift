@@ -114,7 +114,7 @@ private struct DynamicIslandExpandedTrailingHeader: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .trailing, spacing: 1) {
             LiveActivityTimer(state: state)
                 .font(.system(size: 16, weight: .heavy, design: .rounded).monospacedDigit())
                 .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
@@ -129,7 +129,7 @@ private struct DynamicIslandExpandedTrailingHeader: View {
                     .minimumScaleFactor(0.7)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
@@ -786,9 +786,19 @@ private struct LiveActivityMinimalLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
     var body: some View {
-        Image(systemName: state.isResting ? "timer" : "bolt.fill")
-            .font(.system(size: 11, weight: .heavy))
-            .foregroundStyle(forgeAccent)
+        if state.isResting,
+           let restTargetEnd = state.restTargetEnd {
+            Text(restTargetEnd, style: .timer)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(forgeAccent)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+        } else {
+            Image(systemName: state.isResting ? "timer" : "bolt.fill")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(forgeAccent)
+        }
     }
 }
 
