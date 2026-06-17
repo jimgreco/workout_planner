@@ -19,12 +19,6 @@ struct WorkoutPlannerLiveActivity: Widget {
                 .activitySystemActionForegroundColor(forgeAccent)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    DynamicIslandExpandedLeadingHeader(state: context.state)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    DynamicIslandExpandedTrailingHeader(state: context.state)
-                }
                 DynamicIslandExpandedRegion(.bottom) {
                     DynamicIslandExpandedWorkoutView(
                         state: context.state,
@@ -46,22 +40,6 @@ struct WorkoutPlannerLiveActivity: Widget {
 private struct DynamicIslandExpandedWorkoutView: View {
     let state: WorkoutLiveActivityAttributes.ContentState
     let workoutID: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            DynamicIslandSummaryStrip(state: state)
-
-            if !state.isComplete {
-                DynamicIslandControlRow(state: state, workoutID: workoutID)
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.top, 1)
-    }
-}
-
-private struct DynamicIslandExpandedLeadingHeader: View {
-    let state: WorkoutLiveActivityAttributes.ContentState
 
     private var headline: String {
         if state.isComplete { return "Workout complete" }
@@ -91,42 +69,54 @@ private struct DynamicIslandExpandedLeadingHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(headline)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(liveActivityText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+        VStack(alignment: .leading, spacing: 6) {
+            header
 
-            if !secondaryLine.isEmpty {
-                Text(secondaryLine)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(liveActivitySecondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
+            DynamicIslandSummaryStrip(state: state)
+
+            if !state.isComplete {
+                DynamicIslandControlRow(state: state, workoutID: workoutID)
             }
         }
-        .padding(.leading, 6)
+        .padding(.horizontal, 6)
+        .padding(.top, 1)
     }
-}
 
-private struct DynamicIslandExpandedTrailingHeader: View {
-    let state: WorkoutLiveActivityAttributes.ContentState
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            LiveActivityTimer(state: state)
-                .font(.system(size: 16, weight: .heavy, design: .rounded).monospacedDigit())
-                .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-
-            if let personalBest = state.personalBest {
-                Text("PB \(personalBest)")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                    .foregroundStyle(forgeAccent)
+    private var header: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(headline)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundStyle(liveActivityText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+
+                if !secondaryLine.isEmpty {
+                    Text(secondaryLine)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(liveActivitySecondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                LiveActivityTimer(state: state)
+                    .font(.system(size: 16, weight: .heavy, design: .rounded).monospacedDigit())
+                    .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                if let personalBest = state.personalBest {
+                    Text("PB \(personalBest)")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .foregroundStyle(forgeAccent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -391,7 +381,7 @@ private struct LockScreenWorkoutView: View {
                 Spacer(minLength: 8)
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    LiveActivityTimer(state: state)
+                    LiveActivityTimer(state: state, displayStyle: .lockScreenCountdown)
                         .font(.system(size: 17, weight: .heavy, design: .rounded).monospacedDigit())
                         .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
                         .lineLimit(1)
@@ -720,14 +710,19 @@ private struct LiveActivityAddWeightChip: View {
     }
 }
 
+private enum LiveActivityTimerDisplayStyle {
+    case standard
+    case lockScreenCountdown
+}
+
 private struct LiveActivityTimer: View {
     let state: WorkoutLiveActivityAttributes.ContentState
+    var displayStyle: LiveActivityTimerDisplayStyle = .standard
 
     var body: some View {
         if let restTargetEnd = state.restTargetEnd,
            state.restStartedAt != nil {
-            Text(restTargetEnd, style: .timer)
-                .monospacedDigit()
+            restTimer(targetEnd: restTargetEnd)
         } else if let restStartedAt = state.restStartedAt {
             Text(restStartedAt, style: .timer)
                 .monospacedDigit()
@@ -736,6 +731,19 @@ private struct LiveActivityTimer: View {
                 .monospacedDigit()
         } else {
             Text("0:00")
+                .monospacedDigit()
+        }
+    }
+
+    @ViewBuilder
+    private func restTimer(targetEnd: Date) -> some View {
+        if displayStyle == .lockScreenCountdown,
+           let restStartedAt = state.restStartedAt,
+           restStartedAt < targetEnd {
+            Text(timerInterval: restStartedAt...targetEnd, countsDown: true, showsHours: false)
+                .monospacedDigit()
+        } else {
+            Text(targetEnd, style: .timer)
                 .monospacedDigit()
         }
     }
