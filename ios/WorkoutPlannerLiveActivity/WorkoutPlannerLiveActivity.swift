@@ -26,13 +26,11 @@ struct WorkoutPlannerLiveActivity: Widget {
                     )
                 }
             } compactLeading: {
-                Image(systemName: context.state.isResting ? "timer" : "bolt.fill")
-                    .foregroundStyle(forgeAccent)
+                LiveActivityCompactLeadingLabel(state: context.state)
             } compactTrailing: {
-                LiveActivityCompactTimerLabel(state: context.state)
+                LiveActivityCompactTrailingLabel(state: context.state)
             } minimal: {
-                Image(systemName: context.state.isResting ? "timer" : "flame.fill")
-                    .foregroundStyle(forgeAccent)
+                LiveActivityMinimalLabel(state: context.state)
             }
             .keylineTint(forgeAccent)
         }
@@ -732,22 +730,54 @@ private struct LiveActivityTimer: View {
     }
 }
 
-private struct LiveActivityCompactTimerLabel: View {
+private struct LiveActivityCompactLeadingLabel: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+
+    private var label: String {
+        if state.isComplete { return "Done" }
+        return state.isResting ? "Rest" : state.setLabel
+    }
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11, weight: .heavy, design: .rounded))
+            .foregroundStyle(forgeAccent)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+    }
+}
+
+private struct LiveActivityCompactTrailingLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
     var body: some View {
         if state.isResting,
            let restTargetEnd = state.restTargetEnd {
             Text(restTargetEnd, style: .timer)
-                .font(.caption2.weight(.heavy))
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundStyle(liveActivityText)
                 .monospacedDigit()
-                .minimumScaleFactor(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         } else {
-            Text(state.setLabel)
-                .font(.caption2.weight(.heavy))
+            Text(state.reps.isEmpty ? state.setLabel : state.reps)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(liveActivityText)
                 .monospacedDigit()
-                .minimumScaleFactor(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
+    }
+}
+
+private struct LiveActivityMinimalLabel: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+
+    var body: some View {
+        Image(systemName: state.isResting ? "timer" : "bolt.fill")
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundStyle(forgeAccent)
     }
 }
 
