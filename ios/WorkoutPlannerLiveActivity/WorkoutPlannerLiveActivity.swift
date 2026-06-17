@@ -112,7 +112,7 @@ private struct DynamicIslandExpandedWorkoutView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
-                if !state.isResting, let personalBest = state.personalBest {
+                if let personalBest = state.personalBest {
                     Text("PB \(personalBest)")
                         .font(.system(size: 9, weight: .heavy, design: .rounded))
                         .foregroundStyle(forgeAccent)
@@ -128,9 +128,17 @@ private struct DynamicIslandSummaryStrip: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
     private var repsCaption: String? {
-        guard let goal = state.repsGoal else { return nil }
-        let strippedGoal = goal.replacingOccurrences(of: "Goal ", with: "")
-        return strippedGoal == state.reps ? nil : goal
+        var parts: [String] = []
+        if let goal = state.repsGoal {
+            let strippedGoal = goal.replacingOccurrences(of: "Goal ", with: "")
+            if strippedGoal != state.reps {
+                parts.append(goal)
+            }
+        }
+        if let last = state.repsLast, !last.isEmpty {
+            parts.append("Last \(last)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ")
     }
 
     private var loadValue: String {
@@ -380,7 +388,7 @@ private struct LockScreenWorkoutView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.76)
 
-                    if !state.isResting, let personalBest = state.personalBest {
+                    if let personalBest = state.personalBest {
                         Text("PB \(personalBest)")
                             .font(.system(size: 9, weight: .heavy))
                             .foregroundStyle(forgeAccent)
@@ -559,9 +567,17 @@ private struct LiveActivitySummaryStrip: View {
     }
 
     private var repsCaption: String? {
-        guard let goal = state.repsGoal else { return nil }
-        let strippedGoal = goal.replacingOccurrences(of: "Goal ", with: "")
-        return strippedGoal == state.reps ? nil : goal
+        var parts: [String] = []
+        if let goal = state.repsGoal {
+            let strippedGoal = goal.replacingOccurrences(of: "Goal ", with: "")
+            if strippedGoal != state.reps {
+                parts.append(goal)
+            }
+        }
+        if let last = state.repsLast, !last.isEmpty {
+            parts.append("Last \(last)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ")
     }
 
     private var loadValue: String {

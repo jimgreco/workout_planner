@@ -10,6 +10,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var setLabel: String
         var reps: String
         var repsGoal: String?
+        var repsLast: String?
         var weight: String
         var weightCaption: String?
         var weightLast: String?
@@ -168,6 +169,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.setLabel = "\(position.setIndex + 1)/\(item.sets.count)"
         contentState.reps = Self.repsLabel(for: set)
         contentState.repsGoal = Self.repsGoalLabel(for: set)
+        contentState.repsLast = Self.repsLastLabel(for: set)
         contentState.weight = Self.weightLabel(for: set, item: item)
         contentState.weightCaption = Self.weightCaption(for: set, item: item)
         contentState.weightLast = Self.weightLastLabel(for: set, item: item)
@@ -273,6 +275,14 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         return "Goal \(goal)"
     }
 
+    private static func repsLastLabel(for set: WorkoutLiveActivitySharedSet) -> String? {
+        if let left = repLast(from: set.placeholderRepsLeft),
+           let right = repLast(from: set.placeholderRepsRight) {
+            return left == right ? left : "\(left)/\(right)"
+        }
+        return repLast(from: set.placeholderReps)
+    }
+
     private static func weightLabel(for set: WorkoutLiveActivitySharedSet, item: WorkoutLiveActivitySharedItem) -> String {
         guard item.weightType != "none",
               let weight = cleaned(set.weight) ?? weightBaseline(for: set, item: item).map(formatNumber)
@@ -346,6 +356,10 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
 
     private static func repGoal(from rawValue: String?) -> String? {
         ParsedRepPlaceholder(rawValue: rawValue)?.goal
+    }
+
+    private static func repLast(from rawValue: String?) -> String? {
+        ParsedRepPlaceholder(rawValue: rawValue)?.last
     }
 
     fileprivate static func repValue(_ rawValue: String?) -> Int? {

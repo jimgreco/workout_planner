@@ -1261,6 +1261,7 @@ struct WorkoutLogView: View {
             setLabel: "\(context.setIndex + 1)/\(context.item.sets.count)",
             reps: liveRepsLabel(for: context.set) ?? "-",
             repsGoal: liveRepsGoalLabel(for: context.set),
+            repsLast: liveRepsLastLabel(for: context.set),
             weight: liveWeightLabel(for: context) ?? "",
             weightCaption: liveWeightCaption(for: context),
             weightLast: liveWeightLastLabel(for: context),
@@ -1367,6 +1368,14 @@ struct WorkoutLogView: View {
         return "Goal \(target)"
     }
 
+    private func liveRepsLastLabel(for set: WorkoutSet) -> String? {
+        if let left = liveRepLastText(from: set.placeholderRepsLeft),
+           let right = liveRepLastText(from: set.placeholderRepsRight) {
+            return left == right ? left : "\(left)/\(right)"
+        }
+        return liveRepLastText(from: set.placeholderReps)
+    }
+
     private func liveLoadLabel(_ weightType: String?) -> String {
         switch weightType ?? "weight" {
         case "double": return "2x"
@@ -1388,6 +1397,14 @@ struct WorkoutLogView: View {
         if let placeholder = RepsFieldPlaceholder(rawValue: liveCleaned(rawValue) ?? ""),
            let goal = placeholder.goal {
             return goal
+        }
+        return nil
+    }
+
+    private func liveRepLastText(from rawValue: String?) -> String? {
+        if let placeholder = RepsFieldPlaceholder(rawValue: liveCleaned(rawValue) ?? ""),
+           let last = placeholder.last {
+            return last
         }
         return nil
     }
