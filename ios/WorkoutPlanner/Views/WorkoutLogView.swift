@@ -2105,19 +2105,40 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func repCaption(for set: WorkoutSet) -> String? {
-        guard let target = repTargetText(from: set.placeholderReps) else { return nil }
-        return "Goal \(target)"
+        var parts: [String] = []
+        if let target = repTargetText(from: set.placeholderReps) {
+            parts.append("Goal \(target)")
+        }
+        if let last = repLastText(from: set.placeholderReps) {
+            parts.append("Last \(last)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ")
     }
 
     private func sideRepCaption(for set: WorkoutSet, left: Bool) -> String? {
-        repTargetText(from: left ? set.placeholderRepsLeft : set.placeholderRepsRight)
-            ?? repTargetText(from: set.placeholderReps)
+        let sidePlaceholder = left ? set.placeholderRepsLeft : set.placeholderRepsRight
+        var parts: [String] = []
+        if let target = repTargetText(from: sidePlaceholder) ?? repTargetText(from: set.placeholderReps) {
+            parts.append(target)
+        }
+        if let last = repLastText(from: sidePlaceholder) ?? repLastText(from: set.placeholderReps) {
+            parts.append("Last \(last)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ")
     }
 
     private func repTargetText(from rawValue: String?) -> String? {
         if let placeholder = RepsFieldPlaceholder(rawValue: cleaned(rawValue) ?? ""),
            let goal = placeholder.goal {
             return goal
+        }
+        return nil
+    }
+
+    private func repLastText(from rawValue: String?) -> String? {
+        if let placeholder = RepsFieldPlaceholder(rawValue: cleaned(rawValue) ?? ""),
+           let last = placeholder.last {
+            return last
         }
         return nil
     }

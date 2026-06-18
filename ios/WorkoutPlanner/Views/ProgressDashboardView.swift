@@ -693,7 +693,7 @@ func estimatedOneRepMax(weight: Double, reps: String?) -> Double {
 }
 
 func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool = false) -> String {
-    let reps = (set.reps?.isEmpty == false) ? set.reps! : "-"
+    let reps = setRepsLabel(set)
     let unit = usesTime ? "secs" : "reps"
     let effort = [
         set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
@@ -705,6 +705,22 @@ func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool = false) ->
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
     let suffix = weightType == "bar_double" ? " (bar + 2x)" : weightType == "double" ? " (2x)" : ""
     return "\(typePrefix)\(reps) x \(weight)\(suffix)\(effortSuffix)"
+}
+
+private func setRepsLabel(_ set: WorkoutSet) -> String {
+    let reps = setCleanedText(set.reps)
+    let left = setCleanedText(set.repsLeft)
+    let right = setCleanedText(set.repsRight)
+
+    if let left, let right {
+        return left == right ? left : "\(left)/\(right)"
+    }
+    return left ?? right ?? reps ?? "-"
+}
+
+private func setCleanedText(_ value: String?) -> String? {
+    let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return text.isEmpty ? nil : text
 }
 
 func formatVolume(_ value: Double) -> String {

@@ -266,7 +266,7 @@ private struct HistoryItemView: View {
     }
 
     private func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool) -> String {
-        let reps = (set.reps?.isEmpty == false ? set.reps : "-") ?? "-"
+        let reps = repsLabel(for: set)
         let unit = usesTime ? "secs" : "reps"
         let effort = [
             set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
@@ -280,6 +280,22 @@ private struct HistoryItemView: View {
         let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
         let suffix = weightType == "bar_double" ? " lbs (bar + 2x)" : weightType == "double" ? " lbs (2x)" : " lbs"
         return "\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
+    }
+
+    private func repsLabel(for set: WorkoutSet) -> String {
+        let reps = cleaned(set.reps)
+        let left = cleaned(set.repsLeft)
+        let right = cleaned(set.repsRight)
+
+        if let left, let right {
+            return left == right ? left : "\(left)/\(right)"
+        }
+        return left ?? right ?? reps ?? "-"
+    }
+
+    private func cleaned(_ value: String?) -> String? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
     }
 }
 
