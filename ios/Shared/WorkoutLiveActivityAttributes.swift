@@ -8,6 +8,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var exerciseName: String
         var muscleGroup: String
         var setLabel: String
+        var repsTitle: String?
         var reps: String
         var repsGoal: String?
         var repsLast: String?
@@ -64,6 +65,7 @@ struct WorkoutLiveActivitySharedItem: Codable, Hashable {
     var exerciseId: String
     var exerciseName: String
     var muscleGroup: String
+    var repsTitle: String?
     var weightType: String?
     var restTargetSeconds: Int?
     var sets: [WorkoutLiveActivitySharedSet]
@@ -167,6 +169,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.exerciseName = item.exerciseName
         contentState.muscleGroup = item.muscleGroup
         contentState.setLabel = "\(position.setIndex + 1)/\(item.sets.count)"
+        contentState.repsTitle = item.repsTitle
         contentState.reps = Self.repsLabel(for: set)
         contentState.repsGoal = Self.repsGoalLabel(for: set)
         contentState.repsLast = Self.repsLastLabel(for: set)

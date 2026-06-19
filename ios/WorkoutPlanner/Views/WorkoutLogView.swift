@@ -1203,6 +1203,7 @@ struct WorkoutLogView: View {
                 exerciseId: item.exerciseId,
                 exerciseName: exercise?.name ?? "Exercise",
                 muscleGroup: exercise?.muscleGroup ?? "",
+                repsTitle: exercise?.usesTime == true ? "Secs" : "Reps",
                 weightType: item.weightType,
                 restTargetSeconds: item.restTargetSeconds,
                 sets: item.sets.map { set in
@@ -1259,6 +1260,7 @@ struct WorkoutLogView: View {
             exerciseName: context.exercise.name,
             muscleGroup: context.exercise.muscleGroup,
             setLabel: "\(context.setIndex + 1)/\(context.item.sets.count)",
+            repsTitle: context.exercise.usesTime == true ? "Secs" : "Reps",
             reps: liveRepsLabel(for: context.set) ?? "-",
             repsGoal: liveRepsGoalLabel(for: context.set),
             repsLast: liveRepsLastLabel(for: context.set),
@@ -2000,8 +2002,10 @@ private struct WorkoutLiveActivityCard: View {
     @ViewBuilder
     private func repEntryPanel(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, recordsSideReps: Bool, range: ClosedRange<Int>) -> some View {
         let mode = recordsSideRepsBinding(for: context)
+        let title = context.exercise.usesTime == true ? "Secs" : "Reps"
         if recordsSideReps {
             WorkoutLiveSideRepWheel(
+                title: title,
                 leftValue: repsValueBinding(set, \.repsLeft, fallback: sideRepsFallback(context.set, left: true)),
                 rightValue: repsValueBinding(set, \.repsRight, fallback: sideRepsFallback(context.set, left: false)),
                 recordsSideReps: mode,
@@ -2011,7 +2015,7 @@ private struct WorkoutLiveActivityCard: View {
             )
         } else {
             WorkoutLiveRepWheel(
-                title: context.exercise.usesTime == true ? "Secs" : "Reps",
+                title: title,
                 value: commonRepsValueBinding(set, context: context),
                 recordsSideReps: mode,
                 caption: repCaption(for: context.set),
@@ -2909,6 +2913,7 @@ private struct WorkoutLiveRepStepButton: View {
 }
 
 private struct WorkoutLiveSideRepWheel: View {
+    let title: String
     @Binding var leftValue: Int
     @Binding var rightValue: Int
     @Binding var recordsSideReps: Bool
@@ -2919,7 +2924,7 @@ private struct WorkoutLiveSideRepWheel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .center, spacing: 8) {
-                Text("Reps")
+                Text(title)
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
@@ -2930,8 +2935,8 @@ private struct WorkoutLiveSideRepWheel: View {
             }
 
             VStack(spacing: 4) {
-                WorkoutLiveSideRepControl(title: "L", value: $leftValue, caption: leftCaption, range: range)
-                WorkoutLiveSideRepControl(title: "R", value: $rightValue, caption: rightCaption, range: range)
+                WorkoutLiveSideRepControl(title: "L", unitTitle: title, value: $leftValue, caption: leftCaption, range: range)
+                WorkoutLiveSideRepControl(title: "R", unitTitle: title, value: $rightValue, caption: rightCaption, range: range)
             }
         }
         .padding(7)
@@ -2948,6 +2953,7 @@ private struct WorkoutLiveSideRepWheel: View {
 
 private struct WorkoutLiveSideRepControl: View {
     let title: String
+    let unitTitle: String
     @Binding var value: Int
     let caption: String?
     let range: ClosedRange<Int>
@@ -2999,7 +3005,7 @@ private struct WorkoutLiveSideRepControl: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title) reps")
+        .accessibilityLabel("\(title) \(unitTitle.lowercased())")
         .accessibilityValue("\(value)")
     }
 

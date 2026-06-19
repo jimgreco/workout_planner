@@ -155,7 +155,7 @@ private struct DynamicIslandSummaryStrip: View {
     var body: some View {
         HStack(spacing: 10) {
             DynamicIslandMetric(
-                title: "Reps",
+                title: state.repsTitle ?? "Reps",
                 value: state.reps,
                 caption: repsCaption
             )
@@ -400,7 +400,7 @@ private struct LockScreenWorkoutView: View {
             if state.isComplete {
                 HStack(spacing: 7) {
                     LockScreenMetric(title: "Set", value: state.setLabel)
-                    LockScreenMetric(title: "Reps", value: state.reps)
+                    LockScreenMetric(title: state.repsTitle ?? "Reps", value: state.reps)
                     LockScreenMetric(title: thirdMetricTitle, value: thirdMetricValue)
                 }
             } else {
@@ -547,7 +547,7 @@ private struct LiveActivitySummaryStrip: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            summaryMetric(title: "Reps", value: state.reps, inlineCaption: repsCaption)
+            summaryMetric(title: state.repsTitle ?? "Reps", value: state.reps, inlineCaption: repsCaption)
 
             Rectangle()
                 .fill(Color.white.opacity(0.10))
