@@ -19,11 +19,19 @@ struct WorkoutPlannerLiveActivity: Widget {
                 .activitySystemActionForegroundColor(forgeAccent)
         } dynamicIsland: { context in
             DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    if context.state.isResting {
+                        LiveActivityIslandTimerLabel(state: context.state, fontSize: 13)
+                    }
+                }
+
                 DynamicIslandExpandedRegion(.bottom) {
-                    DynamicIslandExpandedWorkoutView(
-                        state: context.state,
-                        workoutID: context.attributes.workoutID
-                    )
+                    if !context.state.isResting {
+                        DynamicIslandExpandedWorkoutView(
+                            state: context.state,
+                            workoutID: context.attributes.workoutID
+                        )
+                    }
                 }
             } compactLeading: {
                 LiveActivityCompactLeadingLabel(state: context.state)
@@ -749,36 +757,49 @@ private struct LiveActivityTimer: View {
     }
 }
 
+private struct LiveActivityIslandTimerLabel: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+    let fontSize: CGFloat
+
+    var body: some View {
+        LiveActivityTimer(state: state)
+            .font(.system(size: fontSize, weight: .heavy, design: .rounded).monospacedDigit())
+            .foregroundStyle(forgeAccent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.62)
+    }
+}
+
 private struct LiveActivityCompactLeadingLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
     private var label: String {
         if state.isComplete { return "Done" }
-        return state.isResting ? "Rest" : state.setLabel
+        return state.setLabel
     }
 
+    @ViewBuilder
     var body: some View {
-        Text(label)
-            .font(.system(size: 11, weight: .heavy, design: .rounded))
-            .foregroundStyle(forgeAccent)
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
+        if state.isResting {
+            LiveActivityIslandTimerLabel(state: state, fontSize: 12)
+        } else {
+            Text(label)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(forgeAccent)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
     }
 }
 
 private struct LiveActivityCompactTrailingLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
+    @ViewBuilder
     var body: some View {
-        if state.isResting,
-           let restTargetEnd = state.restTargetEnd {
-            Text(restTargetEnd, style: .timer)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(liveActivityText)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+        if state.isResting {
+            EmptyView()
         } else {
             Text(state.reps.isEmpty ? state.setLabel : state.reps)
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
@@ -793,15 +814,10 @@ private struct LiveActivityCompactTrailingLabel: View {
 private struct LiveActivityMinimalLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
 
+    @ViewBuilder
     var body: some View {
-        if state.isResting,
-           let restTargetEnd = state.restTargetEnd {
-            Text(restTargetEnd, style: .timer)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(forgeAccent)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
+        if state.isResting {
+            LiveActivityIslandTimerLabel(state: state, fontSize: 11)
         } else {
             Image(systemName: state.isResting ? "timer" : "bolt.fill")
                 .font(.system(size: 11, weight: .heavy))
