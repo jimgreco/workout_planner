@@ -114,7 +114,7 @@ private struct DynamicIslandExpandedWorkoutView: View {
             VStack(alignment: .trailing, spacing: 1) {
                 LiveActivityTimer(state: state)
                     .font(.system(size: 16, weight: .heavy, design: .rounded).monospacedDigit())
-                    .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
+                    .foregroundStyle(liveActivityTimerTint(for: state))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
@@ -391,7 +391,7 @@ private struct LockScreenWorkoutView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     LiveActivityTimer(state: state, displayStyle: .lockScreenCountdown)
                         .font(.system(size: 17, weight: .heavy, design: .rounded).monospacedDigit())
-                        .foregroundStyle(state.isResting ? forgeAccent : liveActivityText)
+                        .foregroundStyle(liveActivityTimerTint(for: state))
                         .lineLimit(1)
                         .minimumScaleFactor(0.76)
 
@@ -764,10 +764,16 @@ private struct LiveActivityIslandTimerLabel: View {
     var body: some View {
         LiveActivityTimer(state: state)
             .font(.system(size: fontSize, weight: .heavy, design: .rounded).monospacedDigit())
-            .foregroundStyle(forgeAccent)
+            .foregroundStyle(liveActivityTimerTint(for: state))
             .lineLimit(1)
             .minimumScaleFactor(0.62)
     }
+}
+
+private func liveActivityTimerTint(for state: WorkoutLiveActivityAttributes.ContentState) -> Color {
+    guard state.isResting else { return liveActivityText }
+    guard let restTargetEnd = state.restTargetEnd else { return forgeAccent }
+    return restTargetEnd > Date() ? liveActivityText : forgeAccent
 }
 
 private struct LiveActivityCompactLeadingLabel: View {

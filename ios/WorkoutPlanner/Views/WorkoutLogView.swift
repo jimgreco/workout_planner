@@ -1484,6 +1484,7 @@ struct WorkoutLogView: View {
 
                 let alert = RestTargetAlert(message: "\(exerciseName) set \(setIndex + 1) rest target reached.")
                 restAlert = alert
+                updateExternalLiveActivityNow()
                 Task {
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
                     await MainActor.run {
