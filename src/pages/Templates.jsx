@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Eye,
+  GripVertical,
   LayoutGrid,
   MoreHorizontal,
   Pencil,
@@ -70,6 +71,7 @@ const emptyProgram = () => ({
   description: '',
   active: true,
   schedule: [],
+  timeline: [],
   progression: defaultProgression(),
   deload: defaultDeload(),
   progressionRule: '',
@@ -329,15 +331,30 @@ function scheduledTemplatesForWeekday(program, weekday, byId) {
     .filter((item) => item.template);
 }
 
+function timelineEntryForDate(program, dayKey) {
+  return (program?.timeline ?? []).find((item) => item.date === dayKey) ?? null;
+}
+
+function scheduledTemplatesForDate(program, date, byId) {
+  const dayKey = localDateKey(date);
+  const timelineEntry = timelineEntryForDate(program, dayKey);
+  if (timelineEntry) {
+    if (!timelineEntry.templateId) return [];
+    const template = byId.get(timelineEntry.templateId);
+    return template ? [{ entry: timelineEntry, template }] : [];
+  }
+  return scheduledTemplatesForWeekday(program, date.getDay(), byId);
+}
+
 function nextProgramWorkout(program, templates, logs) {
-  if (!program?.schedule?.length) return null;
+  if (!program?.schedule?.length && !program?.timeline?.length) return null;
   const byId = templateById(templates);
   const today = startOfToday();
-  for (let offset = 0; offset < 14; offset += 1) {
+  for (let offset = 0; offset < 28; offset += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() + offset);
     const dayKey = localDateKey(date);
-    const scheduled = scheduledTemplatesForWeekday(program, date.getDay(), byId);
+    const scheduled = scheduledTemplatesForDate(program, date, byId);
     for (let index = 0; index < scheduled.length; index += 1) {
       const { entry, template } = scheduled[index];
       if (!isHandledOn(logs, template, dayKey)) {
@@ -391,7 +408,7 @@ function weekPlan(program, templates, logs) {
   return WEEKDAYS.map((weekday, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
-    const scheduled = scheduledTemplatesForWeekday(program, weekday.value, byId);
+    const scheduled = scheduledTemplatesForDate(program, date, byId);
     const templatesForDay = scheduled.map((item) => item.template);
     const dayKey = localDateKey(date);
     const completedCount = templatesForDay.filter((template) => isCompletedOn(logs, template, dayKey)).length;
@@ -430,8 +447,9 @@ function upcomingProgramSchedule(program, templates, logs, days = 21) {
     const date = new Date(today);
     date.setDate(today.getDate() + offset);
     const dayKey = localDateKey(date);
-    const scheduled = scheduledTemplatesForWeekday(program, date.getDay(), byId);
+    const scheduled = scheduledTemplatesForDate(program, date, byId);
     const templatesForDay = scheduled.map((item) => item.template);
+    const templateId = scheduled[0]?.entry?.templateId || '';
     const completedCount = templatesForDay.filter((template) => isCompletedOn(logs, template, dayKey)).length;
     const skippedCount = templatesForDay.filter((template) => isSkippedOn(logs, template, dayKey)).length;
     const handledCount = completedCount + skippedCount;
@@ -452,6 +470,7 @@ function upcomingProgramSchedule(program, templates, logs, days = 21) {
       id: `${dayKey}-${offset}`,
       date,
       dayKey,
+      templateId,
       templates: templatesForDay,
       completedCount,
       skippedCount,
@@ -475,12 +494,12 @@ function programAdherence(program, templates, logs, weeks = 4) {
     completionRate: 0,
   };
 
-  if (!program?.schedule?.length) return summary;
+  if (!program?.schedule?.length && !program?.timeline?.length) return summary;
 
   for (let date = new Date(start); date <= today; date.setDate(date.getDate() + 1)) {
     const day = new Date(date);
     const dayKey = localDateKey(day);
-    const scheduled = scheduledTemplatesForWeekday(program, day.getDay(), byId).map((item) => item.template);
+    const scheduled = scheduledTemplatesForDate(program, day, byId).map((item) => item.template);
     for (const template of scheduled) {
       summary.scheduled += 1;
       if (isCompletedOn(logs, template, dayKey)) {
@@ -499,6 +518,48 @@ function programAdherence(program, templates, logs, weeks = 4) {
     ? Math.round((summary.completed / summary.scheduled) * 100)
     : 0;
   return summary;
+}
+
+function cleanProgramTimeline(timeline) {
+  const seenDates = new Set();
+  return (timeline ?? [])
+    .map((item) => {
+      const date = String(item?.date ?? '');
+      if (!parseLocalDate(date) || seenDates.has(date)) return null;
+      seenDates.add(date);
+      const templateId = String(item?.templateId ?? '').trim();
+      const notes = String(item?.notes ?? '').trim();
+      return {
+        date,
+        ...(templateId ? { templateId } : {}),
+        ...(notes ? { notes } : {}),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-70);
+}
+
+function timelineContentFromDay(day) {
+  return {
+    templateId: day.templateId || '',
+    templateName: day.templates?.[0]?.name || '',
+  };
+}
+
+function timelineEntryFromContent(day, content) {
+  return {
+    date: day.dayKey,
+    ...(content?.templateId ? { templateId: content.templateId } : {}),
+  };
+}
+
+function mergeProgramTimeline(timeline, entries) {
+  const affectedDates = new Set(entries.map((entry) => entry.date));
+  return cleanProgramTimeline([
+    ...(timeline ?? []).filter((entry) => !affectedDates.has(entry.date)),
+    ...entries,
+  ]);
 }
 
 function cleanProgram(program) {
@@ -529,6 +590,12 @@ function cleanProgram(program) {
       .filter((item) => item.title)
       .slice(0, 30),
   };
+  const timeline = cleanProgramTimeline(program.timeline);
+  if (timeline.length > 0) {
+    cleaned.timeline = timeline;
+  } else {
+    delete cleaned.timeline;
+  }
   const progression = cleanProgression(program.progression);
   if (progression) {
     cleaned.progression = progression;
@@ -570,6 +637,7 @@ export default function Templates({
   const [saved, setSaved]               = useState(false);
   const [showAddMenu, setShowAddMenu]   = useState(false);
   const [selectedProgramWeekday, setSelectedProgramWeekday] = useState(null);
+  const [draggingProgramDayKey, setDraggingProgramDayKey] = useState(null);
   const addMenuRef = useRef(null);
   const showPrograms = mode === 'all' || mode === 'programs';
   const showRoutines = mode === 'all' || mode === 'routines';
@@ -822,6 +890,70 @@ export default function Templates({
     }
   }
 
+  async function saveRollingTimeline(type, title, detail, days, contents) {
+    if (!activeProgram || saving) return;
+    setSaving(true);
+    try {
+      const entries = days.map((day, index) => timelineEntryFromContent(day, contents[index]));
+      const updatedProgram = {
+        ...withProgramActivity(activeProgram, type, title, detail),
+        timeline: mergeProgramTimeline(activeProgram.timeline, entries),
+      };
+      const updated = await saveProgram(cleanProgram(updatedProgram));
+      onProgramsUpdate(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleInsertProgramRestDay(day) {
+    if (!activeProgram || saving) return;
+    const index = upcomingSchedule.findIndex((item) => item.dayKey === day.dayKey);
+    if (index < 0) return;
+    const contents = upcomingSchedule.map(timelineContentFromDay);
+    const shiftedContents = [
+      ...contents.slice(0, index),
+      { templateId: '', templateName: 'Rest' },
+      ...contents.slice(index),
+    ].slice(0, upcomingSchedule.length);
+
+    await saveRollingTimeline(
+      'rest_insert',
+      'Inserted rest day',
+      dateLabel(day.date),
+      upcomingSchedule,
+      shiftedContents,
+    );
+  }
+
+  async function handleReorderProgramTimeline(sourceDayKey, targetDayKey) {
+    if (!activeProgram || saving || !sourceDayKey || sourceDayKey === targetDayKey) return;
+    const sourceIndex = upcomingSchedule.findIndex((day) => day.dayKey === sourceDayKey);
+    const targetIndex = upcomingSchedule.findIndex((day) => day.dayKey === targetDayKey);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const contents = upcomingSchedule.map(timelineContentFromDay);
+    const [moved] = contents.splice(sourceIndex, 1);
+    contents.splice(targetIndex, 0, moved);
+
+    const sourceDay = upcomingSchedule[sourceIndex];
+    const targetDay = upcomingSchedule[targetIndex];
+    await saveRollingTimeline(
+      'timeline_reorder',
+      `Moved ${moved.templateName || 'rest day'}`,
+      `${dateLabel(sourceDay.date)} -> ${dateLabel(targetDay.date)}`,
+      upcomingSchedule,
+      contents,
+    );
+  }
+
+  function handleProgramTimelineDrop(event, targetDayKey) {
+    event.preventDefault();
+    const sourceDayKey = event.dataTransfer?.getData('text/plain') || draggingProgramDayKey;
+    setDraggingProgramDayKey(null);
+    void handleReorderProgramTimeline(sourceDayKey, targetDayKey);
+  }
+
   function setScheduledTemplate(weekday, templateId) {
     setProgramForm((draft) => {
       const schedule = (draft.schedule ?? []).filter((item) => item.weekday !== weekday);
@@ -1002,17 +1134,50 @@ export default function Templates({
             {upcomingSchedule.length > 0 && (
               <div className="program-upcoming" aria-label="Upcoming program schedule">
                 <div className="program-upcoming-heading">
-                  <strong>Upcoming</strong>
+                  <strong>Timeline</strong>
                   <span>Next 3 weeks</span>
                 </div>
-                <div className="program-upcoming-list">
+                <div className="program-upcoming-list" role="list">
                   {upcomingSchedule.map((day) => (
-                    <div key={day.id} className={`program-upcoming-day ${day.status}`}>
-                      <div>
-                        <strong>{dateLabel(day.date)}</strong>
-                        <span>{day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}</span>
+                    <div
+                      key={day.id}
+                      className={`program-upcoming-day ${day.status} ${draggingProgramDayKey === day.dayKey ? 'dragging' : ''}`}
+                      draggable={!saving}
+                      role="listitem"
+                      aria-label={`Timeline day ${dateLabel(day.date)}: ${day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}`}
+                      onDragStart={(event) => {
+                        setDraggingProgramDayKey(day.dayKey);
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', day.dayKey);
+                      }}
+                      onDragOver={(event) => {
+                        if (draggingProgramDayKey && draggingProgramDayKey !== day.dayKey) {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                        }
+                      }}
+                      onDrop={(event) => handleProgramTimelineDrop(event, day.dayKey)}
+                      onDragEnd={() => setDraggingProgramDayKey(null)}
+                    >
+                      <div className="program-upcoming-main">
+                        <GripVertical size={16} className="program-upcoming-grip" aria-hidden="true" />
+                        <div>
+                          <strong>{dateLabel(day.date)}</strong>
+                          <span>{day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}</span>
+                        </div>
                       </div>
-                      <em>{day.status}</em>
+                      <div className="program-upcoming-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleInsertProgramRestDay(day)}
+                          disabled={saving}
+                          aria-label={`Insert rest day on ${dateLabel(day.date)}`}
+                        >
+                          <Plus size={12} /> Rest
+                        </button>
+                        <em>{day.status}</em>
+                      </div>
                     </div>
                   ))}
                 </div>

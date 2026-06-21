@@ -122,9 +122,18 @@ test('validates program weekly schedules', () => {
       { weekday: 1, templateId: 'push', notes: 'Heavy' },
       { weekday: 1, templateId: 'pull' },
     ],
+    timeline: [
+      { date: '2026-06-23', templateId: 'legs' },
+      { date: '2026-06-21' },
+      { date: '2026-06-21', templateId: 'push' },
+    ],
   }, 'program-1');
 
   assert.deepEqual(program.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '5:legs']);
+  assert.deepEqual(program.timeline, [
+    { date: '2026-06-21' },
+    { date: '2026-06-23', templateId: 'legs' },
+  ]);
   assert.equal(program.active, true);
   assert.deepEqual(program.progression, { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 });
   assert.deepEqual(program.deload, { type: 'every_n_weeks', everyWeeks: 4, loadPercent: 85, repPercent: 100, startDate: '2026-05-25' });
@@ -141,6 +150,10 @@ test('validates program weekly schedules', () => {
   );
   assert.throws(
     () => validateProgram({ id: 'program-1', name: 'Bad', deload: { type: 'every_n_weeks', everyWeeks: 1, startDate: '2026-05-25' }, schedule: [] }, 'program-1'),
+    ValidationError,
+  );
+  assert.throws(
+    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [], timeline: [{ date: 'tomorrow' }] }, 'program-1'),
     ValidationError,
   );
 });

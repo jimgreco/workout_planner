@@ -343,6 +343,10 @@ test('program routes persist weekly routine schedules', async () => {
       { weekday: 1, templateId: 'pull' },
       { weekday: 3, templateId: 'push' },
     ],
+    timeline: [
+      { date: '2026-06-21' },
+      { date: '2026-06-22', templateId: 'push' },
+    ],
   }, headers));
   const savedBody = JSON.parse(saved.body);
 
@@ -351,6 +355,10 @@ test('program routes persist weekly routine schedules', async () => {
   assert.equal(savedBody.revision, 1);
   assert.deepEqual(savedBody.progression, { type: 'linear_weight', weightIncrement: 5 });
   assert.deepEqual(savedBody.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '3:push']);
+  assert.deepEqual(savedBody.timeline, [
+    { date: '2026-06-21' },
+    { date: '2026-06-22', templateId: 'push' },
+  ]);
 
   const listed = await handler(event('GET', '/programs', undefined, headers));
   const listBody = JSON.parse(listed.body);

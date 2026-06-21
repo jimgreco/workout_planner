@@ -515,14 +515,14 @@ private enum ProgramPlanner {
     }
 
     static func nextWorkout(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> NextProgramWorkout? {
-        guard let program, !program.schedule.isEmpty else { return nil }
+        guard let program, !program.schedule.isEmpty || program.timeline?.isEmpty == false else { return nil }
         let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
         let today = Calendar.current.startOfDay(for: Date())
 
-        for offset in 0..<14 {
+        for offset in 0..<28 {
             guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { continue }
             let weekday = Calendar.current.component(.weekday, from: date) - 1
-            let scheduled = scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
+            let scheduled = scheduledTemplates(on: date, program: program, templatesById: templatesById)
             for (index, template) in scheduled.enumerated() where !handledOn(logs: logs, template: template, date: date) {
                 return NextProgramWorkout(date: date, weekday: weekday, template: template, position: index + 1, total: scheduled.count)
             }
@@ -584,8 +584,7 @@ private enum ProgramPlanner {
 
         return (0..<days).compactMap { offset in
             guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { return nil }
-            let weekday = Calendar.current.component(.weekday, from: date) - 1
-            let scheduled = program.map { scheduledTemplates(for: weekday, program: $0, templatesById: templatesById) } ?? []
+            let scheduled = program.map { scheduledTemplates(on: date, program: $0, templatesById: templatesById) } ?? []
             let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
             let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
             let handledCount = completedCount + skippedCount
@@ -616,7 +615,7 @@ private enum ProgramPlanner {
 
         return weekdays.compactMap { weekday in
             guard let date = Calendar.current.date(byAdding: .day, value: weekday.value, to: weekStart) else { return nil }
-            let scheduled = program.map { scheduledTemplates(for: weekday.value, program: $0, templatesById: templatesById) } ?? []
+            let scheduled = program.map { scheduledTemplates(on: date, program: $0, templatesById: templatesById) } ?? []
             let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
             let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
             let handledCount = completedCount + skippedCount
@@ -657,7 +656,7 @@ private enum ProgramPlanner {
     }
 
     static func adherenceSummary(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], weeks: Int = 4) -> ProgramAdherenceSummary {
-        guard let program, !program.schedule.isEmpty else {
+        guard let program, !program.schedule.isEmpty || program.timeline?.isEmpty == false else {
             return ProgramAdherenceSummary(weeks: weeks, scheduled: 0, completed: 0, skipped: 0, missed: 0, remainingToday: 0)
         }
 
@@ -672,8 +671,7 @@ private enum ProgramPlanner {
 
         var date = start
         while date <= today {
-            let weekday = Calendar.current.component(.weekday, from: date) - 1
-            let scheduled = scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
+            let scheduled = scheduledTemplates(on: date, program: program, templatesById: templatesById)
             for template in scheduled {
                 scheduledCount += 1
                 if completedOn(logs: logs, template: template, date: date) {
@@ -742,6 +740,16 @@ private enum ProgramPlanner {
     private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
         guard let item = program.schedule.first(where: { $0.weekday == weekday }) else { return [] }
         return templatesById[item.templateId].map { [$0] } ?? []
+    }
+
+    private static func scheduledTemplates(on date: Date, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
+        let day = DateHelpers.dayString(from: date)
+        if let timelineItem = program.timeline?.first(where: { $0.date == day }) {
+            guard let templateId = timelineItem.templateId, !templateId.isEmpty else { return [] }
+            return templatesById[templateId].map { [$0] } ?? []
+        }
+        let weekday = Calendar.current.component(.weekday, from: date) - 1
+        return scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
     }
 }
 

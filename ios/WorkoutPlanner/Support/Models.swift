@@ -167,6 +167,13 @@ struct ProgramScheduleItem: Codable, Identifiable, Equatable {
     var notes: String?
 }
 
+struct ProgramTimelineItem: Codable, Identifiable, Equatable {
+    var id: String { date }
+    var date: String
+    var templateId: String?
+    var notes: String?
+}
+
 struct ProgramProgressionRule: Codable, Equatable {
     var type: String
     var minReps: Int?
@@ -238,6 +245,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
     var name: String
     var description: String?
     var schedule: [ProgramScheduleItem]
+    var timeline: [ProgramTimelineItem]?
     var active: Bool?
     var progression: ProgramProgressionRule?
     var deload: ProgramDeloadRule?
@@ -251,6 +259,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         name: String,
         description: String? = "",
         schedule: [ProgramScheduleItem] = [],
+        timeline: [ProgramTimelineItem]? = nil,
         active: Bool? = true,
         progression: ProgramProgressionRule? = ProgramProgressionRule(),
         deload: ProgramDeloadRule? = nil,
@@ -263,6 +272,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.name = name
         self.description = description
         self.schedule = schedule
+        self.timeline = timeline
         self.active = active
         self.progression = progression
         self.deload = deload

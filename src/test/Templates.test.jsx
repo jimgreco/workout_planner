@@ -31,6 +31,13 @@ function todayKey() {
   return today.toISOString().slice(0, 10);
 }
 
+function dayKey(offset) {
+  const date = new Date();
+  date.setDate(date.getDate() + offset);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+}
+
 describe('Routines page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -313,7 +320,7 @@ describe('Routines page', () => {
     expect(screen.getByText(/4-week completion/i)).toBeTruthy();
   });
 
-  it('shows the upcoming active program schedule', () => {
+  it('shows the upcoming active program timeline', () => {
     render(
       <Templates
         templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
@@ -329,9 +336,108 @@ describe('Routines page', () => {
     );
 
     expect(screen.getByLabelText(/upcoming program schedule/i)).toBeTruthy();
+    expect(screen.getByText(/timeline/i)).toBeTruthy();
     expect(screen.getByText(/next 3 weeks/i)).toBeTruthy();
     expect(screen.getAllByText(/push day/i).length).toBeGreaterThan(1);
     expect(screen.getAllByText(/rest/i).length).toBeGreaterThan(0);
+  });
+
+  it('inserts a rolling rest day and pushes upcoming workouts back', async () => {
+    const onProgramsUpdate = vi.fn();
+    const today = new Date().getDay();
+    const tomorrow = (today + 1) % 7;
+    render(
+      <Templates
+        mode="programs"
+        templates={[
+          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
+          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [
+            { weekday: today, templateId: 'tmpl-1' },
+            { weekday: tomorrow, templateId: 'tmpl-2' },
+          ],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /insert rest day on today/i }));
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    const timeline = saveProgram.mock.calls[0][0].timeline;
+    expect(timeline.find((entry) => entry.date === dayKey(0))).toEqual({ date: dayKey(0) });
+    expect(timeline.find((entry) => entry.date === dayKey(1))).toMatchObject({ date: dayKey(1), templateId: 'tmpl-1' });
+    expect(timeline.find((entry) => entry.date === dayKey(2))).toMatchObject({ date: dayKey(2), templateId: 'tmpl-2' });
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'rest_insert',
+      title: 'Inserted rest day',
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
+  });
+
+  it('reorders the rolling timeline with drag and drop', async () => {
+    const onProgramsUpdate = vi.fn();
+    const today = new Date().getDay();
+    const tomorrow = (today + 1) % 7;
+    render(
+      <Templates
+        mode="programs"
+        templates={[
+          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
+          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[]}
+        programs={[{
+          id: 'program-1',
+          name: 'Strength Plan',
+          active: true,
+          schedule: [
+            { weekday: today, templateId: 'tmpl-1' },
+            { weekday: tomorrow, templateId: 'tmpl-2' },
+          ],
+        }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    const source = screen.getByRole('listitem', { name: /timeline day today: push day/i });
+    const target = screen.getByRole('listitem', { name: /timeline day tomorrow: pull day/i });
+    const dataTransfer = {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: vi.fn(),
+      getData: vi.fn(() => dayKey(0)),
+    };
+
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    const timeline = saveProgram.mock.calls[0][0].timeline;
+    expect(timeline.find((entry) => entry.date === dayKey(0))).toMatchObject({ date: dayKey(0), templateId: 'tmpl-2' });
+    expect(timeline.find((entry) => entry.date === dayKey(1))).toMatchObject({ date: dayKey(1), templateId: 'tmpl-1' });
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'timeline_reorder',
+      title: 'Moved Push Day',
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
   it('shows recent program activity', () => {

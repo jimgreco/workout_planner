@@ -293,6 +293,31 @@ function programSchedule(value) {
   }).filter(Boolean).sort((a, b) => a.weekday - b.weekday);
 }
 
+function programTimelineItem(value, index) {
+  assertObject(value, `timeline[${index}]`);
+  assertAllowedKeys(value, new Set(['date', 'templateId', 'notes']), `timeline[${index}]`);
+  const item = {
+    date: dateValue(value.date, `timeline[${index}].date`, { required: true }),
+  };
+  const templateId = stringValue(value.templateId, `timeline[${index}].templateId`, { max: 128, allowEmpty: true });
+  if (templateId) item.templateId = validateId(templateId, `timeline[${index}].templateId`);
+  const notes = stringValue(value.notes, `timeline[${index}].notes`, { max: 500 });
+  if (notes !== undefined) item.notes = notes;
+  return item;
+}
+
+function programTimeline(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 70) fail('timeline must contain at most 70 items');
+  const seenDates = new Set();
+  return value.map((item, index) => {
+    const timelineItem = programTimelineItem(item, index);
+    if (seenDates.has(timelineItem.date)) return null;
+    seenDates.add(timelineItem.date);
+    return timelineItem;
+  }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function programProgression(value) {
   if (value === undefined || value === null) return undefined;
   assertObject(value, 'progression');
@@ -370,7 +395,7 @@ export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'timeline', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -380,6 +405,8 @@ export function validateProgram(body, pathId) {
     name: stringValue(body.name, 'name', { required: true, max: 120, allowEmpty: false }),
     schedule: programSchedule(body.schedule),
   };
+  const timeline = programTimeline(body.timeline);
+  if (timeline !== undefined) program.timeline = timeline;
   const description = stringValue(body.description, 'description', { max: 1000 });
   if (description !== undefined) program.description = description;
   const active = boolValue(body.active, 'active');
