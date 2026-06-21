@@ -28,6 +28,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var startedAt: Date?
         var restStartedAt: Date?
         var restTargetEnd: Date?
+        var restTimerIsOverTarget: Bool?
         var restTargetSeconds: Int?
         var restExerciseName: String?
         var isComplete: Bool
@@ -165,6 +166,9 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         let restItem = rest.map { items[$0.exerciseIndex] }
         let restStartedAt = restSet?.restStartTime.map { Date(timeIntervalSince1970: $0 / 1000) }
         let restTargetSeconds = restSet?.restTargetSeconds ?? restItem?.restTargetSeconds
+        let restTargetEnd = restStartedAt.flatMap { start in
+            restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
+        }
 
         contentState.exerciseName = item.exerciseName
         contentState.muscleGroup = item.muscleGroup
@@ -184,9 +188,8 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.totalSets = totalSetCount
         contentState.exerciseCount = items.count
         contentState.restStartedAt = restStartedAt
-        contentState.restTargetEnd = restStartedAt.flatMap { start in
-            restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
-        }
+        contentState.restTargetEnd = restTargetEnd
+        contentState.restTimerIsOverTarget = restTargetEnd.map { Date() >= $0 }
         contentState.restTargetSeconds = restTargetSeconds
         contentState.restExerciseName = restItem?.exerciseName
         contentState.isComplete = totalSetCount > 0 && completedSetCount >= totalSetCount

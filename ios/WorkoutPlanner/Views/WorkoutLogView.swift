@@ -1253,6 +1253,7 @@ struct WorkoutLogView: View {
         let restTargetEnd = restStartedAt.flatMap { start in
             restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
         }
+        let restTimerIsOverTarget = restTargetEnd.map { Date() >= $0 }
         let weightIncreaseContext = resting ?? context
 
         return WorkoutLiveActivityAttributes.ContentState(
@@ -1280,6 +1281,7 @@ struct WorkoutLogView: View {
             startedAt: startedAt,
             restStartedAt: restStartedAt,
             restTargetEnd: restTargetEnd,
+            restTimerIsOverTarget: restTimerIsOverTarget,
             restTargetSeconds: restTargetSeconds,
             restExerciseName: resting?.exercise.name,
             isComplete: isCompleteOverride || (total > 0 && completed >= total)

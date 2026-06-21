@@ -14,14 +14,18 @@ private let liveActivityTertiaryText = Color.white.opacity(0.48)
 struct WorkoutPlannerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WorkoutLiveActivityAttributes.self) { context in
-            LockScreenWorkoutView(state: context.state, workoutID: context.attributes.workoutID)
+            LockScreenWorkoutView(
+                state: context.state,
+                workoutID: context.attributes.workoutID,
+                isStale: context.isStale
+            )
                 .activityBackgroundTint(liveActivityBackground)
                 .activitySystemActionForegroundColor(forgeAccent)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     if context.state.isResting {
-                        LiveActivityIslandTimerLabel(state: context.state, fontSize: 13)
+                        LiveActivityIslandTimerLabel(state: context.state, fontSize: 13, isStale: context.isStale)
                     }
                 }
 
@@ -34,11 +38,11 @@ struct WorkoutPlannerLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                LiveActivityCompactLeadingLabel(state: context.state)
+                LiveActivityCompactLeadingLabel(state: context.state, isStale: context.isStale)
             } compactTrailing: {
                 LiveActivityCompactTrailingLabel(state: context.state)
             } minimal: {
-                LiveActivityMinimalLabel(state: context.state)
+                LiveActivityMinimalLabel(state: context.state, isStale: context.isStale)
             }
             .keylineTint(forgeAccent)
         }
@@ -316,6 +320,7 @@ private struct DynamicIslandCheckButton<I: LiveActivityIntent>: View {
 private struct LockScreenWorkoutView: View {
     let state: WorkoutLiveActivityAttributes.ContentState
     let workoutID: String
+    let isStale: Bool
 
     private var headline: String {
         if state.isComplete { return "Workout complete" }
@@ -391,7 +396,7 @@ private struct LockScreenWorkoutView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     LiveActivityTimer(state: state, displayStyle: .lockScreenCountdown)
                         .font(.system(size: 17, weight: .heavy, design: .rounded).monospacedDigit())
-                        .foregroundStyle(liveActivityTimerTint(for: state))
+                        .foregroundStyle(liveActivityTimerTint(for: state, isStale: isStale))
                         .lineLimit(1)
                         .minimumScaleFactor(0.76)
 
@@ -760,24 +765,30 @@ private struct LiveActivityTimer: View {
 private struct LiveActivityIslandTimerLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
     let fontSize: CGFloat
+    let isStale: Bool
 
     var body: some View {
         LiveActivityTimer(state: state)
             .font(.system(size: fontSize, weight: .heavy, design: .rounded).monospacedDigit())
-            .foregroundStyle(liveActivityTimerTint(for: state))
+            .foregroundStyle(liveActivityTimerTint(for: state, isStale: isStale))
             .lineLimit(1)
             .minimumScaleFactor(0.62)
     }
 }
 
-private func liveActivityTimerTint(for state: WorkoutLiveActivityAttributes.ContentState) -> Color {
+private func liveActivityTimerTint(for state: WorkoutLiveActivityAttributes.ContentState, isStale: Bool = false) -> Color {
     guard state.isResting else { return liveActivityText }
+    if let restTimerIsOverTarget = state.restTimerIsOverTarget {
+        return restTimerIsOverTarget || isStale ? forgeAccent : liveActivityText
+    }
+    if isStale { return forgeAccent }
     guard let restTargetEnd = state.restTargetEnd else { return forgeAccent }
     return restTargetEnd > Date() ? liveActivityText : forgeAccent
 }
 
 private struct LiveActivityCompactLeadingLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
+    let isStale: Bool
 
     private var label: String {
         if state.isComplete { return "Done" }
@@ -787,7 +798,7 @@ private struct LiveActivityCompactLeadingLabel: View {
     @ViewBuilder
     var body: some View {
         if state.isResting {
-            LiveActivityIslandTimerLabel(state: state, fontSize: 12)
+            LiveActivityIslandTimerLabel(state: state, fontSize: 12, isStale: isStale)
         } else {
             Text(label)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
@@ -819,11 +830,12 @@ private struct LiveActivityCompactTrailingLabel: View {
 
 private struct LiveActivityMinimalLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
+    let isStale: Bool
 
     @ViewBuilder
     var body: some View {
         if state.isResting {
-            LiveActivityIslandTimerLabel(state: state, fontSize: 11)
+            LiveActivityIslandTimerLabel(state: state, fontSize: 11, isStale: isStale)
         } else {
             Image(systemName: state.isResting ? "timer" : "bolt.fill")
                 .font(.system(size: 11, weight: .heavy))
