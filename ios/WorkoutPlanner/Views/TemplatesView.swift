@@ -98,6 +98,19 @@ struct TemplatesView: View {
                 ProgramFormSheet(program: program, templates: store.templates, isSaving: $isSaving)
             case let .exercise(exercise):
                 ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
+            case .programTimeline:
+                if let program = ProgramPlanner.activeProgram(from: store.programs) {
+                    ProgramTimelineSheet(
+                        days: ProgramPlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs),
+                        isSaving: $isSaving,
+                        onInsertRest: { day in
+                            Task { await insertRollingRestDay(day) }
+                        },
+                        onMove: { source, destination in
+                            Task { await reorderRollingTimeline(fromOffsets: source, toOffset: destination) }
+                        }
+                    )
+                }
             case let .programDay(weekday):
                 if let program = ProgramPlanner.activeProgram(from: store.programs),
                    let day = ProgramPlanner.weekPlan(program: program, templates: store.templates, logs: store.logs)
@@ -201,6 +214,9 @@ struct TemplatesView: View {
                 },
                 onSkip: { workout in
                     Task { await skip(workout) }
+                },
+                onEditTimeline: {
+                    sheet = .programTimeline
                 },
                 onSelectDay: { day in
                     sheet = .programDay(day.weekday.value)
@@ -368,6 +384,93 @@ struct TemplatesView: View {
         }
     }
 
+    private func insertRollingRestDay(_ day: UpcomingProgramDay) async {
+        guard !isSaving,
+              let program = ProgramPlanner.activeProgram(from: store.programs)
+        else { return }
+        let days = ProgramPlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs)
+        guard let index = days.firstIndex(where: { $0.id == day.id }) else { return }
+        let contents = days.map(ProgramTimelineContent.init(day:))
+        let shifted = Array((contents[..<index] + [ProgramTimelineContent.rest] + contents[index...]).prefix(days.count))
+
+        await saveRollingTimeline(
+            program,
+            type: "rest_insert",
+            title: "Inserted rest day",
+            detail: ProgramPlanner.displayDate(day.date),
+            days: days,
+            contents: shifted
+        )
+    }
+
+    private func reorderRollingTimeline(fromOffsets source: IndexSet, toOffset destination: Int) async {
+        guard !isSaving,
+              let sourceIndex = source.first,
+              let program = ProgramPlanner.activeProgram(from: store.programs)
+        else { return }
+        let days = ProgramPlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs)
+        guard days.indices.contains(sourceIndex), destination >= 0, destination <= days.count else { return }
+
+        var contents = days.map(ProgramTimelineContent.init(day:))
+        let moved = contents[sourceIndex]
+        contents.move(fromOffsets: source, toOffset: destination)
+
+        let targetIndex = min(max(destination > sourceIndex ? destination - 1 : destination, 0), max(days.count - 1, 0))
+        await saveRollingTimeline(
+            program,
+            type: "timeline_reorder",
+            title: "Moved \(moved.templateName.isEmpty ? "rest day" : moved.templateName)",
+            detail: "\(ProgramPlanner.displayDate(days[sourceIndex].date)) -> \(ProgramPlanner.displayDate(days[targetIndex].date))",
+            days: days,
+            contents: contents
+        )
+    }
+
+    private func saveRollingTimeline(_ program: TrainingProgram, type: String, title: String, detail: String, days: [UpcomingProgramDay], contents: [ProgramTimelineContent]) async {
+        guard !isSaving, days.count == contents.count else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            let entries = zip(days, contents).map { day, content in
+                ProgramTimelineItem(
+                    date: day.id,
+                    templateId: content.templateId.isEmpty ? nil : content.templateId,
+                    notes: nil
+                )
+            }
+            var updated = programWithActivity(program, type: type, title: title, detail: detail)
+            updated.timeline = mergeProgramTimeline(program.timeline, entries: entries)
+            try await store.saveProgram(updated)
+        } catch {
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func mergeProgramTimeline(_ existing: [ProgramTimelineItem]?, entries: [ProgramTimelineItem]) -> [ProgramTimelineItem] {
+        let changedDates = Set(entries.map(\.date))
+        return cleanProgramTimeline((existing ?? []).filter { !changedDates.contains($0.date) } + entries)
+    }
+
+    private func cleanProgramTimeline(_ timeline: [ProgramTimelineItem]) -> [ProgramTimelineItem] {
+        var seenDates = Set<String>()
+        let cleaned = timeline.compactMap { item -> ProgramTimelineItem? in
+            let date = item.date
+            guard DateHelpers.apiDay.date(from: date) != nil, seenDates.insert(date).inserted else { return nil }
+            let templateId = item.templateId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let notes = item.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ProgramTimelineItem(
+                date: date,
+                templateId: templateId.isEmpty ? nil : templateId,
+                notes: notes.isEmpty ? nil : notes
+            )
+        }
+        .sorted { $0.date < $1.date }
+
+        return Array(cleaned.suffix(70))
+    }
+
     private func programWithActivity(_ program: TrainingProgram, type: String, title: String, detail: String? = nil) -> TrainingProgram {
         var updated = program
         let entry = ProgramActivity(type: type, title: title, detail: detail)
@@ -419,6 +522,7 @@ private enum TemplateSheet: Identifiable {
     case settings
     case program(TrainingProgram)
     case exercise(Exercise)
+    case programTimeline
     case programDay(Int)
 
     var id: String {
@@ -428,6 +532,7 @@ private enum TemplateSheet: Identifiable {
         case .settings: return "settings"
         case let .program(program): return "program-\(program.id)"
         case let .exercise(exercise): return "exercise-\(exercise.id)"
+        case .programTimeline: return "program-timeline"
         case let .programDay(weekday): return "program-day-\(weekday)"
         }
     }
@@ -462,12 +567,30 @@ private struct PlannedProgramDay: Identifiable {
 
 private struct UpcomingProgramDay: Identifiable {
     let date: Date
+    let templateId: String
     let templates: [WorkoutTemplate]
     let completedCount: Int
     let skippedCount: Int
     let status: ProgramDayStatus
 
     var id: String { DateHelpers.dayString(from: date) }
+}
+
+private struct ProgramTimelineContent {
+    let templateId: String
+    let templateName: String
+
+    static let rest = ProgramTimelineContent(templateId: "", templateName: "")
+
+    init(templateId: String, templateName: String) {
+        self.templateId = templateId
+        self.templateName = templateName
+    }
+
+    init(day: UpcomingProgramDay) {
+        templateId = day.templateId
+        templateName = day.templates.first?.name ?? ""
+    }
 }
 
 private struct NextProgramWorkout {
@@ -584,7 +707,9 @@ private enum ProgramPlanner {
 
         return (0..<days).compactMap { offset in
             guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { return nil }
-            let scheduled = program.map { scheduledTemplates(on: date, program: $0, templatesById: templatesById) } ?? []
+            let templateIds = program.map { scheduledTemplateIds(on: date, program: $0) } ?? []
+            let scheduled = templateIds.compactMap { templatesById[$0] }
+            let scheduledTemplateId = scheduled.first?.id ?? ""
             let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
             let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
             let handledCount = completedCount + skippedCount
@@ -603,7 +728,14 @@ private enum ProgramPlanner {
                 status = .planned
             }
 
-            return UpcomingProgramDay(date: date, templates: scheduled, completedCount: completedCount, skippedCount: skippedCount, status: status)
+            return UpcomingProgramDay(
+                date: date,
+                templateId: scheduledTemplateId,
+                templates: scheduled,
+                completedCount: completedCount,
+                skippedCount: skippedCount,
+                status: status
+            )
         }
     }
 
@@ -738,18 +870,26 @@ private enum ProgramPlanner {
     }
 
     private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
-        guard let item = program.schedule.first(where: { $0.weekday == weekday }) else { return [] }
-        return templatesById[item.templateId].map { [$0] } ?? []
+        scheduledTemplateIds(for: weekday, program: program).compactMap { templatesById[$0] }
     }
 
     private static func scheduledTemplates(on date: Date, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
+        scheduledTemplateIds(on: date, program: program).compactMap { templatesById[$0] }
+    }
+
+    private static func scheduledTemplateIds(for weekday: Int, program: TrainingProgram) -> [String] {
+        guard let item = program.schedule.first(where: { $0.weekday == weekday && !$0.templateId.isEmpty }) else { return [] }
+        return [item.templateId]
+    }
+
+    private static func scheduledTemplateIds(on date: Date, program: TrainingProgram) -> [String] {
         let day = DateHelpers.dayString(from: date)
         if let timelineItem = program.timeline?.first(where: { $0.date == day }) {
             guard let templateId = timelineItem.templateId, !templateId.isEmpty else { return [] }
-            return templatesById[templateId].map { [$0] } ?? []
+            return [templateId]
         }
         let weekday = Calendar.current.component(.weekday, from: date) - 1
-        return scheduledTemplates(for: weekday, program: program, templatesById: templatesById)
+        return scheduledTemplateIds(for: weekday, program: program)
     }
 }
 
@@ -820,6 +960,7 @@ private struct ProgramSummaryCard: View {
     let onDelete: (TrainingProgram) -> Void
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (NextProgramWorkout) -> Void
+    let onEditTimeline: () -> Void
     let onSelectDay: (PlannedProgramDay) -> Void
 
     private var nextWorkout: NextProgramWorkout? {
@@ -880,7 +1021,7 @@ private struct ProgramSummaryCard: View {
 
                     ProgramWeekGrid(week: week, onSelectDay: onSelectDay)
 
-                    ProgramUpcomingList(days: upcoming)
+                    ProgramUpcomingList(days: upcoming, onEditTimeline: onEditTimeline)
 
                     if adherence.scheduled > 0 {
                         ProgramAdherenceRow(summary: adherence)
@@ -1023,11 +1164,12 @@ private struct ProgramWeekGrid: View {
 
 private struct ProgramUpcomingList: View {
     let days: [UpcomingProgramDay]
+    let onEditTimeline: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Upcoming")
+                Text("Timeline")
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundStyle(Theme.text)
                 Spacer()
@@ -1035,6 +1177,13 @@ private struct ProgramUpcomingList: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
+                IconCircleButton(
+                    systemName: "arrow.up.arrow.down",
+                    size: 28,
+                    iconSize: 12,
+                    action: onEditTimeline
+                )
+                .accessibilityLabel("Edit timeline")
             }
 
             ScrollView {
@@ -1047,7 +1196,78 @@ private struct ProgramUpcomingList: View {
             .frame(maxHeight: 260)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Upcoming program schedule")
+        .accessibilityLabel("Program timeline")
+    }
+}
+
+private struct ProgramTimelineSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let days: [UpcomingProgramDay]
+    @Binding var isSaving: Bool
+    let onInsertRest: (UpcomingProgramDay) -> Void
+    let onMove: (IndexSet, Int) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(days) { day in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ProgramPlanner.displayDate(day.date))
+                                .font(.system(size: 13, weight: .heavy))
+                                .foregroundStyle(Theme.text)
+                            Text(summary(for: day))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button {
+                            onInsertRest(day)
+                        } label: {
+                            Label("Rest", systemImage: "plus")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(isSaving)
+                        .accessibilityLabel("Insert rest day on \(ProgramPlanner.displayDate(day.date))")
+                    }
+                    .padding(.vertical, 3)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            onInsertRest(day)
+                        } label: {
+                            Label("Rest", systemImage: "plus")
+                        }
+                        .tint(Theme.accent)
+                        .disabled(isSaving)
+                    }
+                }
+                .onMove { source, destination in
+                    guard !isSaving else { return }
+                    onMove(source, destination)
+                }
+            }
+            .navigationTitle("Timeline")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    EditButton()
+                        .disabled(isSaving)
+                }
+            }
+        }
+    }
+
+    private func summary(for day: UpcomingProgramDay) -> String {
+        guard !day.templates.isEmpty else { return "Rest" }
+        return day.templates.map(\.name).joined(separator: ", ")
     }
 }
 
