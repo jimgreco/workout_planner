@@ -6,6 +6,7 @@ import { saveLog, deleteLog, saveExercise } from '../api.js';
 import { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
 import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
+import { nextProgramWorkout as getNextProgramWorkout } from '../programs.js';
 import {
   bestPersonalBestSet,
   isPersonalBestImprovement,
@@ -266,7 +267,7 @@ export default function WorkoutLog({
   const lastWeightTypeByExerciseId = useMemo(() => lastWeightTypesByExerciseId(logs), [logs]);
   const activeProgramWorkouts = programs
     .filter((program) => program.active)
-    .map((program) => nextProgramWorkout(program, templates, logs))
+    .map((program) => getNextProgramWorkout(program, templates, logs))
     .filter(Boolean);
 
   useEffect(() => {

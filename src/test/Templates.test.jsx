@@ -38,6 +38,22 @@ function dayKey(offset) {
   return date.toISOString().slice(0, 10);
 }
 
+function cycleDay(id, templateId = '') {
+  return templateId ? { id, templateId } : { id };
+}
+
+function buildProgram(schedule, overrides = {}) {
+  return {
+    id: 'program-1',
+    name: 'Strength Plan',
+    active: true,
+    schedule,
+    startDate: todayKey(),
+    insertedRestDays: [],
+    ...overrides,
+  };
+}
+
 describe('Routines page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,6 +109,8 @@ describe('Routines page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /new program/i }));
     fireEvent.change(screen.getByPlaceholderText(/3 day strength/i), { target: { value: 'Strength Block' } });
+    fireEvent.click(screen.getByRole('button', { name: /add day/i }));
+    fireEvent.change(screen.getByLabelText(/day 1 routine/i), { target: { value: 'tmpl-1' } });
     fireEvent.change(screen.getByLabelText(/progression rule/i), { target: { value: 'linear_weight' } });
     fireEvent.change(screen.getByLabelText(/weight increment/i), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText(/deload rule/i), { target: { value: 'every_n_weeks' } });
@@ -105,6 +123,8 @@ describe('Routines page', () => {
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
     expect(saveProgram.mock.calls[0][0]).toMatchObject({
       name: 'Strength Block',
+      startDate: todayKey(),
+      schedule: [expect.objectContaining({ templateId: 'tmpl-1' })],
       progression: { type: 'linear_weight', weightIncrement: 10 },
       deload: { type: 'every_n_weeks', everyWeeks: 5, loadPercent: 80, repPercent: 90, startDate: '2026-05-25' },
     });
@@ -154,7 +174,7 @@ describe('Routines page', () => {
         templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
         exercises={exercises}
         logs={[]}
-        programs={[{ id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }] }]}
+        programs={[buildProgram([cycleDay('day-1', 'tmpl-1')])]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={() => {}}
@@ -182,13 +202,9 @@ describe('Routines page', () => {
 
   it('starts the next workout with active program context', () => {
     const onStartWorkout = vi.fn();
-    const program = {
-      id: 'program-1',
-      name: 'Strength Plan',
-      active: true,
-      schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+    const program = buildProgram([cycleDay('day-1', 'tmpl-1')], {
       progression: { type: 'double_progression', minReps: 8, maxReps: 12 },
-    };
+    });
     const template = { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] };
     render(
       <Templates
@@ -209,10 +225,8 @@ describe('Routines page', () => {
     expect(onStartWorkout).toHaveBeenCalledWith(template, program);
   });
 
-  it('moves a scheduled program day into a rest day', async () => {
+  it('sets a cycle day to rest', async () => {
     const onProgramsUpdate = vi.fn();
-    const today = new Date().getDay();
-    const targetDay = (today + 1) % 7;
     render(
       <Templates
         templates={[
@@ -220,14 +234,7 @@ describe('Routines page', () => {
         ]}
         exercises={exercises}
         logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [
-            { weekday: today, templateId: 'tmpl-1' },
-          ],
-        }]}
+        programs={[buildProgram([cycleDay('day-1', 'tmpl-1')])]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={onProgramsUpdate}
@@ -237,27 +244,22 @@ describe('Routines page', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /manage .*push day/i }));
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(`move or swap with .*${['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][targetDay]}.*rest`, 'i') }));
+    fireEvent.change(screen.getByLabelText(/routine/i), { target: { value: '' } });
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    const expectedSchedule = [
-      { weekday: targetDay, templateId: 'tmpl-1' },
-    ];
     expect(saveProgram.mock.calls[0][0]).toMatchObject({
       id: 'program-1',
-      schedule: expectedSchedule,
+      schedule: [expect.objectContaining({ id: 'day-1' })],
     });
     expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
-      type: 'move',
-      title: 'Moved Push Day',
+      type: 'schedule_edit',
+      title: 'Set Day 1 as rest',
     });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
   it('swaps two scheduled program days', async () => {
     const onProgramsUpdate = vi.fn();
-    const today = new Date().getDay();
-    const targetDay = (today + 1) % 7;
     render(
       <Templates
         templates={[
@@ -266,15 +268,10 @@ describe('Routines page', () => {
         ]}
         exercises={exercises}
         logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [
-            { weekday: today, templateId: 'tmpl-1' },
-            { weekday: targetDay, templateId: 'tmpl-2' },
-          ],
-        }]}
+        programs={[buildProgram([
+          cycleDay('day-1', 'tmpl-1'),
+          cycleDay('day-2', 'tmpl-2'),
+        ])]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={onProgramsUpdate}
@@ -284,17 +281,10 @@ describe('Routines page', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /manage .*push day/i }));
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(`move or swap with .*${['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][targetDay]}.*pull day`, 'i') }));
+    fireEvent.click(screen.getByRole('button', { name: /swap with day 2: pull day/i }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    const expectedSchedule = [
-      { weekday: today, templateId: 'tmpl-2' },
-      { weekday: targetDay, templateId: 'tmpl-1' },
-    ].sort((a, b) => a.weekday - b.weekday);
-    expect(saveProgram.mock.calls[0][0]).toMatchObject({
-      id: 'program-1',
-      schedule: expectedSchedule,
-    });
+    expect(saveProgram.mock.calls[0][0].schedule.map((item) => item.id)).toEqual(['day-2', 'day-1']);
     expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
       type: 'swap',
     });
@@ -307,7 +297,7 @@ describe('Routines page', () => {
         templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
         exercises={exercises}
         logs={[{ id: 'log-1', name: 'Push Day', date: todayKey(), status: 'finished', exerciseItems: [] }]}
-        programs={[{ id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }] }]}
+        programs={[buildProgram([cycleDay('day-1', 'tmpl-1')])]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={() => {}}
@@ -320,13 +310,13 @@ describe('Routines page', () => {
     expect(screen.getByText(/4-week completion/i)).toBeTruthy();
   });
 
-  it('shows the upcoming active program timeline', () => {
+  it('shows the upcoming active program schedule', () => {
     render(
       <Templates
         templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
         exercises={exercises}
         logs={[]}
-        programs={[{ id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }] }]}
+        programs={[buildProgram([cycleDay('day-1', 'tmpl-1'), cycleDay('day-2')])]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={() => {}}
@@ -336,16 +326,14 @@ describe('Routines page', () => {
     );
 
     expect(screen.getByLabelText(/upcoming program schedule/i)).toBeTruthy();
-    expect(screen.getByText(/timeline/i)).toBeTruthy();
+    expect(screen.getByText(/upcoming/i)).toBeTruthy();
     expect(screen.getByText(/next 3 weeks/i)).toBeTruthy();
     expect(screen.getAllByText(/push day/i).length).toBeGreaterThan(1);
     expect(screen.getAllByText(/rest/i).length).toBeGreaterThan(0);
   });
 
-  it('inserts a rolling rest day and pushes upcoming workouts back', async () => {
+  it('inserts a rest day and stores it as a schedule pushback', async () => {
     const onProgramsUpdate = vi.fn();
-    const today = new Date().getDay();
-    const tomorrow = (today + 1) % 7;
     render(
       <Templates
         mode="programs"
@@ -355,15 +343,10 @@ describe('Routines page', () => {
         ]}
         exercises={exercises}
         logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [
-            { weekday: today, templateId: 'tmpl-1' },
-            { weekday: tomorrow, templateId: 'tmpl-2' },
-          ],
-        }]}
+        programs={[buildProgram([
+          cycleDay('day-1', 'tmpl-1'),
+          cycleDay('day-2', 'tmpl-2'),
+        ])]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={onProgramsUpdate}
@@ -375,67 +358,10 @@ describe('Routines page', () => {
     fireEvent.click(screen.getByRole('button', { name: /insert rest day on today/i }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    const timeline = saveProgram.mock.calls[0][0].timeline;
-    expect(timeline.find((entry) => entry.date === dayKey(0))).toEqual({ date: dayKey(0) });
-    expect(timeline.find((entry) => entry.date === dayKey(1))).toMatchObject({ date: dayKey(1), templateId: 'tmpl-1' });
-    expect(timeline.find((entry) => entry.date === dayKey(2))).toMatchObject({ date: dayKey(2), templateId: 'tmpl-2' });
+    expect(saveProgram.mock.calls[0][0].insertedRestDays).toEqual([dayKey(0)]);
     expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
       type: 'rest_insert',
       title: 'Inserted rest day',
-    });
-    expect(onProgramsUpdate).toHaveBeenCalled();
-  });
-
-  it('reorders the rolling timeline with drag and drop', async () => {
-    const onProgramsUpdate = vi.fn();
-    const today = new Date().getDay();
-    const tomorrow = (today + 1) % 7;
-    render(
-      <Templates
-        mode="programs"
-        templates={[
-          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
-          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
-        ]}
-        exercises={exercises}
-        logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [
-            { weekday: today, templateId: 'tmpl-1' },
-            { weekday: tomorrow, templateId: 'tmpl-2' },
-          ],
-        }]}
-        settings={{ defaultSets: 3, defaultReps: 10 }}
-        onUpdate={() => {}}
-        onProgramsUpdate={onProgramsUpdate}
-        onSettingsUpdate={() => {}}
-        onStartWorkout={() => {}}
-      />,
-    );
-
-    const source = screen.getByRole('listitem', { name: /timeline day today: push day/i });
-    const target = screen.getByRole('listitem', { name: /timeline day tomorrow: pull day/i });
-    const dataTransfer = {
-      effectAllowed: '',
-      dropEffect: '',
-      setData: vi.fn(),
-      getData: vi.fn(() => dayKey(0)),
-    };
-
-    fireEvent.dragStart(source, { dataTransfer });
-    fireEvent.dragOver(target, { dataTransfer });
-    fireEvent.drop(target, { dataTransfer });
-
-    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    const timeline = saveProgram.mock.calls[0][0].timeline;
-    expect(timeline.find((entry) => entry.date === dayKey(0))).toMatchObject({ date: dayKey(0), templateId: 'tmpl-2' });
-    expect(timeline.find((entry) => entry.date === dayKey(1))).toMatchObject({ date: dayKey(1), templateId: 'tmpl-1' });
-    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
-      type: 'timeline_reorder',
-      title: 'Moved Push Day',
     });
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
@@ -446,13 +372,9 @@ describe('Routines page', () => {
         templates={[{ id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] }]}
         exercises={exercises}
         logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+        programs={[buildProgram([cycleDay('day-1', 'tmpl-1')], {
           activity: [{ id: 'activity-1', type: 'delay', title: 'Delayed schedule', detail: 'Push Day moved later', date: '2026-05-26T12:00:00.000Z' }],
-        }]}
+        })]}
         settings={{ defaultSets: 3, defaultReps: 10 }}
         onUpdate={() => {}}
         onProgramsUpdate={() => {}}

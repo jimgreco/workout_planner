@@ -4,9 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Eye,
-  GripVertical,
   LayoutGrid,
-  MoreHorizontal,
   Pencil,
   Play,
   Plus,
@@ -21,17 +19,21 @@ import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Exercises, { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
 import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog, saveExercise } from '../api.js';
+import {
+  createProgramScheduleItem,
+  insertProgramRestDay,
+  moveProgramScheduleDay,
+  nextProgramWorkout as getNextProgramWorkout,
+  normalizeProgram,
+  programAdherence as summarizeProgramAdherence,
+  programSlotForDate,
+  removeProgramScheduleItem,
+  replaceProgramScheduleItem,
+  scheduleItemTitle,
+  swapProgramScheduleDays,
+  upcomingProgramSchedule as buildUpcomingProgramSchedule,
+} from '../programs.js';
 import { lastWeightTypesByExerciseId, routineExerciseNeedsWeightIncrease } from '../workoutHistory.js';
-
-const WEEKDAYS = [
-  { value: 0, label: 'Sun', long: 'Sunday' },
-  { value: 1, label: 'Mon', long: 'Monday' },
-  { value: 2, label: 'Tue', long: 'Tuesday' },
-  { value: 3, label: 'Wed', long: 'Wednesday' },
-  { value: 4, label: 'Thu', long: 'Thursday' },
-  { value: 5, label: 'Fri', long: 'Friday' },
-  { value: 6, label: 'Sat', long: 'Saturday' },
-];
 
 const PROGRESSION_TYPES = [
   { value: 'double_progression', label: 'Reps, then weight' },
@@ -71,7 +73,8 @@ const emptyProgram = () => ({
   description: '',
   active: true,
   schedule: [],
-  timeline: [],
+  startDate: localDateKey(startOfToday()),
+  insertedRestDays: [],
   progression: defaultProgression(),
   deload: defaultDeload(),
   progressionRule: '',
@@ -143,6 +146,20 @@ function programStatusLabel(status) {
   if (status === 'missed') return 'Missed';
   if (status === 'planned') return 'Planned';
   return 'Rest';
+}
+
+function cycleDayLabel(index) {
+  return `Day ${index + 1}`;
+}
+
+function upcomingDayStatusLabel(day) {
+  if (day?.isBeforeStart) return 'Before start';
+  if (day?.isInsertedRest) return 'Inserted rest';
+  return programStatusLabel(day?.status);
+}
+
+function nextOccurrenceForScheduleItem(upcomingSchedule, itemId) {
+  return upcomingSchedule.find((day) => day.scheduleItem?.id === itemId && !day.isInsertedRest) ?? null;
 }
 
 function activityId() {
@@ -563,21 +580,18 @@ function mergeProgramTimeline(timeline, entries) {
 }
 
 function cleanProgram(program) {
-  const seenWeekdays = new Set();
-  const cleaned = {
+  const cleaned = normalizeProgram({
     ...program,
     name: program.name.trim(),
     description: program.description?.trim() || '',
     progressionRule: program.progressionRule?.trim() || '',
-    schedule: (program.schedule ?? [])
-      .filter((item) => item.templateId)
-      .map((item) => ({ weekday: Number(item.weekday), templateId: item.templateId, ...(item.notes ? { notes: item.notes } : {}) }))
-      .filter((item) => {
-        if (seenWeekdays.has(item.weekday)) return false;
-        seenWeekdays.add(item.weekday);
-        return true;
-      })
-      .sort((a, b) => a.weekday - b.weekday),
+    schedule: (program.schedule ?? []).map((item) => ({
+      id: String(item?.id ?? ''),
+      ...(item?.templateId ? { templateId: String(item.templateId).trim() } : {}),
+      ...(item?.notes ? { notes: String(item.notes).trim() } : {}),
+    })),
+    startDate: parseLocalDate(program.startDate) ? program.startDate : localDateKey(startOfToday()),
+    insertedRestDays: program.insertedRestDays ?? [],
     activity: (program.activity ?? [])
       .filter((item) => item?.id && item?.type && item?.date && item?.title)
       .map((item) => ({
@@ -589,13 +603,7 @@ function cleanProgram(program) {
       }))
       .filter((item) => item.title)
       .slice(0, 30),
-  };
-  const timeline = cleanProgramTimeline(program.timeline);
-  if (timeline.length > 0) {
-    cleaned.timeline = timeline;
-  } else {
-    delete cleaned.timeline;
-  }
+  });
   const progression = cleanProgression(program.progression);
   if (progression) {
     cleaned.progression = progression;
@@ -636,8 +644,7 @@ export default function Templates({
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
   const [showAddMenu, setShowAddMenu]   = useState(false);
-  const [selectedProgramWeekday, setSelectedProgramWeekday] = useState(null);
-  const [draggingProgramDayKey, setDraggingProgramDayKey] = useState(null);
+  const [selectedProgramDayId, setSelectedProgramDayId] = useState(null);
   const addMenuRef = useRef(null);
   const showPrograms = mode === 'all' || mode === 'programs';
   const showRoutines = mode === 'all' || mode === 'routines';
@@ -649,24 +656,33 @@ export default function Templates({
     [programs],
   );
   const lastWeightTypeByExerciseId = useMemo(() => lastWeightTypesByExerciseId(logs), [logs]);
+  const templatesById = useMemo(() => templateById(templates), [templates]);
   const nextWorkout = useMemo(
-    () => nextProgramWorkout(activeProgram, templates, logs),
+    () => getNextProgramWorkout(activeProgram, templates, logs),
     [activeProgram, templates, logs],
   );
-  const currentWeek = useMemo(
-    () => weekPlan(activeProgram, templates, logs),
-    [activeProgram, templates, logs],
+  const todayProgramSlot = useMemo(
+    () => activeProgram ? programSlotForDate(activeProgram, new Date(), templatesById) : null,
+    [activeProgram, templatesById],
   );
   const selectedProgramDay = useMemo(
-    () => currentWeek.find((day) => day.value === selectedProgramWeekday) ?? null,
-    [currentWeek, selectedProgramWeekday],
+    () => activeProgram?.schedule?.find((day) => day.id === selectedProgramDayId) ?? null,
+    [activeProgram, selectedProgramDayId],
+  );
+  const selectedProgramDayIndex = useMemo(
+    () => activeProgram?.schedule?.findIndex((day) => day.id === selectedProgramDayId) ?? -1,
+    [activeProgram, selectedProgramDayId],
   );
   const upcomingSchedule = useMemo(
-    () => upcomingProgramSchedule(activeProgram, templates, logs),
+    () => buildUpcomingProgramSchedule(activeProgram, templates, logs),
     [activeProgram, templates, logs],
   );
+  const selectedProgramOccurrence = useMemo(
+    () => nextOccurrenceForScheduleItem(upcomingSchedule, selectedProgramDayId),
+    [upcomingSchedule, selectedProgramDayId],
+  );
   const adherence = useMemo(
-    () => programAdherence(activeProgram, templates, logs),
+    () => summarizeProgramAdherence(activeProgram, templates, logs),
     [activeProgram, templates, logs],
   );
   const activeDeload = useMemo(
@@ -681,12 +697,13 @@ export default function Templates({
   function openProgram(program = emptyProgram()) {
     setShowAddMenu(false);
     const isExisting = Boolean(program.id);
+    const normalized = normalizeProgram({ ...emptyProgram(), ...program });
     setProgramForm({
-      ...emptyProgram(),
-      ...program,
+      ...normalized,
       progression: progressionForForm(program.progression, isExisting ? 'none' : 'double_progression'),
       deload: deloadForForm(program.deload, program.deload?.type || 'none'),
-      schedule: [...(program.schedule ?? [])],
+      schedule: [...normalized.schedule],
+      insertedRestDays: [...normalized.insertedRestDays],
     });
     setModal('program');
   }
@@ -704,6 +721,13 @@ export default function Templates({
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [showAddMenu]);
+
+  useEffect(() => {
+    if (!selectedProgramDayId) return;
+    if (!activeProgram?.schedule?.some((day) => day.id === selectedProgramDayId)) {
+      setSelectedProgramDayId(null);
+    }
+  }, [activeProgram, selectedProgramDayId]);
 
   async function handleSave() {
     if (!form.name.trim() || saving) return;
@@ -810,7 +834,7 @@ export default function Templates({
         dateLabel(date),
       )));
       onProgramsUpdate(updatedPrograms);
-      setSelectedProgramWeekday(null);
+      setSelectedProgramDayId(null);
     } finally {
       setSaving(false);
     }
@@ -822,20 +846,23 @@ export default function Templates({
   }
 
   async function handleSkipProgramDay(day) {
-    const template = day?.templates?.[0];
+    const template = day?.template;
     if (!template) return;
     await handleSkipProgramWorkout(template, day.date, day.dayKey);
   }
 
-  async function handleSetProgramDayRoutine(day, templateId) {
-    if (!activeProgram || !day || saving) return;
-    const currentTemplateId = scheduleEntryFor(activeProgram.schedule, day.value)?.templateId || '';
+  async function handleSetProgramDayRoutine(dayId, templateId) {
+    if (!activeProgram || !dayId || saving) return;
+    const dayIndex = activeProgram.schedule.findIndex((item) => item.id === dayId);
+    if (dayIndex < 0) return;
+    const currentTemplateId = activeProgram.schedule[dayIndex]?.templateId || '';
     if (currentTemplateId === templateId) {
-      setSelectedProgramWeekday(null);
+      setSelectedProgramDayId(null);
       return;
     }
     const template = templates.find((item) => item.id === templateId);
-    const title = templateId ? `Set ${day.long}` : `Set ${day.long} as rest`;
+    const label = cycleDayLabel(dayIndex);
+    const title = templateId ? `Set ${label}` : `Set ${label} as rest`;
     const detail = templateId ? template?.name || 'Routine' : 'Rest';
     setSaving(true);
     try {
@@ -846,124 +873,87 @@ export default function Templates({
           title,
           detail,
         ),
-        schedule: setScheduledWorkout(activeProgram.schedule, day.value, templateId),
+        schedule: replaceProgramScheduleItem(activeProgram.schedule, dayId, { templateId }),
       };
       const updated = await saveProgram(cleanProgram(updatedProgram));
       onProgramsUpdate(updated);
-      setSelectedProgramWeekday(null);
+      setSelectedProgramDayId(null);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleMoveProgramDay(day, targetWeekday) {
-    if (!activeProgram || !day || saving || day.value === targetWeekday) return;
-    const sourceEntry = scheduleEntryFor(activeProgram.schedule, day.value);
-    const targetEntry = scheduleEntryFor(activeProgram.schedule, targetWeekday);
-    if (!sourceEntry && !targetEntry) return;
-
-    const targetDay = weekdayByValue(targetWeekday);
+  async function handleSwapProgramDay(dayId, targetDayId) {
+    if (!activeProgram || !dayId || !targetDayId || saving || dayId === targetDayId) return;
+    const sourceIndex = activeProgram.schedule.findIndex((item) => item.id === dayId);
+    const targetIndex = activeProgram.schedule.findIndex((item) => item.id === targetDayId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const sourceEntry = activeProgram.schedule[sourceIndex];
+    const targetEntry = activeProgram.schedule[targetIndex];
     const sourceTemplate = templates.find((template) => template.id === sourceEntry?.templateId);
     const targetTemplate = templates.find((template) => template.id === targetEntry?.templateId);
-    const type = sourceEntry && targetEntry ? 'swap' : 'move';
-    const movedTemplate = sourceTemplate ?? targetTemplate;
-    const title = type === 'swap'
-      ? `Swapped ${day.label} and ${targetDay.label}`
-      : `Moved ${movedTemplate?.name || 'Routine'}`;
-    const detail = type === 'swap'
-      ? `${sourceTemplate?.name || 'Rest'} <-> ${targetTemplate?.name || 'Rest'}`
-      : sourceEntry
-        ? `${day.long} -> ${targetDay.long}`
-        : `${targetDay.long} -> ${day.long}`;
-
     setSaving(true);
     try {
       const updatedProgram = {
-        ...withProgramActivity(activeProgram, type, title, detail),
-        schedule: moveOrSwapScheduledWorkout(activeProgram.schedule, day.value, targetWeekday),
+        ...withProgramActivity(
+          activeProgram,
+          'swap',
+          `Swapped ${cycleDayLabel(sourceIndex)} and ${cycleDayLabel(targetIndex)}`,
+          `${sourceTemplate?.name || 'Rest'} <-> ${targetTemplate?.name || 'Rest'}`,
+        ),
+        schedule: swapProgramScheduleDays(activeProgram.schedule, dayId, targetDayId),
       };
       const updated = await saveProgram(cleanProgram(updatedProgram));
       onProgramsUpdate(updated);
-      setSelectedProgramWeekday(null);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveRollingTimeline(type, title, detail, days, contents) {
-    if (!activeProgram || saving) return;
-    setSaving(true);
-    try {
-      const entries = days.map((day, index) => timelineEntryFromContent(day, contents[index]));
-      const updatedProgram = {
-        ...withProgramActivity(activeProgram, type, title, detail),
-        timeline: mergeProgramTimeline(activeProgram.timeline, entries),
-      };
-      const updated = await saveProgram(cleanProgram(updatedProgram));
-      onProgramsUpdate(updated);
+      setSelectedProgramDayId(null);
     } finally {
       setSaving(false);
     }
   }
 
   async function handleInsertProgramRestDay(day) {
-    if (!activeProgram || saving) return;
-    const index = upcomingSchedule.findIndex((item) => item.dayKey === day.dayKey);
-    if (index < 0) return;
-    const contents = upcomingSchedule.map(timelineContentFromDay);
-    const shiftedContents = [
-      ...contents.slice(0, index),
-      { templateId: '', templateName: 'Rest' },
-      ...contents.slice(index),
-    ].slice(0, upcomingSchedule.length);
-
-    await saveRollingTimeline(
-      'rest_insert',
-      'Inserted rest day',
-      dateLabel(day.date),
-      upcomingSchedule,
-      shiftedContents,
-    );
+    if (!activeProgram || saving || !day?.dayKey || day.isInsertedRest) return;
+    setSaving(true);
+    try {
+      const updatedProgram = withProgramActivity(
+        insertProgramRestDay(activeProgram, day.dayKey),
+        'rest_insert',
+        'Inserted rest day',
+        dateLabel(day.date),
+      );
+      const updated = await saveProgram(cleanProgram(updatedProgram));
+      onProgramsUpdate(updated);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function handleReorderProgramTimeline(sourceDayKey, targetDayKey) {
-    if (!activeProgram || saving || !sourceDayKey || sourceDayKey === targetDayKey) return;
-    const sourceIndex = upcomingSchedule.findIndex((day) => day.dayKey === sourceDayKey);
-    const targetIndex = upcomingSchedule.findIndex((day) => day.dayKey === targetDayKey);
-    if (sourceIndex < 0 || targetIndex < 0) return;
-
-    const contents = upcomingSchedule.map(timelineContentFromDay);
-    const [moved] = contents.splice(sourceIndex, 1);
-    contents.splice(targetIndex, 0, moved);
-
-    const sourceDay = upcomingSchedule[sourceIndex];
-    const targetDay = upcomingSchedule[targetIndex];
-    await saveRollingTimeline(
-      'timeline_reorder',
-      `Moved ${moved.templateName || 'rest day'}`,
-      `${dateLabel(sourceDay.date)} -> ${dateLabel(targetDay.date)}`,
-      upcomingSchedule,
-      contents,
-    );
+  function handleAddProgramFormDay() {
+    setProgramForm((draft) => ({
+      ...draft,
+      schedule: [...(draft.schedule ?? []), createProgramScheduleItem()],
+    }));
   }
 
-  function handleProgramTimelineDrop(event, targetDayKey) {
-    event.preventDefault();
-    const sourceDayKey = event.dataTransfer?.getData('text/plain') || draggingProgramDayKey;
-    setDraggingProgramDayKey(null);
-    void handleReorderProgramTimeline(sourceDayKey, targetDayKey);
+  function handleUpdateProgramFormDay(dayId, patch) {
+    setProgramForm((draft) => ({
+      ...draft,
+      schedule: replaceProgramScheduleItem(draft.schedule, dayId, patch),
+    }));
   }
 
-  function setScheduledTemplate(weekday, templateId) {
-    setProgramForm((draft) => {
-      const schedule = (draft.schedule ?? []).filter((item) => item.weekday !== weekday);
-      if (templateId) schedule.push({ weekday, templateId });
-      return { ...draft, schedule: schedule.sort((a, b) => a.weekday - b.weekday) };
-    });
+  function handleMoveProgramFormDay(sourceIndex, targetIndex) {
+    setProgramForm((draft) => ({
+      ...draft,
+      schedule: moveProgramScheduleDay(draft.schedule, sourceIndex, targetIndex),
+    }));
   }
 
-  function scheduledTemplateIdFor(weekday) {
-    return (programForm.schedule ?? []).find((item) => item.weekday === weekday)?.templateId || '';
+  function handleDeleteProgramFormDay(dayId) {
+    setProgramForm((draft) => ({
+      ...draft,
+      schedule: removeProgramScheduleItem(draft.schedule, dayId),
+    }));
   }
 
   function updateProgramProgression(patch) {
@@ -990,9 +980,7 @@ export default function Templates({
     || settingsForm.defaultReps !== settings.defaultReps
     || (settingsForm.defaultRestTargetSeconds || 0) !== (settings.defaultRestTargetSeconds || 0)
     || Boolean(settingsForm.advancedMode) !== Boolean(settings.advancedMode);
-  const selectedProgramTemplateId = selectedProgramDay && activeProgram
-    ? scheduleEntryFor(activeProgram.schedule, selectedProgramDay.value)?.templateId || ''
-    : '';
+  const selectedProgramTemplateId = selectedProgramDay?.templateId || '';
 
   return (
     <div className="page">
@@ -1067,16 +1055,20 @@ export default function Templates({
 
         {activeProgram ? (
           <>
-              <div className="program-next">
-                <div className="program-next-copy">
-                  <Target size={18} />
-                  <div>
+            <div className="program-next">
+              <div className="program-next-copy">
+                <Target size={18} />
+                <div>
                   <span>Next</span>
                   <strong>
                     {nextWorkout
                       ? `${dateLabel(nextWorkout.date)} - ${nextWorkout.template.name}${nextWorkout.total > 1 ? ` (${nextWorkout.position} of ${nextWorkout.total})` : ''}`
                       : 'No scheduled workout'}
                   </strong>
+                  <small className="text-muted">
+                    Starts {activeProgram.startDate}
+                    {activeProgram.insertedRestDays?.length > 0 ? ` · ${activeProgram.insertedRestDays.length} inserted rest ${activeProgram.insertedRestDays.length === 1 ? 'day' : 'days'}` : ''}
+                  </small>
                 </div>
               </div>
               <div className="program-next-actions">
@@ -1090,80 +1082,72 @@ export default function Templates({
             </div>
 
             <div className="program-week-heading">
-              <strong>This Week</strong>
-              <span>Current week</span>
+              <strong>Repeating Cycle</strong>
+              <span>{activeProgram.schedule.length} {activeProgram.schedule.length === 1 ? 'day' : 'days'}</span>
             </div>
             <div className="program-week-grid">
-              {currentWeek.map((day) => (
+              {activeProgram.schedule.map((day, index) => {
+                const title = scheduleItemTitle(day, templatesById);
+                const isCurrent = todayProgramSlot?.scheduleItem?.id === day.id && !todayProgramSlot?.isInsertedRest && !todayProgramSlot?.isBeforeStart;
+                const isNext = nextWorkout?.scheduleItem?.id === day.id;
+                return (
                 <button
-                  key={day.value}
+                  key={day.id}
                   type="button"
-                  className={`program-day ${day.status}`}
-                  onClick={() => setSelectedProgramWeekday(day.value)}
-                  aria-label={`Manage ${day.long}: ${day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}, ${day.status}`}
+                  className={`program-day ${isCurrent ? 'planned' : day.templateId ? '' : 'rest'}`}
+                  onClick={() => setSelectedProgramDayId(day.id)}
+                  aria-label={`Manage ${cycleDayLabel(index)}: ${title}`}
                 >
                   <div className="program-day-top">
-                    <span>{day.label}</span>
+                    <span>{cycleDayLabel(index)}</span>
                     <div className="program-day-icons">
-                      {day.status === 'done' && <CheckCircle2 size={14} aria-label="Done" />}
-                      {day.status === 'skipped' && <SkipForward size={14} aria-label="Skipped" />}
-                      <MoreHorizontal size={14} aria-hidden="true" />
+                      {isCurrent && <CheckCircle2 size={14} aria-label="Current day" />}
+                      {isNext && !isCurrent && <Play size={14} aria-label="Next workout" />}
                     </div>
                   </div>
                   <div className="program-day-routines">
-                    {day.templates.length > 0 ? (
+                    {day.templateId ? (
                       <>
-                        {day.templates.slice(0, 2).map((template) => (
-                          <strong key={template.id}>{template.name}</strong>
-                        ))}
-                        {day.templates.length > 2 && <em>+{day.templates.length - 2} more</em>}
+                        <strong>{title}</strong>
+                        {day.notes && <em>{day.notes}</em>}
                       </>
                     ) : (
                       <strong>Rest</strong>
                     )}
                   </div>
-                  {(day.templates.length > 1 || day.skippedCount > 0) && (
-                    <small className="program-day-count">
-                      {day.completedCount + day.skippedCount}/{day.templates.length}{day.skippedCount > 0 ? ' handled' : ''}
-                    </small>
-                  )}
+                  {isCurrent && <small className="program-day-count">Today</small>}
+                  {isNext && !isCurrent && <small className="program-day-count">Next up</small>}
                 </button>
-              ))}
+                );
+              })}
             </div>
 
             {upcomingSchedule.length > 0 && (
               <div className="program-upcoming" aria-label="Upcoming program schedule">
                 <div className="program-upcoming-heading">
-                  <strong>Timeline</strong>
+                  <strong>Upcoming</strong>
                   <span>Next 3 weeks</span>
                 </div>
                 <div className="program-upcoming-list" role="list">
                   {upcomingSchedule.map((day) => (
                     <div
                       key={day.id}
-                      className={`program-upcoming-day ${day.status} ${draggingProgramDayKey === day.dayKey ? 'dragging' : ''}`}
-                      draggable={!saving}
+                      className={`program-upcoming-day ${day.status}`}
                       role="listitem"
-                      aria-label={`Timeline day ${dateLabel(day.date)}: ${day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}`}
-                      onDragStart={(event) => {
-                        setDraggingProgramDayKey(day.dayKey);
-                        event.dataTransfer.effectAllowed = 'move';
-                        event.dataTransfer.setData('text/plain', day.dayKey);
-                      }}
-                      onDragOver={(event) => {
-                        if (draggingProgramDayKey && draggingProgramDayKey !== day.dayKey) {
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = 'move';
-                        }
-                      }}
-                      onDrop={(event) => handleProgramTimelineDrop(event, day.dayKey)}
-                      onDragEnd={() => setDraggingProgramDayKey(null)}
+                      aria-label={`Upcoming day ${dateLabel(day.date)}: ${day.template?.name || 'Rest'}`}
                     >
                       <div className="program-upcoming-main">
-                        <GripVertical size={16} className="program-upcoming-grip" aria-hidden="true" />
                         <div>
                           <strong>{dateLabel(day.date)}</strong>
-                          <span>{day.templates.length > 0 ? day.templates.map((template) => template.name).join(', ') : 'Rest'}</span>
+                          <span>
+                            {day.isBeforeStart
+                              ? `Program starts ${activeProgram.startDate}`
+                              : day.isInsertedRest
+                                ? 'Inserted rest day'
+                                : day.scheduleItem
+                                  ? `${cycleDayLabel(day.scheduleIndex ?? 0)} · ${day.template?.name || 'Rest'}`
+                                  : 'Rest'}
+                          </span>
                         </div>
                       </div>
                       <div className="program-upcoming-actions">
@@ -1171,12 +1155,12 @@ export default function Templates({
                           type="button"
                           className="btn btn-secondary btn-sm"
                           onClick={() => handleInsertProgramRestDay(day)}
-                          disabled={saving}
+                          disabled={saving || day.isInsertedRest}
                           aria-label={`Insert rest day on ${dateLabel(day.date)}`}
                         >
                           <Plus size={12} /> Rest
                         </button>
-                        <em>{day.status}</em>
+                        <em>{upcomingDayStatusLabel(day)}</em>
                       </div>
                     </div>
                   ))}
@@ -1254,7 +1238,7 @@ export default function Templates({
         ) : (
           <div className="program-empty">
             <CalendarDays size={22} />
-            <span>Schedule routines by weekday, then start the next planned workout from here.</span>
+            <span>Build a repeating cycle, choose the start date, and insert rest days when life pushes training back.</span>
           </div>
         )}
       </div>
@@ -1264,7 +1248,7 @@ export default function Templates({
               <div key={program.id} className={`program-list-item ${program.active ? 'active' : 'inactive'}`}>
                 <div>
                   <strong>{program.name || 'Untitled program'}</strong>
-                  <span>{program.schedule?.length || 0} scheduled {program.schedule?.length === 1 ? 'day' : 'days'}</span>
+                  <span>{program.schedule?.length || 0} cycle {program.schedule?.length === 1 ? 'day' : 'days'}</span>
                 </div>
                 <div className="flex gap-8 items-center card-actions">
                   <span className={`status-pill ${program.active ? 'active' : 'inactive'}`}>
@@ -1286,45 +1270,43 @@ export default function Templates({
 
       {activeProgram && selectedProgramDay && (
         <Modal
-          title={`${selectedProgramDay.long} Plan`}
-          onClose={() => !saving && setSelectedProgramWeekday(null)}
+          title={`${cycleDayLabel(selectedProgramDayIndex)} Plan`}
+          onClose={() => !saving && setSelectedProgramDayId(null)}
           footer={
-            <button className="btn btn-secondary" onClick={() => setSelectedProgramWeekday(null)} disabled={saving}>
+            <button className="btn btn-secondary" onClick={() => setSelectedProgramDayId(null)} disabled={saving}>
               Close
             </button>
           }
         >
           <div className="program-day-planner">
-            <div className={`program-day-current ${selectedProgramDay.status}`}>
+            <div className={`program-day-current ${selectedProgramOccurrence?.status || 'rest'}`}>
               <div>
-                <span>{dateLabel(selectedProgramDay.date)}</span>
+                <span>{selectedProgramOccurrence ? dateLabel(selectedProgramOccurrence.date) : 'No upcoming slot in the next 3 weeks'}</span>
                 <strong>
-                  {selectedProgramDay.templates.length > 0
-                    ? selectedProgramDay.templates.map((template) => template.name).join(', ')
-                    : 'Rest'}
+                  {scheduleItemTitle(selectedProgramDay, templatesById)}
                 </strong>
               </div>
-              <em>{programStatusLabel(selectedProgramDay.status)}</em>
+              <em>{selectedProgramOccurrence ? upcomingDayStatusLabel(selectedProgramOccurrence) : 'Cycle day'}</em>
             </div>
 
             <div className="program-day-action-row">
               <button
                 className="btn btn-primary"
                 onClick={() => {
-                  const template = selectedProgramDay.templates[0];
+                  const template = selectedProgramOccurrence?.template;
                   if (template) {
-                    setSelectedProgramWeekday(null);
+                    setSelectedProgramDayId(null);
                     onStartWorkout(template, activeProgram);
                   }
                 }}
-                disabled={!selectedProgramDay.templates.length || saving}
+                disabled={!selectedProgramOccurrence?.template || saving}
               >
                 <Play size={15} fill="currentColor" /> Start
               </button>
               <button
                 className="btn btn-secondary"
-                onClick={() => handleSkipProgramDay(selectedProgramDay)}
-                disabled={!selectedProgramDay.templates.length || saving}
+                onClick={() => handleSkipProgramDay(selectedProgramOccurrence)}
+                disabled={!selectedProgramOccurrence?.template || saving}
               >
                 <SkipForward size={15} /> Skip
               </button>
@@ -1335,7 +1317,7 @@ export default function Templates({
               <select
                 id="program-day-routine"
                 value={selectedProgramTemplateId}
-                onChange={(event) => handleSetProgramDayRoutine(selectedProgramDay, event.target.value)}
+                onChange={(event) => handleSetProgramDayRoutine(selectedProgramDay.id, event.target.value)}
                 disabled={saving}
               >
                 <option value="">Rest day</option>
@@ -1347,25 +1329,25 @@ export default function Templates({
 
             <div className="program-day-planner-section">
               <div className="program-day-planner-heading">
-                <strong>Move / Swap</strong>
+                <strong>Swap Day</strong>
                 <ArrowRightLeft size={15} />
               </div>
               <div className="program-day-target-grid">
-                {WEEKDAYS.filter((weekday) => weekday.value !== selectedProgramDay.value).map((weekday) => {
-                  const targetDay = currentWeek.find((day) => day.value === weekday.value);
-                  const targetHasRoutine = Boolean(targetDay?.templates?.length);
-                  const targetRoutine = targetDay?.templates?.[0]?.name || 'Rest';
-                  const disabled = saving || (!selectedProgramDay.templates.length && !targetHasRoutine);
+                {activeProgram.schedule
+                  .map((day, index) => ({ day, index }))
+                  .filter(({ day }) => day.id !== selectedProgramDay.id)
+                  .map(({ day, index }) => {
+                  const targetRoutine = scheduleItemTitle(day, templatesById);
                   return (
                     <button
-                      key={weekday.value}
+                      key={day.id}
                       type="button"
                       className="program-day-target"
-                      aria-label={`Move or swap with ${weekday.long}: ${targetRoutine}`}
-                      onClick={() => handleMoveProgramDay(selectedProgramDay, weekday.value)}
-                      disabled={disabled}
+                      aria-label={`Swap with ${cycleDayLabel(index)}: ${targetRoutine}`}
+                      onClick={() => handleSwapProgramDay(selectedProgramDay.id, day.id)}
+                      disabled={saving}
                     >
-                      <span>{weekday.label}</span>
+                      <span>{cycleDayLabel(index)}</span>
                       <strong>{targetRoutine}</strong>
                     </button>
                   );
@@ -1544,7 +1526,7 @@ export default function Templates({
           footer={
             <>
               <button className="btn btn-secondary" onClick={() => setModal(null)} disabled={saving}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSaveProgram} disabled={!programForm.name.trim() || saving}>
+              <button className="btn btn-primary" onClick={handleSaveProgram} disabled={!programForm.name.trim() || programForm.schedule.length === 0 || saving}>
                 {saving ? 'Saving…' : programForm.id ? 'Save Program' : 'Create Program'}
               </button>
             </>
@@ -1578,32 +1560,80 @@ export default function Templates({
             <span>Active Program</span>
           </label>
 
-          <hr className="divider" />
-          <h3>Weekly Schedule</h3>
-          <div className="program-schedule-editor">
-            {WEEKDAYS.map((weekday) => {
-              const selectedTemplateId = scheduledTemplateIdFor(weekday.value);
-              return (
-                <div key={weekday.value} className="program-schedule-row">
-                  <span className="program-schedule-day">{weekday.long}</span>
-                  {templates.length === 0 ? (
-                    <span className="program-schedule-empty">Create a routine first</span>
-                  ) : (
-                    <select
-                      aria-label={`${weekday.long} routine`}
-                      value={selectedTemplateId}
-                      onChange={(event) => setScheduledTemplate(weekday.value, event.target.value)}
-                    >
-                      <option value="">Rest day</option>
-                      {templates.map((template) => (
-                        <option key={template.id} value={template.id}>{template.name}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              );
-            })}
+          <div className="form-group">
+            <label>Cycle Start Date</label>
+            <input
+              type="date"
+              aria-label="Program cycle start date"
+              value={programForm.startDate || localDateKey(startOfToday())}
+              onChange={(e) => setProgramForm({ ...programForm, startDate: e.target.value })}
+            />
           </div>
+
+          <hr className="divider" />
+          <div className="program-week-heading">
+            <strong>Repeating Cycle</strong>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleAddProgramFormDay}>
+              <Plus size={14} /> Add Day
+            </button>
+          </div>
+          <div className="program-schedule-editor">
+            {programForm.schedule.map((day, index) => (
+              <div key={day.id} className="program-schedule-row">
+                <span className="program-schedule-day">{cycleDayLabel(index)}</span>
+                {templates.length === 0 ? (
+                  <span className="program-schedule-empty">Create a routine first</span>
+                ) : (
+                  <select
+                    aria-label={`${cycleDayLabel(index)} routine`}
+                    value={day.templateId || ''}
+                    onChange={(event) => handleUpdateProgramFormDay(day.id, { templateId: event.target.value })}
+                  >
+                    <option value="">Rest day</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                )}
+                <div className="flex gap-8 items-center">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleMoveProgramFormDay(index, index - 1)}
+                    disabled={index === 0}
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleMoveProgramFormDay(index, index + 1)}
+                    disabled={index === programForm.schedule.length - 1}
+                  >
+                    Down
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleDeleteProgramFormDay(day.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+            {programForm.schedule.length === 0 && (
+              <div className="program-empty">
+                <CalendarDays size={18} />
+                <span>Add at least one cycle day.</span>
+              </div>
+            )}
+          </div>
+          {programForm.insertedRestDays?.length > 0 && (
+            <p className="program-rule-preview">
+              {programForm.insertedRestDays.length} inserted rest {programForm.insertedRestDays.length === 1 ? 'day' : 'days'} will continue to push the cycle back after save.
+            </p>
+          )}
 
           <div className="form-group">
             <label>Progression Rule</label>

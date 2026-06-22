@@ -26,6 +26,24 @@ const templates = [
 
 const settings = { defaultSets: 3, defaultReps: 10, defaultRestTargetSeconds: 0 };
 
+function todayKey() {
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  return today.toISOString().slice(0, 10);
+}
+
+function buildProgram(overrides = {}) {
+  return {
+    id: 'program-1',
+    name: 'Strength Plan',
+    active: true,
+    schedule: [{ id: 'day-1', templateId: 'tmpl-1' }],
+    startDate: todayKey(),
+    insertedRestDays: [],
+    ...overrides,
+  };
+}
+
 describe('WorkoutLog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,12 +55,7 @@ describe('WorkoutLog', () => {
         exercises={exercises}
         templates={templates}
         logs={[]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
-        }]}
+        programs={[buildProgram()]}
         settings={settings}
         onLogsChanged={() => {}}
         onExercisesChanged={() => {}}
@@ -77,13 +90,9 @@ describe('WorkoutLog', () => {
             { exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '12', weight: '100' }] },
           ],
         }]}
-        programs={[{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+        programs={[buildProgram({
           progression: { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 },
-        }]}
+        })]}
         settings={settings}
         onLogsChanged={() => {}}
         onExercisesChanged={() => {}}
@@ -106,13 +115,9 @@ describe('WorkoutLog', () => {
         exercises={exercises}
         templates={templates}
         initialTemplate={templates[0]}
-        initialProgram={{
-          id: 'program-1',
-          name: 'Strength Plan',
-          active: true,
-          schedule: [{ weekday: new Date().getDay(), templateId: 'tmpl-1' }],
+        initialProgram={buildProgram({
           progression: { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 },
-        }}
+        })}
         logs={[{
           id: 'last-log',
           name: 'Push Day',

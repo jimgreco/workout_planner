@@ -323,7 +323,7 @@ test('optional expectedRevision protects against stale overwrites', async () => 
   assert.equal(typeof body.updatedAt, 'string');
 });
 
-test('program routes persist weekly routine schedules', async () => {
+test('program routes persist repeating cycle schedules', async () => {
   const db = fakeDb([
     { PK: 'USER#dev-user-local', SK: 'TEMPLATE#push', id: 'push', name: 'Push', exerciseItems: [] },
     { PK: 'USER#dev-user-local', SK: 'TEMPLATE#pull', id: 'pull', name: 'Pull', exerciseItems: [] },
@@ -336,16 +336,15 @@ test('program routes persist weekly routine schedules', async () => {
     name: 'Strength Block',
     description: 'Simple weekly plan',
     active: true,
+    startDate: '2026-06-20',
+    insertedRestDays: ['2026-06-22'],
     progression: { type: 'linear_weight', weightIncrement: 5 },
     progressionRule: 'Add weight when all sets hit the target.',
     schedule: [
-      { weekday: 1, templateId: 'push', notes: 'Heavy' },
-      { weekday: 1, templateId: 'pull' },
-      { weekday: 3, templateId: 'push' },
-    ],
-    timeline: [
-      { date: '2026-06-21' },
-      { date: '2026-06-22', templateId: 'push' },
+      { id: 'day-1', templateId: 'push', notes: 'Heavy' },
+      { id: 'day-1', templateId: 'pull' },
+      { id: 'day-2' },
+      { id: 'day-3', templateId: 'push' },
     ],
   }, headers));
   const savedBody = JSON.parse(saved.body);
@@ -354,11 +353,13 @@ test('program routes persist weekly routine schedules', async () => {
   assert.equal(savedBody.id, 'strength');
   assert.equal(savedBody.revision, 1);
   assert.deepEqual(savedBody.progression, { type: 'linear_weight', weightIncrement: 5 });
-  assert.deepEqual(savedBody.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '3:push']);
-  assert.deepEqual(savedBody.timeline, [
-    { date: '2026-06-21' },
-    { date: '2026-06-22', templateId: 'push' },
+  assert.deepEqual(savedBody.schedule, [
+    { id: 'day-1', templateId: 'push', notes: 'Heavy' },
+    { id: 'day-2' },
+    { id: 'day-3', templateId: 'push' },
   ]);
+  assert.equal(savedBody.startDate, '2026-06-20');
+  assert.deepEqual(savedBody.insertedRestDays, ['2026-06-22']);
 
   const listed = await handler(event('GET', '/programs', undefined, headers));
   const listBody = JSON.parse(listed.body);
@@ -384,7 +385,7 @@ test('import restores Forge export data into an empty account', async () => {
       exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
       templates: [{ id: 'push', name: 'Push', exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '6', weight: '100' }] }] }],
       logs: [{ id: 'done', name: 'Done', date: '2026-01-02', exerciseItems: [], status: 'finished' }],
-      programs: [{ id: 'program', name: 'Push Plan', active: true, schedule: [{ weekday: 1, templateId: 'push' }] }],
+      programs: [{ id: 'program', name: 'Push Plan', active: true, startDate: '2026-01-01', insertedRestDays: [], schedule: [{ id: 'day-1', templateId: 'push' }] }],
     },
   }, headers));
   const body = JSON.parse(result.body);
@@ -439,7 +440,7 @@ test('merge import renames duplicate exercise and routine names', async () => {
       exercises: [{ id: 'bench', name: 'Bench', muscleGroup: 'Chest' }],
       templates: [{ id: 'push', name: 'Push', exerciseItems: [] }],
       logs: [],
-      programs: [{ id: 'plan', name: 'Strength Plan', schedule: [{ weekday: 1, templateId: 'push' }] }],
+      programs: [{ id: 'plan', name: 'Strength Plan', startDate: '2026-01-01', insertedRestDays: [], schedule: [{ id: 'day-1', templateId: 'push' }] }],
     },
   }, headers));
   const body = JSON.parse(result.body);
@@ -468,7 +469,7 @@ test('merge import skips existing IDs instead of overwriting account data', asyn
       exercises: [{ id: 'bench', name: 'Imported Bench', muscleGroup: 'Back' }],
       templates: [],
       logs: [{ id: 'done', name: 'Imported Log', date: '2026-01-02', exerciseItems: [], status: 'finished' }],
-      programs: [{ id: 'program', name: 'Imported Plan', schedule: [] }],
+      programs: [{ id: 'program', name: 'Imported Plan', startDate: '2026-01-01', insertedRestDays: [], schedule: [] }],
     },
   }, headers));
   const body = JSON.parse(result.body);

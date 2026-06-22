@@ -1,5 +1,11 @@
 import Foundation
 
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 struct UserProfile: Codable, Equatable {
     var sub: String
     var name: String
@@ -161,17 +167,28 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
 }
 
 struct ProgramScheduleItem: Codable, Identifiable, Equatable {
-    var id: String { "\(weekday)-\(templateId)" }
-    var weekday: Int
-    var templateId: String
-    var notes: String?
-}
-
-struct ProgramTimelineItem: Codable, Identifiable, Equatable {
-    var id: String { date }
-    var date: String
+    var id: String
     var templateId: String?
     var notes: String?
+
+    init(id: String = UUID().uuidString, templateId: String? = nil, notes: String? = nil) {
+        self.id = id
+        self.templateId = templateId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case templateId
+        case notes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? UUID().uuidString
+        templateId = try container.decodeIfPresent(String.self, forKey: .templateId)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
 }
 
 struct ProgramProgressionRule: Codable, Equatable {
@@ -245,7 +262,8 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
     var name: String
     var description: String?
     var schedule: [ProgramScheduleItem]
-    var timeline: [ProgramTimelineItem]?
+    var startDate: String
+    var insertedRestDays: [String]
     var active: Bool?
     var progression: ProgramProgressionRule?
     var deload: ProgramDeloadRule?
@@ -259,7 +277,8 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         name: String,
         description: String? = "",
         schedule: [ProgramScheduleItem] = [],
-        timeline: [ProgramTimelineItem]? = nil,
+        startDate: String = DateHelpers.todayString(),
+        insertedRestDays: [String] = [],
         active: Bool? = true,
         progression: ProgramProgressionRule? = ProgramProgressionRule(),
         deload: ProgramDeloadRule? = nil,
@@ -272,7 +291,8 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.name = name
         self.description = description
         self.schedule = schedule
-        self.timeline = timeline
+        self.startDate = startDate
+        self.insertedRestDays = insertedRestDays
         self.active = active
         self.progression = progression
         self.deload = deload
@@ -280,6 +300,39 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.activity = activity
         self.updatedAt = updatedAt
         self.revision = revision
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case schedule
+        case startDate
+        case insertedRestDays
+        case active
+        case progression
+        case deload
+        case progressionRule
+        case activity
+        case updatedAt
+        case revision
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        schedule = try container.decodeIfPresent([ProgramScheduleItem].self, forKey: .schedule) ?? []
+        startDate = try container.decodeIfPresent(String.self, forKey: .startDate) ?? DateHelpers.todayString()
+        insertedRestDays = (try container.decodeIfPresent([String].self, forKey: .insertedRestDays) ?? []).sorted()
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        progression = try container.decodeIfPresent(ProgramProgressionRule.self, forKey: .progression)
+        deload = try container.decodeIfPresent(ProgramDeloadRule.self, forKey: .deload)
+        progressionRule = try container.decodeIfPresent(String.self, forKey: .progressionRule)
+        activity = try container.decodeIfPresent([ProgramActivity].self, forKey: .activity)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        revision = try container.decodeIfPresent(Int.self, forKey: .revision)
     }
 }
 
@@ -527,7 +580,7 @@ struct SyncConflictValue: Codable, Equatable {
         if let log { return "\(log.date) - \(log.status ?? "active")" }
         if let program {
             let active = program.active == true ? "active" : "inactive"
-            return "\(program.schedule.count) scheduled - \(active)"
+            return "\(program.schedule.count) cycle days - \(active)"
         }
         return "No cloud copy"
     }
@@ -699,6 +752,384 @@ enum DateHelpers {
 
     static func dayString(from date: Date) -> String {
         apiDay.string(from: date)
+    }
+}
+
+enum ProgramScheduleStatus {
+    case rest
+    case planned
+    case done
+    case skipped
+    case missed
+}
+
+struct ProgramNextWorkout {
+    let date: Date
+    let dayKey: String
+    let template: WorkoutTemplate
+    let scheduleItem: ProgramScheduleItem
+    let scheduleIndex: Int
+    let position: Int
+    let total: Int
+}
+
+struct ProgramCycleDay: Identifiable {
+    let scheduleItem: ProgramScheduleItem
+    let index: Int
+    let template: WorkoutTemplate?
+    let isCurrent: Bool
+    let isNext: Bool
+
+    var id: String { scheduleItem.id }
+}
+
+struct ProgramUpcomingDay: Identifiable {
+    let date: Date
+    let dayKey: String
+    let scheduleIndex: Int?
+    let scheduleItem: ProgramScheduleItem?
+    let template: WorkoutTemplate?
+    let isInsertedRest: Bool
+    let isBeforeStart: Bool
+    let status: ProgramScheduleStatus
+
+    var id: String { dayKey }
+}
+
+struct ProgramAdherenceSummary {
+    let weeks: Int
+    let scheduled: Int
+    let completed: Int
+    let skipped: Int
+    let missed: Int
+    let remainingToday: Int
+
+    var completionRate: Int {
+        guard scheduled > 0 else { return 0 }
+        return Int((Double(completed) / Double(scheduled) * 100).rounded())
+    }
+}
+
+struct ProgramDeloadInfo {
+    let isDeload: Bool
+    let nextDate: Date
+    let weekNumber: Int
+    let instruction: String
+}
+
+enum ProgramCyclePlanner {
+    private struct ProgramSlot {
+        let date: Date
+        let dayKey: String
+        let scheduleIndex: Int?
+        let scheduleItem: ProgramScheduleItem?
+        let template: WorkoutTemplate?
+        let isInsertedRest: Bool
+        let isBeforeStart: Bool
+    }
+
+    static func activeProgram(from programs: [TrainingProgram]) -> TrainingProgram? {
+        programs.first { $0.active == true }
+    }
+
+    static func scheduleTitle(for item: ProgramScheduleItem, templates: [WorkoutTemplate]) -> String {
+        guard let templateId = item.templateId?.trimmingCharacters(in: .whitespacesAndNewlines), !templateId.isEmpty else {
+            return "Rest"
+        }
+        return templates.first(where: { $0.id == templateId })?.name ?? "Missing routine"
+    }
+
+    static func cycleDayLabel(index: Int) -> String {
+        "Day \(index + 1)"
+    }
+
+    static func displayDate(_ date: Date) -> String {
+        let today = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+        if Calendar.current.isDate(date, inSameDayAs: today) { return "Today" }
+        if Calendar.current.isDate(date, inSameDayAs: tomorrow) { return "Tomorrow" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d"
+        return formatter.string(from: date)
+    }
+
+    static func statusLabel(for day: ProgramUpcomingDay) -> String {
+        if day.isBeforeStart { return "Before start" }
+        if day.isInsertedRest { return "Inserted rest" }
+        switch day.status {
+        case .rest: return "Rest"
+        case .planned: return "Planned"
+        case .done: return "Done"
+        case .skipped: return "Skipped"
+        case .missed: return "Missed"
+        }
+    }
+
+    static func nextOccurrence(for dayId: String, upcoming: [ProgramUpcomingDay]) -> ProgramUpcomingDay? {
+        upcoming.first { $0.scheduleItem?.id == dayId && !$0.isInsertedRest }
+    }
+
+    static func replaceScheduleItem(_ schedule: [ProgramScheduleItem], dayId: String, templateId: String) -> [ProgramScheduleItem] {
+        schedule.map { item in
+            guard item.id == dayId else { return item }
+            var updated = item
+            let cleaned = templateId.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.templateId = cleaned.isEmpty ? nil : cleaned
+            return updated
+        }
+    }
+
+    static func swapScheduleDays(_ schedule: [ProgramScheduleItem], sourceId: String, targetId: String) -> [ProgramScheduleItem] {
+        guard let sourceIndex = schedule.firstIndex(where: { $0.id == sourceId }),
+              let targetIndex = schedule.firstIndex(where: { $0.id == targetId }),
+              sourceIndex != targetIndex else {
+            return schedule
+        }
+        var next = schedule
+        next.swapAt(sourceIndex, targetIndex)
+        return next
+    }
+
+    static func moveScheduleDay(_ schedule: [ProgramScheduleItem], from sourceIndex: Int, to targetIndex: Int) -> [ProgramScheduleItem] {
+        guard schedule.indices.contains(sourceIndex), schedule.indices.contains(targetIndex), sourceIndex != targetIndex else {
+            return schedule
+        }
+        var next = schedule
+        let moved = next.remove(at: sourceIndex)
+        next.insert(moved, at: targetIndex)
+        return next
+    }
+
+    static func removeScheduleDay(_ schedule: [ProgramScheduleItem], dayId: String) -> [ProgramScheduleItem] {
+        schedule.filter { $0.id != dayId }
+    }
+
+    static func insertRestDay(_ program: TrainingProgram, dayKey: String) -> TrainingProgram {
+        guard DateHelpers.apiDay.date(from: dayKey) != nil else { return program }
+        var updated = program
+        updated.insertedRestDays = Array(Set((program.insertedRestDays + [dayKey]))).sorted()
+        return updated
+    }
+
+    static func cycleDays(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> [ProgramCycleDay] {
+        guard let program else { return [] }
+        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let currentSlot = slot(for: Date(), program: program, templatesById: templatesById)
+        let nextWorkout = nextWorkout(program: program, templates: templates, logs: logs)
+
+        return program.schedule.enumerated().map { index, item in
+            let template = item.templateId.flatMap { templatesById[$0] }
+            return ProgramCycleDay(
+                scheduleItem: item,
+                index: index,
+                template: template,
+                isCurrent: currentSlot.scheduleItem?.id == item.id && !currentSlot.isInsertedRest && !currentSlot.isBeforeStart,
+                isNext: nextWorkout?.scheduleItem.id == item.id
+            )
+        }
+    }
+
+    static func nextWorkout(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], lookaheadDays: Int = 28) -> ProgramNextWorkout? {
+        guard let program, !program.schedule.isEmpty else { return nil }
+        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let today = Calendar.current.startOfDay(for: Date())
+
+        for offset in 0..<lookaheadDays {
+            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { continue }
+            let currentSlot = slot(for: date, program: program, templatesById: templatesById)
+            guard let template = currentSlot.template,
+                  let scheduleItem = currentSlot.scheduleItem,
+                  let scheduleIndex = currentSlot.scheduleIndex,
+                  !handledOn(logs: logs, template: template, dayKey: currentSlot.dayKey)
+            else { continue }
+
+            return ProgramNextWorkout(
+                date: date,
+                dayKey: currentSlot.dayKey,
+                template: template,
+                scheduleItem: scheduleItem,
+                scheduleIndex: scheduleIndex,
+                position: scheduleIndex + 1,
+                total: program.schedule.count
+            )
+        }
+
+        return nil
+    }
+
+    static func upcomingSchedule(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], days: Int = 21) -> [ProgramUpcomingDay] {
+        guard let program else { return [] }
+        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let today = Calendar.current.startOfDay(for: Date())
+
+        return (0..<days).compactMap { offset in
+            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { return nil }
+            let currentSlot = slot(for: date, program: program, templatesById: templatesById)
+            return ProgramUpcomingDay(
+                date: date,
+                dayKey: currentSlot.dayKey,
+                scheduleIndex: currentSlot.scheduleIndex,
+                scheduleItem: currentSlot.scheduleItem,
+                template: currentSlot.template,
+                isInsertedRest: currentSlot.isInsertedRest,
+                isBeforeStart: currentSlot.isBeforeStart,
+                status: status(for: currentSlot, logs: logs)
+            )
+        }
+    }
+
+    static func adherenceSummary(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], weeks: Int = 4) -> ProgramAdherenceSummary {
+        guard let program, !program.schedule.isEmpty else {
+            return ProgramAdherenceSummary(weeks: weeks, scheduled: 0, completed: 0, skipped: 0, missed: 0, remainingToday: 0)
+        }
+
+        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let today = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.date(byAdding: .day, value: -((weeks * 7) - 1), to: today) ?? today
+        var scheduled = 0
+        var completed = 0
+        var skipped = 0
+        var missed = 0
+        var remainingToday = 0
+
+        var date = start
+        while date <= today {
+            let currentSlot = slot(for: date, program: program, templatesById: templatesById)
+            if let template = currentSlot.template {
+                scheduled += 1
+                if completedOn(logs: logs, template: template, dayKey: currentSlot.dayKey) {
+                    completed += 1
+                } else if skippedOn(logs: logs, template: template, dayKey: currentSlot.dayKey) {
+                    skipped += 1
+                } else if date < today {
+                    missed += 1
+                } else {
+                    remainingToday += 1
+                }
+            }
+            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? today
+        }
+
+        return ProgramAdherenceSummary(
+            weeks: weeks,
+            scheduled: scheduled,
+            completed: completed,
+            skipped: skipped,
+            missed: missed,
+            remainingToday: remainingToday
+        )
+    }
+
+    static func deloadInfo(program: TrainingProgram?, date: Date = Date()) -> ProgramDeloadInfo? {
+        guard let deload = program?.deload,
+              deload.type != "none",
+              let instruction = deloadInstruction(deload)
+        else { return nil }
+
+        let everyWeeks = max(2, deload.everyWeeks ?? 4)
+        let currentWeekStart = startOfWeek(date)
+        let startWeek = startOfWeek(DateHelpers.date(from: deload.startDate ?? DateHelpers.todayString()))
+        let weeksSinceStart = max(0, Calendar.current.dateComponents([.weekOfYear], from: startWeek, to: currentWeekStart).weekOfYear ?? 0)
+        let weekNumber = weeksSinceStart + 1
+        let isDeload = weekNumber % everyWeeks == 0
+        let weeksUntilNext = isDeload ? everyWeeks : everyWeeks - (weekNumber % everyWeeks)
+        let nextDate = Calendar.current.date(byAdding: .weekOfYear, value: weeksUntilNext, to: currentWeekStart) ?? currentWeekStart
+
+        return ProgramDeloadInfo(
+            isDeload: isDeload,
+            nextDate: nextDate,
+            weekNumber: weekNumber,
+            instruction: instruction
+        )
+    }
+
+    private static func status(for slot: ProgramSlot, logs: [WorkoutLog]) -> ProgramScheduleStatus {
+        guard let template = slot.template else { return .rest }
+        if handledOn(logs: logs, template: template, dayKey: slot.dayKey) {
+            return completedOn(logs: logs, template: template, dayKey: slot.dayKey) ? .done : .skipped
+        }
+        return slot.date < Calendar.current.startOfDay(for: Date()) ? .missed : .planned
+    }
+
+    private static func slot(for date: Date, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> ProgramSlot {
+        let targetDate = Calendar.current.startOfDay(for: date)
+        let dayKey = DateHelpers.dayString(from: targetDate)
+        let startDate = DateHelpers.date(from: program.startDate)
+
+        guard !program.schedule.isEmpty else {
+            return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: false, isBeforeStart: false)
+        }
+
+        if targetDate < Calendar.current.startOfDay(for: startDate) {
+            return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: false, isBeforeStart: true)
+        }
+
+        if program.insertedRestDays.contains(dayKey) {
+            return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: true, isBeforeStart: false)
+        }
+
+        let priorRestCount = program.insertedRestDays.filter { $0 < dayKey }.count
+        let elapsed = dayDifference(from: startDate, to: targetDate) - priorRestCount
+        if elapsed < 0 {
+            return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: false, isBeforeStart: true)
+        }
+
+        let scheduleIndex = positiveModulo(elapsed, program.schedule.count)
+        let scheduleItem = program.schedule[scheduleIndex]
+        let template = scheduleItem.templateId.flatMap { templatesById[$0] }
+        return ProgramSlot(
+            date: targetDate,
+            dayKey: dayKey,
+            scheduleIndex: scheduleIndex,
+            scheduleItem: scheduleItem,
+            template: template,
+            isInsertedRest: false,
+            isBeforeStart: false
+        )
+    }
+
+    private static func handledOn(logs: [WorkoutLog], template: WorkoutTemplate, dayKey: String) -> Bool {
+        completedOn(logs: logs, template: template, dayKey: dayKey)
+            || skippedOn(logs: logs, template: template, dayKey: dayKey)
+    }
+
+    private static func completedOn(logs: [WorkoutLog], template: WorkoutTemplate, dayKey: String) -> Bool {
+        let templateName = template.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return logs.contains { log in
+            log.date == dayKey
+                && log.status == "finished"
+                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(templateName) == .orderedSame
+        }
+    }
+
+    private static func skippedOn(logs: [WorkoutLog], template: WorkoutTemplate, dayKey: String) -> Bool {
+        let templateName = template.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return logs.contains { log in
+            log.date == dayKey
+                && log.status == "skipped"
+                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(templateName) == .orderedSame
+        }
+    }
+
+    private static func dayDifference(from start: Date, to end: Date) -> Int {
+        Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: start), to: Calendar.current.startOfDay(for: end)).day ?? 0
+    }
+
+    private static func positiveModulo(_ value: Int, _ count: Int) -> Int {
+        ((value % count) + count) % count
+    }
+
+    private static func startOfWeek(_ date: Date) -> Date {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        let weekdayOffset = Calendar.current.component(.weekday, from: startOfDay) - 1
+        return Calendar.current.date(byAdding: .day, value: -weekdayOffset, to: startOfDay) ?? startOfDay
+    }
+
+    private static func deloadInstruction(_ deload: ProgramDeloadRule) -> String? {
+        guard deload.type != "none" else { return nil }
+        return "\(deload.loadPercent ?? 85)% load / \(deload.repPercent ?? 100)% reps"
     }
 }
 

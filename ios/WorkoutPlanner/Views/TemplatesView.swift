@@ -98,27 +98,16 @@ struct TemplatesView: View {
                 ProgramFormSheet(program: program, templates: store.templates, isSaving: $isSaving)
             case let .exercise(exercise):
                 ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
-            case .programTimeline:
-                if let program = ProgramPlanner.activeProgram(from: store.programs) {
-                    ProgramTimelineSheet(
-                        days: ProgramPlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs),
-                        isSaving: $isSaving,
-                        onInsertRest: { day in
-                            Task { await insertRollingRestDay(day) }
-                        },
-                        onMove: { source, destination in
-                            Task { await reorderRollingTimeline(fromOffsets: source, toOffset: destination) }
-                        }
-                    )
-                }
-            case let .programDay(weekday):
-                if let program = ProgramPlanner.activeProgram(from: store.programs),
-                   let day = ProgramPlanner.weekPlan(program: program, templates: store.templates, logs: store.logs)
-                    .first(where: { $0.weekday.value == weekday }) {
+            case let .programDay(dayId):
+                if let program = ProgramCyclePlanner.activeProgram(from: store.programs) {
+                    let cycle = ProgramCyclePlanner.cycleDays(program: program, templates: store.templates, logs: store.logs)
+                    let upcoming = ProgramCyclePlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs)
+                    if let day = cycle.first(where: { $0.id == dayId }) {
                     ProgramDayPlannerSheet(
                         program: program,
                         day: day,
-                        week: ProgramPlanner.weekPlan(program: program, templates: store.templates, logs: store.logs),
+                        cycle: cycle,
+                        upcoming: ProgramCyclePlanner.nextOccurrence(for: dayId, upcoming: upcoming),
                         templates: store.templates,
                         isSaving: $isSaving,
                         onStart: { template in
@@ -129,12 +118,13 @@ struct TemplatesView: View {
                             Task { await skip(day) }
                         },
                         onSetRoutine: { day, templateId in
-                            Task { await setProgramRoutine(program, weekday: day.weekday.value, templateId: templateId) }
+                            Task { await setProgramRoutine(program, dayId: day.id, templateId: templateId) }
                         },
-                        onMoveOrSwap: { day, targetWeekday in
-                            Task { await moveProgramDay(program, from: day.weekday.value, to: targetWeekday) }
+                        onSwap: { sourceId, targetId in
+                            Task { await swapProgramDay(program, sourceId: sourceId, targetId: targetId) }
                         }
                     )
+                    }
                 }
             }
         }
@@ -195,7 +185,7 @@ struct TemplatesView: View {
     }
 
     private var programTab: some View {
-        let activeProgram = ProgramPlanner.activeProgram(from: store.programs)
+        let activeProgram = ProgramCyclePlanner.activeProgram(from: store.programs)
 
         return VStack(alignment: .leading, spacing: 10) {
             ProgramSectionHeader(
@@ -215,11 +205,11 @@ struct TemplatesView: View {
                 onSkip: { workout in
                     Task { await skip(workout) }
                 },
-                onEditTimeline: {
-                    sheet = .programTimeline
+                onInsertRest: { day in
+                    Task { await insertRestDay(day) }
                 },
                 onSelectDay: { day in
-                    sheet = .programDay(day.weekday.value)
+                    sheet = .programDay(day.id)
                 }
             )
             ProgramList(
@@ -287,12 +277,12 @@ struct TemplatesView: View {
         }
     }
 
-    private func skip(_ workout: NextProgramWorkout) async {
+    private func skip(_ workout: ProgramNextWorkout) async {
         await skip(template: workout.template, date: workout.date)
     }
 
-    private func skip(_ day: PlannedProgramDay) async {
-        guard let template = day.templates.first else { return }
+    private func skip(_ day: ProgramUpcomingDay) async {
+        guard let template = day.template else { return }
         await skip(template: template, date: day.date)
     }
 
@@ -308,12 +298,12 @@ struct TemplatesView: View {
                 exerciseItems: [],
                 status: "skipped"
             ))
-            if let activeProgram = ProgramPlanner.activeProgram(from: store.programs) {
+            if let activeProgram = ProgramCyclePlanner.activeProgram(from: store.programs) {
                 let updatedProgram = programWithActivity(
                     activeProgram,
                     type: "skip",
                     title: "Skipped \(template.name)",
-                    detail: ProgramPlanner.displayDate(date)
+                    detail: ProgramCyclePlanner.displayDate(date)
                 )
                 try await store.saveProgram(updatedProgram)
             }
@@ -324,11 +314,11 @@ struct TemplatesView: View {
         }
     }
 
-    private func setProgramRoutine(_ program: TrainingProgram, weekday: Int, templateId: String) async {
+    private func setProgramRoutine(_ program: TrainingProgram, dayId: String, templateId: String) async {
         guard !isSaving else { return }
-        let currentTemplateId = ProgramPlanner.scheduleItem(in: program.schedule, weekday: weekday)?.templateId ?? ""
+        let currentTemplateId = program.schedule.first(where: { $0.id == dayId })?.templateId ?? ""
         guard currentTemplateId != templateId else { return }
-        let weekdayLabel = ProgramPlanner.weekday(for: weekday)
+        guard let index = program.schedule.firstIndex(where: { $0.id == dayId }) else { return }
         let templateName = store.templates.first { $0.id == templateId }?.name
         isSaving = true
         defer { isSaving = false }
@@ -336,10 +326,10 @@ struct TemplatesView: View {
             var updated = programWithActivity(
                 program,
                 type: "schedule_edit",
-                title: templateId.isEmpty ? "Set \(weekdayLabel.long) as rest" : "Set \(weekdayLabel.long)",
+                title: templateId.isEmpty ? "Set \(ProgramCyclePlanner.cycleDayLabel(index: index)) as rest" : "Set \(ProgramCyclePlanner.cycleDayLabel(index: index))",
                 detail: templateId.isEmpty ? "Rest" : (templateName ?? "Routine")
             )
-            updated.schedule = ProgramPlanner.setSchedule(program.schedule, weekday: weekday, templateId: templateId)
+            updated.schedule = ProgramCyclePlanner.replaceScheduleItem(program.schedule, dayId: dayId, templateId: templateId)
             try await store.saveProgram(updated)
         } catch {
             if !isCancellationError(error) {
@@ -348,34 +338,23 @@ struct TemplatesView: View {
         }
     }
 
-    private func moveProgramDay(_ program: TrainingProgram, from sourceWeekday: Int, to targetWeekday: Int) async {
-        guard !isSaving, sourceWeekday != targetWeekday else { return }
-        let sourceItem = ProgramPlanner.scheduleItem(in: program.schedule, weekday: sourceWeekday)
-        let targetItem = ProgramPlanner.scheduleItem(in: program.schedule, weekday: targetWeekday)
-        guard sourceItem != nil || targetItem != nil else { return }
-
-        let sourceLabel = ProgramPlanner.weekday(for: sourceWeekday)
-        let targetLabel = ProgramPlanner.weekday(for: targetWeekday)
-        let sourceTemplate = store.templates.first { $0.id == sourceItem?.templateId }
-        let targetTemplate = store.templates.first { $0.id == targetItem?.templateId }
-        let isSwap = sourceItem != nil && targetItem != nil
-
+    private func swapProgramDay(_ program: TrainingProgram, sourceId: String, targetId: String) async {
+        guard !isSaving, sourceId != targetId,
+              let sourceIndex = program.schedule.firstIndex(where: { $0.id == sourceId }),
+              let targetIndex = program.schedule.firstIndex(where: { $0.id == targetId })
+        else { return }
+        let sourceTemplate = store.templates.first { $0.id == program.schedule[sourceIndex].templateId }
+        let targetTemplate = store.templates.first { $0.id == program.schedule[targetIndex].templateId }
         isSaving = true
         defer { isSaving = false }
         do {
             var updated = programWithActivity(
                 program,
-                type: isSwap ? "swap" : "move",
-                title: isSwap
-                    ? "Swapped \(sourceLabel.label) and \(targetLabel.label)"
-                    : "Moved \(sourceTemplate?.name ?? targetTemplate?.name ?? "Routine")",
-                detail: isSwap
-                    ? "\(sourceTemplate?.name ?? "Rest") <-> \(targetTemplate?.name ?? "Rest")"
-                    : sourceItem != nil
-                        ? "\(sourceLabel.long) -> \(targetLabel.long)"
-                        : "\(targetLabel.long) -> \(sourceLabel.long)"
+                type: "swap",
+                title: "Swapped \(ProgramCyclePlanner.cycleDayLabel(index: sourceIndex)) and \(ProgramCyclePlanner.cycleDayLabel(index: targetIndex))",
+                detail: "\(sourceTemplate?.name ?? "Rest") <-> \(targetTemplate?.name ?? "Rest")"
             )
-            updated.schedule = ProgramPlanner.moveOrSwapSchedule(program.schedule, sourceWeekday: sourceWeekday, targetWeekday: targetWeekday)
+            updated.schedule = ProgramCyclePlanner.swapScheduleDays(program.schedule, sourceId: sourceId, targetId: targetId)
             try await store.saveProgram(updated)
         } catch {
             if !isCancellationError(error) {
@@ -384,91 +363,26 @@ struct TemplatesView: View {
         }
     }
 
-    private func insertRollingRestDay(_ day: UpcomingProgramDay) async {
+    private func insertRestDay(_ day: ProgramUpcomingDay) async {
         guard !isSaving,
-              let program = ProgramPlanner.activeProgram(from: store.programs)
+              !day.isInsertedRest,
+              let program = ProgramCyclePlanner.activeProgram(from: store.programs)
         else { return }
-        let days = ProgramPlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs)
-        guard let index = days.firstIndex(where: { $0.id == day.id }) else { return }
-        let contents = days.map(ProgramTimelineContent.init(day:))
-        let shifted = Array((contents[..<index] + [ProgramTimelineContent.rest] + contents[index...]).prefix(days.count))
-
-        await saveRollingTimeline(
-            program,
-            type: "rest_insert",
-            title: "Inserted rest day",
-            detail: ProgramPlanner.displayDate(day.date),
-            days: days,
-            contents: shifted
-        )
-    }
-
-    private func reorderRollingTimeline(fromOffsets source: IndexSet, toOffset destination: Int) async {
-        guard !isSaving,
-              let sourceIndex = source.first,
-              let program = ProgramPlanner.activeProgram(from: store.programs)
-        else { return }
-        let days = ProgramPlanner.upcomingSchedule(program: program, templates: store.templates, logs: store.logs)
-        guard days.indices.contains(sourceIndex), destination >= 0, destination <= days.count else { return }
-
-        var contents = days.map(ProgramTimelineContent.init(day:))
-        let moved = contents[sourceIndex]
-        contents.move(fromOffsets: source, toOffset: destination)
-
-        let targetIndex = min(max(destination > sourceIndex ? destination - 1 : destination, 0), max(days.count - 1, 0))
-        await saveRollingTimeline(
-            program,
-            type: "timeline_reorder",
-            title: "Moved \(moved.templateName.isEmpty ? "rest day" : moved.templateName)",
-            detail: "\(ProgramPlanner.displayDate(days[sourceIndex].date)) -> \(ProgramPlanner.displayDate(days[targetIndex].date))",
-            days: days,
-            contents: contents
-        )
-    }
-
-    private func saveRollingTimeline(_ program: TrainingProgram, type: String, title: String, detail: String, days: [UpcomingProgramDay], contents: [ProgramTimelineContent]) async {
-        guard !isSaving, days.count == contents.count else { return }
         isSaving = true
         defer { isSaving = false }
         do {
-            let entries = zip(days, contents).map { day, content in
-                ProgramTimelineItem(
-                    date: day.id,
-                    templateId: content.templateId.isEmpty ? nil : content.templateId,
-                    notes: nil
-                )
-            }
-            var updated = programWithActivity(program, type: type, title: title, detail: detail)
-            updated.timeline = mergeProgramTimeline(program.timeline, entries: entries)
+            let updated = programWithActivity(
+                ProgramCyclePlanner.insertRestDay(program, dayKey: day.dayKey),
+                type: "rest_insert",
+                title: "Inserted rest day",
+                detail: ProgramCyclePlanner.displayDate(day.date)
+            )
             try await store.saveProgram(updated)
         } catch {
             if !isCancellationError(error) {
                 store.errorMessage = error.localizedDescription
             }
         }
-    }
-
-    private func mergeProgramTimeline(_ existing: [ProgramTimelineItem]?, entries: [ProgramTimelineItem]) -> [ProgramTimelineItem] {
-        let changedDates = Set(entries.map(\.date))
-        return cleanProgramTimeline((existing ?? []).filter { !changedDates.contains($0.date) } + entries)
-    }
-
-    private func cleanProgramTimeline(_ timeline: [ProgramTimelineItem]) -> [ProgramTimelineItem] {
-        var seenDates = Set<String>()
-        let cleaned = timeline.compactMap { item -> ProgramTimelineItem? in
-            let date = item.date
-            guard DateHelpers.apiDay.date(from: date) != nil, seenDates.insert(date).inserted else { return nil }
-            let templateId = item.templateId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let notes = item.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return ProgramTimelineItem(
-                date: date,
-                templateId: templateId.isEmpty ? nil : templateId,
-                notes: notes.isEmpty ? nil : notes
-            )
-        }
-        .sorted { $0.date < $1.date }
-
-        return Array(cleaned.suffix(70))
     }
 
     private func programWithActivity(_ program: TrainingProgram, type: String, title: String, detail: String? = nil) -> TrainingProgram {
@@ -522,8 +436,7 @@ private enum TemplateSheet: Identifiable {
     case settings
     case program(TrainingProgram)
     case exercise(Exercise)
-    case programTimeline
-    case programDay(Int)
+    case programDay(String)
 
     var id: String {
         switch self {
@@ -532,364 +445,8 @@ private enum TemplateSheet: Identifiable {
         case .settings: return "settings"
         case let .program(program): return "program-\(program.id)"
         case let .exercise(exercise): return "exercise-\(exercise.id)"
-        case .programTimeline: return "program-timeline"
-        case let .programDay(weekday): return "program-day-\(weekday)"
+        case let .programDay(dayId): return "program-day-\(dayId)"
         }
-    }
-}
-
-private struct ProgramWeekday: Identifiable {
-    let value: Int
-    let label: String
-    let long: String
-
-    var id: Int { value }
-}
-
-private enum ProgramDayStatus {
-    case rest
-    case planned
-    case done
-    case skipped
-    case missed
-}
-
-private struct PlannedProgramDay: Identifiable {
-    let weekday: ProgramWeekday
-    let date: Date
-    let templates: [WorkoutTemplate]
-    let completedCount: Int
-    let skippedCount: Int
-    let status: ProgramDayStatus
-
-    var id: Int { weekday.value }
-}
-
-private struct UpcomingProgramDay: Identifiable {
-    let date: Date
-    let templateId: String
-    let templates: [WorkoutTemplate]
-    let completedCount: Int
-    let skippedCount: Int
-    let status: ProgramDayStatus
-
-    var id: String { DateHelpers.dayString(from: date) }
-}
-
-private struct ProgramTimelineContent {
-    let templateId: String
-    let templateName: String
-
-    static let rest = ProgramTimelineContent(templateId: "", templateName: "")
-
-    init(templateId: String, templateName: String) {
-        self.templateId = templateId
-        self.templateName = templateName
-    }
-
-    init(day: UpcomingProgramDay) {
-        templateId = day.templateId
-        templateName = day.templates.first?.name ?? ""
-    }
-}
-
-private struct NextProgramWorkout {
-    let date: Date
-    let weekday: Int
-    let template: WorkoutTemplate
-    let position: Int
-    let total: Int
-}
-
-private struct ProgramDeloadWeekInfo {
-    let isDeload: Bool
-    let nextDate: Date
-    let weekNumber: Int
-    let instruction: String
-}
-
-private struct ProgramAdherenceSummary {
-    let weeks: Int
-    let scheduled: Int
-    let completed: Int
-    let skipped: Int
-    let missed: Int
-    let remainingToday: Int
-
-    var completionRate: Int {
-        guard scheduled > 0 else { return 0 }
-        return Int((Double(completed) / Double(scheduled) * 100).rounded())
-    }
-}
-
-private enum ProgramPlanner {
-    static let weekdays = [
-        ProgramWeekday(value: 0, label: "Sun", long: "Sunday"),
-        ProgramWeekday(value: 1, label: "Mon", long: "Monday"),
-        ProgramWeekday(value: 2, label: "Tue", long: "Tuesday"),
-        ProgramWeekday(value: 3, label: "Wed", long: "Wednesday"),
-        ProgramWeekday(value: 4, label: "Thu", long: "Thursday"),
-        ProgramWeekday(value: 5, label: "Fri", long: "Friday"),
-        ProgramWeekday(value: 6, label: "Sat", long: "Saturday"),
-    ]
-
-    static func activeProgram(from programs: [TrainingProgram]) -> TrainingProgram? {
-        programs.first { $0.active == true }
-    }
-
-    static func nextWorkout(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> NextProgramWorkout? {
-        guard let program, !program.schedule.isEmpty || program.timeline?.isEmpty == false else { return nil }
-        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
-        let today = Calendar.current.startOfDay(for: Date())
-
-        for offset in 0..<28 {
-            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { continue }
-            let weekday = Calendar.current.component(.weekday, from: date) - 1
-            let scheduled = scheduledTemplates(on: date, program: program, templatesById: templatesById)
-            for (index, template) in scheduled.enumerated() where !handledOn(logs: logs, template: template, date: date) {
-                return NextProgramWorkout(date: date, weekday: weekday, template: template, position: index + 1, total: scheduled.count)
-            }
-        }
-        return nil
-    }
-
-    static func weekday(for value: Int) -> ProgramWeekday {
-        weekdays.first { $0.value == ((value % 7) + 7) % 7 } ?? weekdays[0]
-    }
-
-    static func scheduleItem(in schedule: [ProgramScheduleItem], weekday: Int) -> ProgramScheduleItem? {
-        schedule.first { $0.weekday == weekday && !$0.templateId.isEmpty }
-    }
-
-    static func setSchedule(_ schedule: [ProgramScheduleItem], weekday: Int, templateId: String) -> [ProgramScheduleItem] {
-        var next = schedule.filter { $0.weekday != weekday && !$0.templateId.isEmpty }
-        if !templateId.isEmpty {
-            next.append(ProgramScheduleItem(weekday: weekday, templateId: templateId))
-        }
-        return next.sorted { $0.weekday < $1.weekday }
-    }
-
-    static func moveOrSwapSchedule(_ schedule: [ProgramScheduleItem], sourceWeekday: Int, targetWeekday: Int) -> [ProgramScheduleItem] {
-        guard sourceWeekday != targetWeekday else { return schedule.sorted { $0.weekday < $1.weekday } }
-
-        var byDay: [Int: ProgramScheduleItem] = [:]
-        for item in schedule where !item.templateId.isEmpty {
-            let weekday = ((item.weekday % 7) + 7) % 7
-            guard byDay[weekday] == nil else { continue }
-            var copy = item
-            copy.weekday = weekday
-            byDay[weekday] = copy
-        }
-
-        let source = byDay[sourceWeekday]
-        let target = byDay[targetWeekday]
-        guard source != nil || target != nil else {
-            return byDay.values.sorted { $0.weekday < $1.weekday }
-        }
-
-        byDay[sourceWeekday] = nil
-        byDay[targetWeekday] = nil
-        if var source {
-            source.weekday = targetWeekday
-            byDay[targetWeekday] = source
-        }
-        if var target {
-            target.weekday = sourceWeekday
-            byDay[sourceWeekday] = target
-        }
-
-        return byDay.values.sorted { $0.weekday < $1.weekday }
-    }
-
-    static func upcomingSchedule(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], days: Int = 21) -> [UpcomingProgramDay] {
-        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
-        let today = Calendar.current.startOfDay(for: Date())
-
-        return (0..<days).compactMap { offset in
-            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { return nil }
-            let templateIds = program.map { scheduledTemplateIds(on: date, program: $0) } ?? []
-            let scheduled = templateIds.compactMap { templatesById[$0] }
-            let scheduledTemplateId = scheduled.first?.id ?? ""
-            let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
-            let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
-            let handledCount = completedCount + skippedCount
-            let isPast = date < today
-            let status: ProgramDayStatus
-
-            if scheduled.isEmpty {
-                status = .rest
-            } else if completedCount == scheduled.count {
-                status = .done
-            } else if handledCount == scheduled.count {
-                status = .skipped
-            } else if isPast {
-                status = .missed
-            } else {
-                status = .planned
-            }
-
-            return UpcomingProgramDay(
-                date: date,
-                templateId: scheduledTemplateId,
-                templates: scheduled,
-                completedCount: completedCount,
-                skippedCount: skippedCount,
-                status: status
-            )
-        }
-    }
-
-    static func weekPlan(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> [PlannedProgramDay] {
-        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
-        let today = Calendar.current.startOfDay(for: Date())
-        let sundayOffset = 1 - Calendar.current.component(.weekday, from: today)
-        let weekStart = Calendar.current.date(byAdding: .day, value: sundayOffset, to: today) ?? today
-
-        return weekdays.compactMap { weekday in
-            guard let date = Calendar.current.date(byAdding: .day, value: weekday.value, to: weekStart) else { return nil }
-            let scheduled = program.map { scheduledTemplates(on: date, program: $0, templatesById: templatesById) } ?? []
-            let completedCount = scheduled.filter { completedOn(logs: logs, template: $0, date: date) }.count
-            let skippedCount = scheduled.filter { skippedOn(logs: logs, template: $0, date: date) }.count
-            let handledCount = completedCount + skippedCount
-            let isDone = !scheduled.isEmpty && completedCount == scheduled.count
-            let isPast = date < today
-            let status: ProgramDayStatus
-            if scheduled.isEmpty {
-                status = .rest
-            } else if isDone {
-                status = .done
-            } else if handledCount == scheduled.count {
-                status = .skipped
-            } else if isPast {
-                status = .missed
-            } else {
-                status = .planned
-            }
-            return PlannedProgramDay(weekday: weekday, date: date, templates: scheduled, completedCount: completedCount, skippedCount: skippedCount, status: status)
-        }
-    }
-
-    static func deloadInfo(program: TrainingProgram?, date: Date = Date()) -> ProgramDeloadWeekInfo? {
-        guard let deload = program?.deload,
-              deload.type != "none",
-              let instruction = deloadInstruction(deload)
-        else { return nil }
-
-        let everyWeeks = max(2, deload.everyWeeks ?? 4)
-        let currentWeekStart = startOfWeek(date)
-        let startWeek = startOfWeek(DateHelpers.date(from: deload.startDate ?? DateHelpers.todayString()))
-        let weeksSinceStart = max(0, Calendar.current.dateComponents([.weekOfYear], from: startWeek, to: currentWeekStart).weekOfYear ?? 0)
-        let weekNumber = weeksSinceStart + 1
-        let isDeload = weekNumber % everyWeeks == 0
-        let weeksUntilNext = isDeload ? everyWeeks : everyWeeks - (weekNumber % everyWeeks)
-        let nextDate = Calendar.current.date(byAdding: .weekOfYear, value: weeksUntilNext, to: currentWeekStart) ?? currentWeekStart
-
-        return ProgramDeloadWeekInfo(isDeload: isDeload, nextDate: nextDate, weekNumber: weekNumber, instruction: instruction)
-    }
-
-    static func adherenceSummary(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog], weeks: Int = 4) -> ProgramAdherenceSummary {
-        guard let program, !program.schedule.isEmpty || program.timeline?.isEmpty == false else {
-            return ProgramAdherenceSummary(weeks: weeks, scheduled: 0, completed: 0, skipped: 0, missed: 0, remainingToday: 0)
-        }
-
-        let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
-        let today = Calendar.current.startOfDay(for: Date())
-        let start = Calendar.current.date(byAdding: .day, value: -((weeks * 7) - 1), to: today) ?? today
-        var scheduledCount = 0
-        var completedCount = 0
-        var skippedCount = 0
-        var missedCount = 0
-        var remainingTodayCount = 0
-
-        var date = start
-        while date <= today {
-            let scheduled = scheduledTemplates(on: date, program: program, templatesById: templatesById)
-            for template in scheduled {
-                scheduledCount += 1
-                if completedOn(logs: logs, template: template, date: date) {
-                    completedCount += 1
-                } else if skippedOn(logs: logs, template: template, date: date) {
-                    skippedCount += 1
-                } else if date < today {
-                    missedCount += 1
-                } else {
-                    remainingTodayCount += 1
-                }
-            }
-            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? today.addingTimeInterval(24 * 60 * 60)
-        }
-
-        return ProgramAdherenceSummary(
-            weeks: weeks,
-            scheduled: scheduledCount,
-            completed: completedCount,
-            skipped: skippedCount,
-            missed: missedCount,
-            remainingToday: remainingTodayCount
-        )
-    }
-
-    static func displayDate(_ date: Date) -> String {
-        let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
-        if Calendar.current.isDate(date, inSameDayAs: today) { return "Today" }
-        if Calendar.current.isDate(date, inSameDayAs: tomorrow) { return "Tomorrow" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MMM d"
-        return formatter.string(from: date)
-    }
-
-    private static func completedOn(logs: [WorkoutLog], template: WorkoutTemplate, date: Date) -> Bool {
-        let day = DateHelpers.dayString(from: date)
-        return logs.contains { log in
-            log.date == day
-                && log.status == "finished"
-                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .caseInsensitiveCompare(template.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
-        }
-    }
-
-    private static func skippedOn(logs: [WorkoutLog], template: WorkoutTemplate, date: Date) -> Bool {
-        let day = DateHelpers.dayString(from: date)
-        return logs.contains { log in
-            log.date == day
-                && log.status == "skipped"
-                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .caseInsensitiveCompare(template.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
-        }
-    }
-
-    private static func handledOn(logs: [WorkoutLog], template: WorkoutTemplate, date: Date) -> Bool {
-        completedOn(logs: logs, template: template, date: date) || skippedOn(logs: logs, template: template, date: date)
-    }
-
-    private static func startOfWeek(_ date: Date) -> Date {
-        let startOfDay = Calendar.current.startOfDay(for: date)
-        let weekdayOffset = Calendar.current.component(.weekday, from: startOfDay) - 1
-        return Calendar.current.date(byAdding: .day, value: -weekdayOffset, to: startOfDay) ?? startOfDay
-    }
-
-    private static func scheduledTemplates(for weekday: Int, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
-        scheduledTemplateIds(for: weekday, program: program).compactMap { templatesById[$0] }
-    }
-
-    private static func scheduledTemplates(on date: Date, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> [WorkoutTemplate] {
-        scheduledTemplateIds(on: date, program: program).compactMap { templatesById[$0] }
-    }
-
-    private static func scheduledTemplateIds(for weekday: Int, program: TrainingProgram) -> [String] {
-        guard let item = program.schedule.first(where: { $0.weekday == weekday && !$0.templateId.isEmpty }) else { return [] }
-        return [item.templateId]
-    }
-
-    private static func scheduledTemplateIds(on date: Date, program: TrainingProgram) -> [String] {
-        let day = DateHelpers.dayString(from: date)
-        if let timelineItem = program.timeline?.first(where: { $0.date == day }) {
-            guard let templateId = timelineItem.templateId, !templateId.isEmpty else { return [] }
-            return [templateId]
-        }
-        let weekday = Calendar.current.component(.weekday, from: date) - 1
-        return scheduledTemplateIds(for: weekday, program: program)
     }
 }
 
@@ -927,7 +484,7 @@ private struct ProgramList: View {
                                 Text(program.name.isEmpty ? "Untitled program" : program.name)
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(program.active == true ? Theme.text : Theme.muted)
-                                Text("\(program.schedule.count) scheduled \(program.schedule.count == 1 ? "day" : "days")")
+                                Text("\(program.schedule.count) cycle \(program.schedule.count == 1 ? "day" : "days")")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Theme.muted)
                             }
@@ -959,28 +516,28 @@ private struct ProgramSummaryCard: View {
     let onEdit: (TrainingProgram) -> Void
     let onDelete: (TrainingProgram) -> Void
     let onStart: (WorkoutTemplate) -> Void
-    let onSkip: (NextProgramWorkout) -> Void
-    let onEditTimeline: () -> Void
-    let onSelectDay: (PlannedProgramDay) -> Void
+    let onSkip: (ProgramNextWorkout) -> Void
+    let onInsertRest: (ProgramUpcomingDay) -> Void
+    let onSelectDay: (ProgramCycleDay) -> Void
 
-    private var nextWorkout: NextProgramWorkout? {
-        ProgramPlanner.nextWorkout(program: program, templates: templates, logs: logs)
+    private var nextWorkout: ProgramNextWorkout? {
+        ProgramCyclePlanner.nextWorkout(program: program, templates: templates, logs: logs)
     }
 
-    private var week: [PlannedProgramDay] {
-        ProgramPlanner.weekPlan(program: program, templates: templates, logs: logs)
+    private var cycle: [ProgramCycleDay] {
+        ProgramCyclePlanner.cycleDays(program: program, templates: templates, logs: logs)
     }
 
-    private var upcoming: [UpcomingProgramDay] {
-        ProgramPlanner.upcomingSchedule(program: program, templates: templates, logs: logs)
+    private var upcoming: [ProgramUpcomingDay] {
+        ProgramCyclePlanner.upcomingSchedule(program: program, templates: templates, logs: logs)
     }
 
-    private var deload: ProgramDeloadWeekInfo? {
-        ProgramPlanner.deloadInfo(program: program)
+    private var deload: ProgramDeloadInfo? {
+        ProgramCyclePlanner.deloadInfo(program: program)
     }
 
     private var adherence: ProgramAdherenceSummary {
-        ProgramPlanner.adherenceSummary(program: program, templates: templates, logs: logs)
+        ProgramCyclePlanner.adherenceSummary(program: program, templates: templates, logs: logs)
     }
 
     var body: some View {
@@ -1016,12 +573,14 @@ private struct ProgramSummaryCard: View {
                     ProgramNextWorkoutPanel(
                         nextWorkout: nextWorkout,
                         onStart: onStart,
-                        onSkip: onSkip
+                        onSkip: onSkip,
+                        startDate: program.startDate,
+                        insertedRestCount: program.insertedRestDays.count
                     )
 
-                    ProgramWeekGrid(week: week, onSelectDay: onSelectDay)
+                    ProgramWeekGrid(days: cycle, onSelectDay: onSelectDay)
 
-                    ProgramUpcomingList(days: upcoming, onEditTimeline: onEditTimeline)
+                    ProgramUpcomingList(days: upcoming, onInsertRest: onInsertRest)
 
                     if adherence.scheduled > 0 {
                         ProgramAdherenceRow(summary: adherence)
@@ -1031,7 +590,7 @@ private struct ProgramSummaryCard: View {
                         Label(
                             deload.isDeload
                                 ? "Deload week: use \(deload.instruction)"
-                                : "Next deload \(ProgramPlanner.displayDate(deload.nextDate)): use \(deload.instruction)",
+                                : "Next deload \(ProgramCyclePlanner.displayDate(deload.nextDate)): use \(deload.instruction)",
                             systemImage: "arrow.triangle.2.circlepath"
                         )
                         .font(.system(size: 13, weight: deload.isDeload ? .semibold : .regular))
@@ -1054,7 +613,7 @@ private struct ProgramSummaryCard: View {
                         ProgramActivityList(activity: Array(activity.prefix(5)))
                     }
                 } else {
-                    Label("Schedule routines by weekday, then start the next planned workout from here.", systemImage: "calendar")
+                    Label("Build a repeating cycle, choose the start date, and insert rest days when training gets pushed back.", systemImage: "calendar")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted)
                 }
@@ -1064,14 +623,16 @@ private struct ProgramSummaryCard: View {
 }
 
 private struct ProgramNextWorkoutPanel: View {
-    let nextWorkout: NextProgramWorkout?
+    let nextWorkout: ProgramNextWorkout?
     let onStart: (WorkoutTemplate) -> Void
-    let onSkip: (NextProgramWorkout) -> Void
+    let onSkip: (ProgramNextWorkout) -> Void
+    let startDate: String
+    let insertedRestCount: Int
 
     private var title: String {
         guard let nextWorkout else { return "No scheduled workout" }
         let progress = nextWorkout.total > 1 ? " (\(nextWorkout.position) of \(nextWorkout.total))" : ""
-        return "\(ProgramPlanner.displayDate(nextWorkout.date)) - \(nextWorkout.template.name)\(progress)"
+        return "\(ProgramCyclePlanner.displayDate(nextWorkout.date)) - \(nextWorkout.template.name)\(progress)"
     }
 
     var body: some View {
@@ -1092,6 +653,9 @@ private struct ProgramNextWorkoutPanel: View {
                         .foregroundStyle(Theme.text)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                    Text(insertedRestCount > 0 ? "Starts \(startDate) · \(insertedRestCount) inserted rest days" : "Starts \(startDate)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.muted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1131,8 +695,8 @@ private struct ProgramNextWorkoutPanel: View {
 }
 
 private struct ProgramWeekGrid: View {
-    let week: [PlannedProgramDay]
-    let onSelectDay: (PlannedProgramDay) -> Void
+    let days: [ProgramCycleDay]
+    let onSelectDay: (ProgramCycleDay) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 78), spacing: 8, alignment: .top)
@@ -1141,18 +705,18 @@ private struct ProgramWeekGrid: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("This Week")
+                Text("Repeating Cycle")
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundStyle(Theme.text)
                 Spacer()
-                Text("Current week")
+                Text("\(days.count) \(days.count == 1 ? "day" : "days")")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
             }
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(week) { day in
+                ForEach(days) { day in
                     ProgramDayChip(day: day) {
                         onSelectDay(day)
                     }
@@ -1163,13 +727,13 @@ private struct ProgramWeekGrid: View {
 }
 
 private struct ProgramUpcomingList: View {
-    let days: [UpcomingProgramDay]
-    let onEditTimeline: () -> Void
+    let days: [ProgramUpcomingDay]
+    let onInsertRest: (ProgramUpcomingDay) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Timeline")
+                Text("Upcoming")
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundStyle(Theme.text)
                 Spacer()
@@ -1177,107 +741,30 @@ private struct ProgramUpcomingList: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
-                IconCircleButton(
-                    systemName: "arrow.up.arrow.down",
-                    size: 28,
-                    iconSize: 12,
-                    action: onEditTimeline
-                )
-                .accessibilityLabel("Edit timeline")
             }
 
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(days) { day in
-                        ProgramUpcomingRow(day: day)
+                        ProgramUpcomingRow(day: day, onInsertRest: onInsertRest)
                     }
                 }
             }
             .frame(maxHeight: 260)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Program timeline")
-    }
-}
-
-private struct ProgramTimelineSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let days: [UpcomingProgramDay]
-    @Binding var isSaving: Bool
-    let onInsertRest: (UpcomingProgramDay) -> Void
-    let onMove: (IndexSet, Int) -> Void
-
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(days) { day in
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(ProgramPlanner.displayDate(day.date))
-                                .font(.system(size: 13, weight: .heavy))
-                                .foregroundStyle(Theme.text)
-                            Text(summary(for: day))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Theme.muted)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Button {
-                            onInsertRest(day)
-                        } label: {
-                            Label("Rest", systemImage: "plus")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(isSaving)
-                        .accessibilityLabel("Insert rest day on \(ProgramPlanner.displayDate(day.date))")
-                    }
-                    .padding(.vertical, 3)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            onInsertRest(day)
-                        } label: {
-                            Label("Rest", systemImage: "plus")
-                        }
-                        .tint(Theme.accent)
-                        .disabled(isSaving)
-                    }
-                }
-                .onMove { source, destination in
-                    guard !isSaving else { return }
-                    onMove(source, destination)
-                }
-            }
-            .navigationTitle("Timeline")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    EditButton()
-                        .disabled(isSaving)
-                }
-            }
-        }
-    }
-
-    private func summary(for day: UpcomingProgramDay) -> String {
-        guard !day.templates.isEmpty else { return "Rest" }
-        return day.templates.map(\.name).joined(separator: ", ")
+        .accessibilityLabel("Upcoming program schedule")
     }
 }
 
 private struct ProgramUpcomingRow: View {
-    let day: UpcomingProgramDay
+    let day: ProgramUpcomingDay
+    let onInsertRest: (ProgramUpcomingDay) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(ProgramPlanner.displayDate(day.date))
+                Text(ProgramCyclePlanner.displayDate(day.date))
                     .font(.system(size: 13, weight: .heavy))
                     .foregroundStyle(Theme.text)
                 Text(summary)
@@ -1287,10 +774,22 @@ private struct ProgramUpcomingRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(statusLabel)
-                .font(.system(size: 10, weight: .heavy))
-                .foregroundStyle(statusColor)
-                .textCase(.uppercase)
+            VStack(alignment: .trailing, spacing: 6) {
+                Button {
+                    onInsertRest(day)
+                } label: {
+                    Label("Rest", systemImage: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(day.isInsertedRest)
+
+                Text(statusLabel)
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(statusColor)
+                    .textCase(.uppercase)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -1303,18 +802,21 @@ private struct ProgramUpcomingRow: View {
     }
 
     private var summary: String {
-        guard !day.templates.isEmpty else { return "Rest" }
-        return day.templates.map(\.name).joined(separator: ", ")
+        if day.isBeforeStart {
+            return "Program starts \(day.dayKey)"
+        }
+        if day.isInsertedRest {
+            return "Inserted rest day"
+        }
+        if let index = day.scheduleIndex {
+            let title = day.template?.name ?? "Rest"
+            return "\(ProgramCyclePlanner.cycleDayLabel(index: index)) · \(title)"
+        }
+        return "Rest"
     }
 
     private var statusLabel: String {
-        switch day.status {
-        case .rest: return "Rest"
-        case .planned: return "Planned"
-        case .done: return "Done"
-        case .skipped: return "Skipped"
-        case .missed: return "Missed"
-        }
+        ProgramCyclePlanner.statusLabel(for: day)
     }
 
     private var statusColor: Color {
@@ -1449,78 +951,60 @@ private struct ProgramAdherenceRow: View {
 }
 
 private struct ProgramDayChip: View {
-    let day: PlannedProgramDay
+    let day: ProgramCycleDay
     let action: () -> Void
 
     private var borderColor: Color {
-        switch day.status {
-        case .done: return Theme.success.opacity(0.45)
-        case .skipped: return Theme.accent.opacity(0.45)
-        case .missed: return Theme.warning.opacity(0.55)
-        case .planned, .rest: return Theme.border
-        }
+        day.isCurrent ? Theme.accent.opacity(0.45) : Theme.border
     }
 
     private var backgroundColor: Color {
-        switch day.status {
-        case .done: return Theme.success.opacity(0.08)
-        case .skipped: return Theme.accent.opacity(0.08)
-        case .missed: return Theme.warning.opacity(0.08)
-        case .planned, .rest: return Theme.background
-        }
+        day.isCurrent ? Theme.accent.opacity(0.08) : Theme.background
     }
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
-                    Text(day.weekday.label)
+                    Text(ProgramCyclePlanner.cycleDayLabel(index: day.index))
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .frame(minWidth: 24, alignment: .leading)
+                        .minimumScaleFactor(0.8)
                     Spacer()
-                    if day.status == .done {
+                    if day.isCurrent {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundStyle(Theme.success)
-                    } else if day.status == .skipped {
-                        Image(systemName: "forward.end.fill")
+                            .foregroundStyle(Theme.accent)
+                    } else if day.isNext {
+                        Image(systemName: "play.fill")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Theme.accent)
                     }
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.muted)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    if day.templates.isEmpty {
-                        Text("Rest")
-                            .foregroundStyle(Theme.muted)
-                            .lineLimit(1)
-                    } else {
-                        Text(day.templates[0].name)
+                    if let template = day.template {
+                        Text(template.name)
                             .foregroundStyle(Theme.text)
                             .lineLimit(2)
                             .minimumScaleFactor(0.85)
                             .fixedSize(horizontal: false, vertical: true)
-                        if day.templates.count > 1 {
-                            Text("+\(day.templates.count - 1) more")
-                                .foregroundStyle(Theme.muted)
-                                .lineLimit(1)
-                        }
+                    } else {
+                        Text("Rest")
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
                     }
                 }
                 .font(.system(size: 12, weight: .semibold))
 
-                if day.templates.count > 1 || day.skippedCount > 0 {
-                    let handledCount = day.completedCount + day.skippedCount
-                    Text(day.skippedCount > 0 ? "\(handledCount)/\(day.templates.count) handled" : "\(day.completedCount)/\(day.templates.count)")
+                if day.isCurrent {
+                    Text("Today")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Theme.muted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                } else if day.isNext {
+                    Text("Next up")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.muted)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
@@ -1530,21 +1014,11 @@ private struct ProgramDayChip: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(day.weekday.long), \(summary), \(statusLabel)")
+        .accessibilityLabel("\(ProgramCyclePlanner.cycleDayLabel(index: day.index)), \(summary)")
     }
 
     private var summary: String {
-        day.templates.first?.name ?? "Rest"
-    }
-
-    private var statusLabel: String {
-        switch day.status {
-        case .done: return "Done"
-        case .skipped: return "Skipped"
-        case .missed: return "Missed"
-        case .planned: return "Planned"
-        case .rest: return "Rest"
-        }
+        day.template?.name ?? "Rest"
     }
 }
 
@@ -1552,14 +1026,15 @@ private struct ProgramDayPlannerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let program: TrainingProgram
-    let day: PlannedProgramDay
-    let week: [PlannedProgramDay]
+    let day: ProgramCycleDay
+    let cycle: [ProgramCycleDay]
+    let upcoming: ProgramUpcomingDay?
     let templates: [WorkoutTemplate]
     @Binding var isSaving: Bool
     let onStart: (WorkoutTemplate) -> Void
-    let onSkip: (PlannedProgramDay) -> Void
-    let onSetRoutine: (PlannedProgramDay, String) -> Void
-    let onMoveOrSwap: (PlannedProgramDay, Int) -> Void
+    let onSkip: (ProgramUpcomingDay) -> Void
+    let onSetRoutine: (ProgramCycleDay, String) -> Void
+    let onSwap: (String, String) -> Void
 
     private let columns = [
         GridItem(.flexible(), spacing: 8),
@@ -1567,7 +1042,7 @@ private struct ProgramDayPlannerSheet: View {
     ]
 
     private var currentTemplateId: String {
-        ProgramPlanner.scheduleItem(in: program.schedule, weekday: day.weekday.value)?.templateId ?? ""
+        day.scheduleItem.templateId ?? ""
     }
 
     var body: some View {
@@ -1578,7 +1053,7 @@ private struct ProgramDayPlannerSheet: View {
 
                     HStack(spacing: 10) {
                         Button {
-                            if let template = day.templates.first {
+                            if let template = upcoming?.template {
                                 onStart(template)
                                 dismiss()
                             }
@@ -1587,17 +1062,19 @@ private struct ProgramDayPlannerSheet: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
-                        .disabled(day.templates.isEmpty || isSaving)
+                        .disabled(upcoming?.template == nil || isSaving)
 
                         Button {
-                            onSkip(day)
-                            dismiss()
+                            if let upcoming {
+                                onSkip(upcoming)
+                                dismiss()
+                            }
                         } label: {
                             Label("Skip", systemImage: "forward.end.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(SecondaryButtonStyle())
-                        .disabled(day.templates.isEmpty || isSaving)
+                        .disabled(upcoming?.template == nil || isSaving)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -1631,7 +1108,7 @@ private struct ProgramDayPlannerSheet: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Move / Swap")
+                            Text("Swap Day")
                                 .font(.system(size: 13, weight: .heavy))
                                 .foregroundStyle(Theme.text)
                             Spacer()
@@ -1641,16 +1118,14 @@ private struct ProgramDayPlannerSheet: View {
                         }
 
                         LazyVGrid(columns: columns, spacing: 8) {
-                            ForEach(ProgramPlanner.weekdays.filter { $0.value != day.weekday.value }) { weekday in
-                                let target = week.first { $0.weekday.value == weekday.value }
-                                let targetName = target?.templates.first?.name ?? "Rest"
-                                let targetHasRoutine = target?.templates.isEmpty == false
+                            ForEach(cycle.filter { $0.id != day.id }) { target in
+                                let targetName = target.template?.name ?? "Rest"
                                 Button {
-                                    onMoveOrSwap(day, weekday.value)
+                                    onSwap(day.id, target.id)
                                     dismiss()
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(weekday.label)
+                                        Text(ProgramCyclePlanner.cycleDayLabel(index: target.index))
                                             .font(.system(size: 11, weight: .heavy))
                                             .foregroundStyle(Theme.muted)
                                             .textCase(.uppercase)
@@ -1671,14 +1146,14 @@ private struct ProgramDayPlannerSheet: View {
                                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(isSaving || (day.templates.isEmpty && !targetHasRoutine))
+                                .disabled(isSaving)
                             }
                         }
                     }
                 }
                 .padding(16)
             }
-            .navigationTitle("\(day.weekday.long) Plan")
+            .navigationTitle("\(ProgramCyclePlanner.cycleDayLabel(index: day.index)) Plan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1691,11 +1166,11 @@ private struct ProgramDayPlannerSheet: View {
     private var currentDayPanel: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(ProgramPlanner.displayDate(day.date))
+                Text(upcoming.map { ProgramCyclePlanner.displayDate($0.date) } ?? "No upcoming slot in the next 3 weeks")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
-                Text(day.templates.first?.name ?? "Rest")
+                Text(day.template?.name ?? "Rest")
                     .font(.system(size: 17, weight: .heavy))
                     .foregroundStyle(Theme.text)
                     .lineLimit(2)
@@ -1718,40 +1193,34 @@ private struct ProgramDayPlannerSheet: View {
     }
 
     private var statusLabel: String {
-        switch day.status {
-        case .done: return "Done"
-        case .skipped: return "Skipped"
-        case .missed: return "Missed"
-        case .planned: return "Planned"
-        case .rest: return "Rest"
-        }
+        upcoming.map(ProgramCyclePlanner.statusLabel(for:)) ?? "Cycle day"
     }
 
     private var statusColor: Color {
-        switch day.status {
+        switch upcoming?.status {
         case .done: return Theme.success
         case .skipped: return Theme.accent
         case .missed: return Theme.warning
         case .planned: return Theme.text
-        case .rest: return Theme.muted
+        default: return Theme.muted
         }
     }
 
     private var statusBorder: Color {
-        switch day.status {
+        switch upcoming?.status {
         case .done: return Theme.success.opacity(0.45)
         case .skipped: return Theme.accent.opacity(0.45)
         case .missed: return Theme.warning.opacity(0.55)
-        case .planned, .rest: return Theme.border
+        default: return Theme.border
         }
     }
 
     private var statusBackground: Color {
-        switch day.status {
+        switch upcoming?.status {
         case .done: return Theme.success.opacity(0.08)
         case .skipped: return Theme.accent.opacity(0.08)
         case .missed: return Theme.warning.opacity(0.08)
-        case .planned, .rest: return Theme.surface
+        default: return Theme.surface
         }
     }
 }
@@ -1978,18 +1447,25 @@ private struct ProgramFormSheet: View {
                         get: { form.active ?? false },
                         set: { form.active = $0 }
                     ))
+                    DatePicker("Cycle Start", selection: programStartDateBinding, displayedComponents: .date)
                 } header: {
                     Text("Program")
                 }
 
                 Section {
-                    ForEach(ProgramPlanner.weekdays) { weekday in
+                    Button {
+                        form.schedule.append(ProgramScheduleItem())
+                    } label: {
+                        Label("Add Day", systemImage: "plus")
+                    }
+
+                    ForEach(Array(form.schedule.enumerated()), id: \.element.id) { index, day in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text(weekday.long)
+                                Text(ProgramCyclePlanner.cycleDayLabel(index: index))
                                     .font(.system(size: 15, weight: .semibold))
                                 Spacer()
-                                Text(scheduleSummary(for: weekday.value))
+                                Text(scheduleSummary(for: day))
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.muted)
                             }
@@ -1999,18 +1475,35 @@ private struct ProgramFormSheet: View {
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.muted)
                             } else {
-                                Picker("Routine", selection: scheduleSelectionBinding(for: weekday.value)) {
+                                Picker("Routine", selection: scheduleSelectionBinding(for: day.id)) {
                                     Text("Rest day").tag("")
                                     ForEach(templates) { template in
                                         Text(template.name).tag(template.id)
                                     }
                                 }
                             }
+
+                            HStack(spacing: 10) {
+                                Button("Up") {
+                                    form.schedule = ProgramCyclePlanner.moveScheduleDay(form.schedule, from: index, to: index - 1)
+                                }
+                                .disabled(index == 0)
+
+                                Button("Down") {
+                                    form.schedule = ProgramCyclePlanner.moveScheduleDay(form.schedule, from: index, to: index + 1)
+                                }
+                                .disabled(index == form.schedule.count - 1)
+
+                                Button("Remove", role: .destructive) {
+                                    form.schedule = ProgramCyclePlanner.removeScheduleDay(form.schedule, dayId: day.id)
+                                }
+                            }
+                            .font(.system(size: 13, weight: .semibold))
                         }
                         .padding(.vertical, 4)
                     }
                 } header: {
-                    Text("Weekly Schedule")
+                    Text("Repeating Cycle")
                 }
 
                 Section {
@@ -2086,7 +1579,7 @@ private struct ProgramFormSheet: View {
                     Button(isSaving ? "Saving..." : "Save") {
                         Task { await save() }
                     }
-                    .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+                    .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || form.schedule.isEmpty || isSaving)
                 }
                 ToolbarItem(placement: .keyboard) {
                     KeyboardDoneToolbar {
@@ -2143,6 +1636,15 @@ private struct ProgramFormSheet: View {
         )
     }
 
+    private var programStartDateBinding: Binding<Date> {
+        Binding(
+            get: { DateHelpers.date(from: form.startDate) },
+            set: { date in
+                form.startDate = DateHelpers.dayString(from: date)
+            }
+        )
+    }
+
     private func progressionIntBinding(_ keyPath: WritableKeyPath<ProgramProgressionRule, Int?>, fallback: Int) -> Binding<Int> {
         Binding(
             get: { currentProgression[keyPath: keyPath] ?? fallback },
@@ -2179,42 +1681,24 @@ private struct ProgramFormSheet: View {
         )
     }
 
-    private func scheduleSelectionBinding(for weekday: Int) -> Binding<String> {
+    private func scheduleSelectionBinding(for dayId: String) -> Binding<String> {
         Binding(
             get: {
-                form.schedule.first { $0.weekday == weekday }?.templateId ?? ""
+                form.schedule.first { $0.id == dayId }?.templateId ?? ""
             },
             set: { templateId in
-                form.schedule.removeAll { $0.weekday == weekday }
-                if !templateId.isEmpty {
-                    form.schedule.append(ProgramScheduleItem(weekday: weekday, templateId: templateId))
+                if let index = form.schedule.firstIndex(where: { $0.id == dayId }) {
+                    form.schedule[index].templateId = templateId.isEmpty ? nil : templateId
                 }
-                form.schedule = cleanedSchedule(form.schedule)
             }
         )
     }
 
-    private func scheduleSummary(for weekday: Int) -> String {
-        guard let templateId = form.schedule.first(where: { $0.weekday == weekday && !$0.templateId.isEmpty })?.templateId else {
+    private func scheduleSummary(for day: ProgramScheduleItem) -> String {
+        guard let templateId = day.templateId, !templateId.isEmpty else {
             return "Rest"
         }
         return templates.first(where: { $0.id == templateId })?.name ?? "1 routine"
-    }
-
-    private func cleanedSchedule(_ schedule: [ProgramScheduleItem]) -> [ProgramScheduleItem] {
-        var seenWeekdays = Set<Int>()
-        return schedule.enumerated().compactMap { index, item -> (Int, ProgramScheduleItem)? in
-            guard !item.templateId.isEmpty else { return nil }
-            guard seenWeekdays.insert(item.weekday).inserted else { return nil }
-            return (index, item)
-        }
-        .sorted { left, right in
-            if left.1.weekday == right.1.weekday {
-                return left.0 < right.0
-            }
-            return left.1.weekday < right.1.weekday
-        }
-        .map { $0.1 }
     }
 
     private func cleanedProgression(_ progression: ProgramProgressionRule?) -> ProgramProgressionRule? {
@@ -2259,7 +1743,8 @@ private struct ProgramFormSheet: View {
             cleaned.progressionRule = cleaned.progressionRule?.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.progression = cleanedProgression(cleaned.progression)
             cleaned.deload = cleanedDeload(cleaned.deload)
-            cleaned.schedule = cleanedSchedule(cleaned.schedule)
+            cleaned.startDate = DateHelpers.dayString(from: DateHelpers.date(from: cleaned.startDate))
+            cleaned.insertedRestDays = Array(Set(cleaned.insertedRestDays)).sorted()
             try await store.saveProgram(cleaned)
             dismiss()
         } catch {

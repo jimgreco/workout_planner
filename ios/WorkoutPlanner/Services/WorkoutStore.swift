@@ -624,10 +624,11 @@ final class WorkoutStore: ObservableObject {
                 name: "Starter Week",
                 description: "Push, legs, and repeatable practice days",
                 schedule: [
-                    ProgramScheduleItem(weekday: 1, templateId: templates[0].id),
-                    ProgramScheduleItem(weekday: 3, templateId: templates[1].id),
-                    ProgramScheduleItem(weekday: 5, templateId: templates[0].id),
+                    ProgramScheduleItem(templateId: templates[0].id),
+                    ProgramScheduleItem(templateId: templates[1].id),
+                    ProgramScheduleItem(templateId: templates[0].id),
                 ],
+                startDate: DateHelpers.todayString(),
                 active: true,
                 progressionRule: "Add reps or weight when every set hits the target."
             )

@@ -943,19 +943,8 @@ struct WorkoutLogView: View {
     }
 
     private func nextProgramWorkout(program: TrainingProgram) -> WorkoutProgramStart? {
-        guard !program.schedule.isEmpty else { return nil }
-        let templatesById = Dictionary(uniqueKeysWithValues: store.templates.map { ($0.id, $0) })
-        let today = Calendar.current.startOfDay(for: Date())
-
-        for offset in 0..<14 {
-            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: today) else { continue }
-            let weekday = Calendar.current.component(.weekday, from: date) - 1
-            let scheduled = program.schedule
-                .filter { $0.weekday == weekday }
-                .compactMap { templatesById[$0.templateId] }
-            for template in scheduled where !programWorkoutHandled(template: template, date: date) {
-                return WorkoutProgramStart(program: program, template: template, date: date)
-            }
+        if let workout = ProgramCyclePlanner.nextWorkout(program: program, templates: store.templates, logs: store.logs, lookaheadDays: 14) {
+            return WorkoutProgramStart(program: program, template: workout.template, date: workout.date)
         }
         return nil
     }
@@ -972,13 +961,7 @@ struct WorkoutLogView: View {
     }
 
     private func displayProgramDate(_ date: Date) -> String {
-        let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
-        if Calendar.current.isDate(date, inSameDayAs: today) { return "Today" }
-        if Calendar.current.isDate(date, inSameDayAs: tomorrow) { return "Tomorrow" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MMM d"
-        return formatter.string(from: date)
+        ProgramCyclePlanner.displayDate(date)
     }
 
     private func markSetCompleted(exerciseIndex: Int, setIndex: Int) {

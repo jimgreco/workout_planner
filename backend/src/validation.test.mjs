@@ -107,10 +107,12 @@ test('allows skipped workout logs', () => {
   assert.equal(log.notes, 'Travel day');
 });
 
-test('validates program weekly schedules', () => {
+test('validates repeating cycle programs', () => {
   const program = validateProgram({
     id: 'program-1',
     name: 'Strength Plan',
+    startDate: '2026-05-25',
+    insertedRestDays: ['2026-06-23', '2026-06-21', '2026-06-21'],
     active: true,
     progression: { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 },
     deload: { type: 'every_n_weeks', everyWeeks: 4, loadPercent: 85, repPercent: 100, startDate: '2026-05-25' },
@@ -118,22 +120,20 @@ test('validates program weekly schedules', () => {
       { id: 'activity-1', type: 'delay', date: '2026-05-26T12:00:00.000Z', title: 'Delayed schedule', detail: 'Moved Push Day to Tuesday' },
     ],
     schedule: [
-      { weekday: 5, templateId: 'legs' },
-      { weekday: 1, templateId: 'push', notes: 'Heavy' },
-      { weekday: 1, templateId: 'pull' },
-    ],
-    timeline: [
-      { date: '2026-06-23', templateId: 'legs' },
-      { date: '2026-06-21' },
-      { date: '2026-06-21', templateId: 'push' },
+      { id: 'day-3', templateId: 'legs' },
+      { id: 'day-1', templateId: 'push', notes: 'Heavy' },
+      { id: 'day-1', templateId: 'pull' },
+      { id: 'day-2' },
     ],
   }, 'program-1');
 
-  assert.deepEqual(program.schedule.map((item) => `${item.weekday}:${item.templateId}`), ['1:push', '5:legs']);
-  assert.deepEqual(program.timeline, [
-    { date: '2026-06-21' },
-    { date: '2026-06-23', templateId: 'legs' },
+  assert.deepEqual(program.schedule, [
+    { id: 'day-3', templateId: 'legs' },
+    { id: 'day-1', templateId: 'push', notes: 'Heavy' },
+    { id: 'day-2' },
   ]);
+  assert.deepEqual(program.insertedRestDays, ['2026-06-21', '2026-06-23']);
+  assert.equal(program.startDate, '2026-05-25');
   assert.equal(program.active, true);
   assert.deepEqual(program.progression, { type: 'double_progression', minReps: 8, maxReps: 12, repIncrement: 1, weightIncrement: 5 });
   assert.deepEqual(program.deload, { type: 'every_n_weeks', everyWeeks: 4, loadPercent: 85, repPercent: 100, startDate: '2026-05-25' });
@@ -141,19 +141,28 @@ test('validates program weekly schedules', () => {
     { id: 'activity-1', type: 'delay', date: '2026-05-26T12:00:00.000Z', title: 'Delayed schedule', detail: 'Moved Push Day to Tuesday' },
   ]);
   assert.deepEqual(
-    validateProgram({ id: 'program-1', name: 'Backcompat', schedule: [{ weekday: 1, templateId: 'push' }, { weekday: 1, templateId: 'pull' }] }, 'program-1').schedule,
-    [{ weekday: 1, templateId: 'push' }],
+    validateProgram({
+      id: 'program-1',
+      name: 'Deduped',
+      startDate: '2026-05-25',
+      schedule: [{ id: 'day-1', templateId: 'push' }, { id: 'day-1', templateId: 'pull' }],
+    }, 'program-1').schedule,
+    [{ id: 'day-1', templateId: 'push' }],
   );
   assert.throws(
-    () => validateProgram({ id: 'program-1', name: 'Bad', progression: { type: 'double_progression', minReps: 12, maxReps: 8 }, schedule: [] }, 'program-1'),
+    () => validateProgram({ id: 'program-1', name: 'Bad', startDate: '2026-05-25', progression: { type: 'double_progression', minReps: 12, maxReps: 8 }, schedule: [] }, 'program-1'),
     ValidationError,
   );
   assert.throws(
-    () => validateProgram({ id: 'program-1', name: 'Bad', deload: { type: 'every_n_weeks', everyWeeks: 1, startDate: '2026-05-25' }, schedule: [] }, 'program-1'),
+    () => validateProgram({ id: 'program-1', name: 'Bad', startDate: '2026-05-25', deload: { type: 'every_n_weeks', everyWeeks: 1, startDate: '2026-05-25' }, schedule: [] }, 'program-1'),
     ValidationError,
   );
   assert.throws(
-    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [], timeline: [{ date: 'tomorrow' }] }, 'program-1'),
+    () => validateProgram({ id: 'program-1', name: 'Bad', startDate: '2026-05-25', schedule: [], insertedRestDays: ['tomorrow'] }, 'program-1'),
+    ValidationError,
+  );
+  assert.throws(
+    () => validateProgram({ id: 'program-1', name: 'Bad', schedule: [] }, 'program-1'),
     ValidationError,
   );
 });

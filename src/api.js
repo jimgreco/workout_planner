@@ -9,6 +9,7 @@
  */
 
 import { getStoredCredential, DEV_BYPASS } from './auth.js';
+import { normalizeProgram } from './programs.js';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -154,6 +155,11 @@ function pendingResourceItem(item) {
   };
 }
 
+function normalizeResourceItem(resource, item) {
+  if (!item || typeof item !== 'object') return item;
+  return resource === 'programs' ? normalizeProgram(item) : item;
+}
+
 function upsertLogItem(log) {
   const list = cache.logs ?? [];
   const idx = list.findIndex((l) => l.id === log.id);
@@ -164,11 +170,12 @@ function upsertLogItem(log) {
 }
 
 function upsertCached(resource, item) {
+  const normalizedItem = normalizeResourceItem(resource, item);
   const list = cache[resource] ?? [];
-  const idx = list.findIndex((entry) => entry.id === item.id);
+  const idx = list.findIndex((entry) => entry.id === normalizedItem.id);
   cache[resource] = idx >= 0
-    ? list.map((entry, i) => (i === idx ? item : entry))
-    : [...list, item];
+    ? list.map((entry, i) => (i === idx ? normalizedItem : entry))
+    : [...list, normalizedItem];
   if (resource === 'templates') {
     cache.templates = cache.templates.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -194,12 +201,15 @@ function mergePendingLogs(logs) {
 }
 
 function mergePendingCollection(resource, items) {
-  const byId = new Map(items.map((item) => [item.id, item]));
+  const byId = new Map(items.map((item) => {
+    const normalized = normalizeResourceItem(resource, item);
+    return [normalized.id, normalized];
+  }));
   for (const pending of readPendingResourceQueue().filter((entry) => entry.resource === resource)) {
     if (pending.operation === 'delete') {
       byId.delete(pending.id);
     } else if (pending.item) {
-      byId.set(pending.id, pendingResourceItem(pending.item));
+      byId.set(pending.id, normalizeResourceItem(resource, pendingResourceItem(pending.item)));
     }
   }
   return [...byId.values()];
@@ -488,7 +498,7 @@ export function getPrograms() {
 
 export async function saveProgram(program) {
   const id = program.id ?? crypto.randomUUID();
-  const item = { ...program, id };
+  const item = normalizeProgram({ ...program, id });
   let saved;
   if (DEV_BYPASS && !BASE_URL) {
     saved = item;
@@ -814,7 +824,7 @@ function importDataLocally(data, mode) {
   const exercises = Array.isArray(data.exercises) ? data.exercises : [];
   const templates = Array.isArray(data.templates) ? data.templates : [];
   const logs = Array.isArray(data.logs) ? data.logs : [];
-  const programs = Array.isArray(data.programs) ? data.programs : [];
+  const programs = Array.isArray(data.programs) ? data.programs.map((program) => normalizeProgram(program)) : [];
   const settings = data.settings && typeof data.settings === 'object' ? data.settings : undefined;
   const targetIsEmpty = getExercises().length + getTemplates().length + getLogs().length + getPrograms().length === 0;
   if (mode === 'emptyOnly' && !targetIsEmpty) {
@@ -827,7 +837,10 @@ function importDataLocally(data, mode) {
     cache.exercises = exercises;
     cache.templates = templates;
     cache.logs = logs;
-    cache.programs = programs;
+    cache.programs = programs.sort((a, b) => (
+      Number(Boolean(b.active)) - Number(Boolean(a.active))
+      || a.name.localeCompare(b.name)
+    ));
     if (settings) cache.settings = { ...DEFAULT_SETTINGS, ...settings };
     return {
       imported: { exercises: exercises.length, templates: templates.length, logs: logs.length, programs: programs.length, settings: Boolean(settings) },
@@ -883,7 +896,7 @@ function importDataLocally(data, mode) {
       skipped.programs.push({ id: program.id, name: program.name });
       return [];
     }
-    return [{ ...program, name: uniqueImportedName(program.name, programNames, renamed.programs) }];
+    return [normalizeProgram({ ...program, name: uniqueImportedName(program.name, programNames, renamed.programs) })];
   });
 
   cache.exercises = [...getExercises(), ...newExercises];

@@ -47,8 +47,9 @@ Imports are validated with the same resource validators used by normal writes:
   notes/timing/PB fields. Exercise item `weightType` may be `weight`,
   `double`, `bar_double`, or `none`. Status must be `planning`, `active`,
   `finished`, or `skipped`.
-- Programs: `id`, `name`, `schedule`, optional `description`, `active`,
-  structured `progression`, structured `deload`, and legacy/freeform
+- Programs: `id`, `name`, ordered repeating-cycle `schedule`, required
+  `startDate`, optional `insertedRestDays`, optional `description`, `active`,
+  structured `progression`, structured `deload`, and freeform
   `progressionRule`.
 - Settings: `defaultSets` and `defaultReps`.
 
@@ -79,7 +80,8 @@ Import limits are intentionally larger than normal app use:
 - Program deloads can be stored as an optional `deload` object with `type`,
   `everyWeeks`, `loadPercent`, `repPercent`, and `startDate`. Supported types
   are `every_n_weeks` and `none`.
-- Up to 70 schedule entries per program.
+- Up to 70 cycle days per program.
+- Up to 1,000 inserted rest days per program.
 
 ## Import Modes
 

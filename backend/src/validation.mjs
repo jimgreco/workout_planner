@@ -267,11 +267,12 @@ export function validateTemplate(body, pathId) {
 
 function programScheduleItem(value, index) {
   assertObject(value, `schedule[${index}]`);
-  assertAllowedKeys(value, new Set(['weekday', 'templateId', 'notes']), `schedule[${index}]`);
+  assertAllowedKeys(value, new Set(['id', 'templateId', 'notes']), `schedule[${index}]`);
   const item = {
-    weekday: weekdayValue(value.weekday, `schedule[${index}].weekday`),
-    templateId: validateId(value.templateId, `schedule[${index}].templateId`),
+    id: validateId(value.id, `schedule[${index}].id`),
   };
+  const templateId = stringValue(value.templateId, `schedule[${index}].templateId`, { max: 128, allowEmpty: true });
+  if (templateId) item.templateId = validateId(templateId, `schedule[${index}].templateId`);
   const notes = stringValue(value.notes, `schedule[${index}].notes`, { max: 500 });
   if (notes !== undefined) item.notes = notes;
   return item;
@@ -280,42 +281,25 @@ function programScheduleItem(value, index) {
 function programSchedule(value) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 70) fail('schedule must contain at most 70 items');
-  const seen = new Set();
-  const seenWeekdays = new Set();
+  const seenIds = new Set();
   return value.map((item, index) => {
     const scheduleItem = programScheduleItem(item, index);
-    const key = `${scheduleItem.weekday}:${scheduleItem.templateId}`;
-    if (seen.has(key)) fail('schedule can contain each routine once per weekday');
-    seen.add(key);
-    if (seenWeekdays.has(scheduleItem.weekday)) return null;
-    seenWeekdays.add(scheduleItem.weekday);
+    if (seenIds.has(scheduleItem.id)) return null;
+    seenIds.add(scheduleItem.id);
     return scheduleItem;
-  }).filter(Boolean).sort((a, b) => a.weekday - b.weekday);
+  }).filter(Boolean);
 }
 
-function programTimelineItem(value, index) {
-  assertObject(value, `timeline[${index}]`);
-  assertAllowedKeys(value, new Set(['date', 'templateId', 'notes']), `timeline[${index}]`);
-  const item = {
-    date: dateValue(value.date, `timeline[${index}].date`, { required: true }),
-  };
-  const templateId = stringValue(value.templateId, `timeline[${index}].templateId`, { max: 128, allowEmpty: true });
-  if (templateId) item.templateId = validateId(templateId, `timeline[${index}].templateId`);
-  const notes = stringValue(value.notes, `timeline[${index}].notes`, { max: 500 });
-  if (notes !== undefined) item.notes = notes;
-  return item;
-}
-
-function programTimeline(value) {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > 70) fail('timeline must contain at most 70 items');
+function programInsertedRestDays(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 1000) fail('insertedRestDays must contain at most 1000 items');
   const seenDates = new Set();
   return value.map((item, index) => {
-    const timelineItem = programTimelineItem(item, index);
-    if (seenDates.has(timelineItem.date)) return null;
-    seenDates.add(timelineItem.date);
-    return timelineItem;
-  }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
+    const date = dateValue(item, `insertedRestDays[${index}]`, { required: true });
+    if (seenDates.has(date)) return null;
+    seenDates.add(date);
+    return date;
+  }).filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
 function programProgression(value) {
@@ -395,7 +379,7 @@ export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'timeline', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'startDate', 'insertedRestDays', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -404,9 +388,9 @@ export function validateProgram(body, pathId) {
     id: pathId,
     name: stringValue(body.name, 'name', { required: true, max: 120, allowEmpty: false }),
     schedule: programSchedule(body.schedule),
+    startDate: dateValue(body.startDate, 'startDate', { required: true }),
+    insertedRestDays: programInsertedRestDays(body.insertedRestDays),
   };
-  const timeline = programTimeline(body.timeline);
-  if (timeline !== undefined) program.timeline = timeline;
   const description = stringValue(body.description, 'description', { max: 1000 });
   if (description !== undefined) program.description = description;
   const active = boolValue(body.active, 'active');

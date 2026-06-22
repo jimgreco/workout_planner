@@ -151,7 +151,7 @@ function conflictDetails(item, resource) {
   if (resource === 'programs') {
     return [
       item.active ? 'Active program' : 'Inactive program',
-      `${item.schedule?.length || 0} scheduled days`,
+      `${item.schedule?.length || 0} cycle days`,
       programProgressionLabel(item.progression),
       item.progressionRule ? `Rule: ${item.progressionRule}` : '',
     ].filter(Boolean);
