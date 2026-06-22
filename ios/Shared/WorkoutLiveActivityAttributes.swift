@@ -578,7 +578,10 @@ private func mutateSharedWorkout(
     guard var state = WorkoutLiveActivitySharedStore.load(workoutID: workoutID) else { return }
     mutation(&state)
     WorkoutLiveActivitySharedStore.save(state)
-    let content = ActivityContent(state: state.contentState, staleDate: nil)
+    let staleDate = state.contentState.isResting && state.contentState.restTimerIsOverTarget != true
+        ? state.contentState.restTargetEnd
+        : nil
+    let content = ActivityContent(state: state.contentState, staleDate: staleDate)
     for activity in Activity<WorkoutLiveActivityAttributes>.activities where activity.attributes.workoutID == workoutID {
         await activity.update(content)
     }

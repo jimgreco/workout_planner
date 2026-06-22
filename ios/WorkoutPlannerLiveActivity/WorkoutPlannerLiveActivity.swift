@@ -23,9 +23,9 @@ struct WorkoutPlannerLiveActivity: Widget {
                 .activitySystemActionForegroundColor(forgeAccent)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
+                DynamicIslandExpandedRegion(.center) {
                     if context.state.isResting {
-                        LiveActivityIslandTimerLabel(state: context.state, fontSize: 13, isStale: context.isStale)
+                        DynamicIslandExpandedRestView(state: context.state, isStale: context.isStale)
                     }
                 }
 
@@ -46,6 +46,17 @@ struct WorkoutPlannerLiveActivity: Widget {
             }
             .keylineTint(forgeAccent)
         }
+    }
+}
+
+private struct DynamicIslandExpandedRestView: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+    let isStale: Bool
+
+    var body: some View {
+        LiveActivityIslandTimerLabel(state: state, fontSize: 18, isStale: isStale)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
     }
 }
 
