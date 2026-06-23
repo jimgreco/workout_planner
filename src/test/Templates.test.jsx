@@ -109,7 +109,11 @@ describe('Routines page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /new program/i }));
     fireEvent.change(screen.getByPlaceholderText(/3 day strength/i), { target: { value: 'Strength Block' } });
-    fireEvent.click(screen.getByRole('button', { name: /add day/i }));
+    expect(screen.getByText(/days: 1/i)).toBeTruthy();
+    fireEvent.click(screen.getByTitle(/add cycle day/i));
+    expect(screen.getByText(/days: 2/i)).toBeTruthy();
+    fireEvent.click(screen.getByTitle(/remove cycle day/i));
+    expect(screen.getByText(/days: 1/i)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/day 1 routine/i), { target: { value: 'tmpl-1' } });
     fireEvent.change(screen.getByLabelText(/progression rule/i), { target: { value: 'linear_weight' } });
     fireEvent.change(screen.getByLabelText(/weight increment/i), { target: { value: '10' } });

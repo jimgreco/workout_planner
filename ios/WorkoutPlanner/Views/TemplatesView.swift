@@ -1417,8 +1417,12 @@ private struct ProgramFormSheet: View {
 
     let templates: [WorkoutTemplate]
     @State private var form: TrainingProgram
+    @State private var editMode: EditMode = .active
     @Binding var isSaving: Bool
     @FocusState private var focusedField: FocusedField?
+
+    private static let minScheduleDays = 1
+    private static let maxScheduleDays = 70
 
     private enum FocusedField: Hashable {
         case name
@@ -1427,8 +1431,14 @@ private struct ProgramFormSheet: View {
     }
 
     init(program: TrainingProgram, templates: [WorkoutTemplate], isSaving: Binding<Bool>) {
+        var editableProgram = program
+        if editableProgram.schedule.isEmpty {
+            editableProgram.schedule = [ProgramScheduleItem()]
+        } else if editableProgram.schedule.count > Self.maxScheduleDays {
+            editableProgram.schedule = Array(editableProgram.schedule.prefix(Self.maxScheduleDays))
+        }
         self.templates = templates
-        _form = State(initialValue: program)
+        _form = State(initialValue: editableProgram)
         _isSaving = isSaving
     }
 
@@ -1453,22 +1463,41 @@ private struct ProgramFormSheet: View {
                 }
 
                 Section {
-                    Button {
-                        form.schedule.append(ProgramScheduleItem())
-                    } label: {
-                        Label("Add Day", systemImage: "plus")
+                    HStack(spacing: 12) {
+                        Text("Days: \(form.schedule.count)")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                        Spacer()
+                        HStack(spacing: 8) {
+                            IconCircleButton(
+                                systemName: "minus",
+                                disabled: form.schedule.count <= Self.minScheduleDays,
+                                size: 30,
+                                iconSize: 13
+                            ) {
+                                setScheduleDayCount(form.schedule.count - 1)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove cycle day")
+
+                            IconCircleButton(
+                                systemName: "plus",
+                                disabled: form.schedule.count >= Self.maxScheduleDays,
+                                size: 30,
+                                iconSize: 13
+                            ) {
+                                setScheduleDayCount(form.schedule.count + 1)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Add cycle day")
+                        }
                     }
 
                     ForEach(Array(form.schedule.enumerated()), id: \.element.id) { index, day in
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(ProgramCyclePlanner.cycleDayLabel(index: index))
-                                    .font(.system(size: 15, weight: .semibold))
-                                Spacer()
-                                Text(scheduleSummary(for: day))
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.muted)
-                            }
+                            Text(ProgramCyclePlanner.cycleDayLabel(index: index))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.text)
 
                             if templates.isEmpty {
                                 Text("Create a routine first.")
@@ -1482,25 +1511,11 @@ private struct ProgramFormSheet: View {
                                     }
                                 }
                             }
-
-                            HStack(spacing: 10) {
-                                Button("Up") {
-                                    form.schedule = ProgramCyclePlanner.moveScheduleDay(form.schedule, from: index, to: index - 1)
-                                }
-                                .disabled(index == 0)
-
-                                Button("Down") {
-                                    form.schedule = ProgramCyclePlanner.moveScheduleDay(form.schedule, from: index, to: index + 1)
-                                }
-                                .disabled(index == form.schedule.count - 1)
-
-                                Button("Remove", role: .destructive) {
-                                    form.schedule = ProgramCyclePlanner.removeScheduleDay(form.schedule, dayId: day.id)
-                                }
-                            }
-                            .font(.system(size: 13, weight: .semibold))
                         }
                         .padding(.vertical, 4)
+                    }
+                    .onMove { source, destination in
+                        form.schedule.move(fromOffsets: source, toOffset: destination)
                     }
                 } header: {
                     Text("Repeating Cycle")
@@ -1569,6 +1584,7 @@ private struct ProgramFormSheet: View {
                     Text("Progression Notes")
                 }
             }
+            .environment(\.editMode, $editMode)
             .navigationTitle(form.name.isEmpty ? "New Program" : "Edit Program")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1645,6 +1661,17 @@ private struct ProgramFormSheet: View {
         )
     }
 
+    private func setScheduleDayCount(_ count: Int) {
+        let targetCount = min(max(count, Self.minScheduleDays), Self.maxScheduleDays)
+        if targetCount > form.schedule.count {
+            for _ in form.schedule.count..<targetCount {
+                form.schedule.append(ProgramScheduleItem())
+            }
+        } else if targetCount < form.schedule.count {
+            form.schedule.removeLast(form.schedule.count - targetCount)
+        }
+    }
+
     private func progressionIntBinding(_ keyPath: WritableKeyPath<ProgramProgressionRule, Int?>, fallback: Int) -> Binding<Int> {
         Binding(
             get: { currentProgression[keyPath: keyPath] ?? fallback },
@@ -1692,13 +1719,6 @@ private struct ProgramFormSheet: View {
                 }
             }
         )
-    }
-
-    private func scheduleSummary(for day: ProgramScheduleItem) -> String {
-        guard let templateId = day.templateId, !templateId.isEmpty else {
-            return "Rest"
-        }
-        return templates.first(where: { $0.id == templateId })?.name ?? "1 routine"
     }
 
     private func cleanedProgression(_ progression: ProgramProgressionRule?) -> ProgramProgressionRule? {

@@ -4,7 +4,9 @@ import {
   CalendarDays,
   CheckCircle2,
   Eye,
+  GripVertical,
   LayoutGrid,
+  Minus,
   Pencil,
   Play,
   Plus,
@@ -27,7 +29,6 @@ import {
   normalizeProgram,
   programAdherence as summarizeProgramAdherence,
   programSlotForDate,
-  removeProgramScheduleItem,
   replaceProgramScheduleItem,
   scheduleItemTitle,
   swapProgramScheduleDays,
@@ -46,6 +47,9 @@ const DELOAD_TYPES = [
   { value: 'none', label: 'No structured deload' },
   { value: 'every_n_weeks', label: 'Every N weeks' },
 ];
+
+const PROGRAM_SCHEDULE_MIN_DAYS = 1;
+const PROGRAM_SCHEDULE_MAX_DAYS = 70;
 
 function defaultProgression(type = 'double_progression') {
   return {
@@ -361,6 +365,18 @@ function cleanProgram(program) {
   return cleaned;
 }
 
+function resizeProgramSchedule(schedule, dayCount) {
+  const targetCount = Math.min(
+    Math.max(Number.parseInt(dayCount, 10) || PROGRAM_SCHEDULE_MIN_DAYS, PROGRAM_SCHEDULE_MIN_DAYS),
+    PROGRAM_SCHEDULE_MAX_DAYS,
+  );
+  const next = [...(schedule ?? [])].slice(0, PROGRAM_SCHEDULE_MAX_DAYS);
+  while (next.length < targetCount) {
+    next.push(createProgramScheduleItem());
+  }
+  return next.slice(0, targetCount);
+}
+
 export default function Templates({
   mode = 'all',
   templates,
@@ -387,6 +403,7 @@ export default function Templates({
   const [saved, setSaved]               = useState(false);
   const [showAddMenu, setShowAddMenu]   = useState(false);
   const [selectedProgramDayId, setSelectedProgramDayId] = useState(null);
+  const [draggingProgramFormDayId, setDraggingProgramFormDayId] = useState(null);
   const addMenuRef = useRef(null);
   const showPrograms = mode === 'all' || mode === 'programs';
   const showRoutines = mode === 'all' || mode === 'routines';
@@ -440,13 +457,15 @@ export default function Templates({
     setShowAddMenu(false);
     const isExisting = Boolean(program.id);
     const normalized = normalizeProgram({ ...emptyProgram(), ...program });
+    const schedule = resizeProgramSchedule(normalized.schedule, normalized.schedule.length || PROGRAM_SCHEDULE_MIN_DAYS);
     setProgramForm({
       ...normalized,
       progression: progressionForForm(program.progression, isExisting ? 'none' : 'double_progression'),
       deload: deloadForForm(program.deload, program.deload?.type || 'none'),
-      schedule: [...normalized.schedule],
+      schedule,
       insertedRestDays: [...normalized.insertedRestDays],
     });
+    setDraggingProgramFormDayId(null);
     setModal('program');
   }
 
@@ -670,10 +689,10 @@ export default function Templates({
     }
   }
 
-  function handleAddProgramFormDay() {
+  function handleSetProgramFormDayCount(dayCount) {
     setProgramForm((draft) => ({
       ...draft,
-      schedule: [...(draft.schedule ?? []), createProgramScheduleItem()],
+      schedule: resizeProgramSchedule(draft.schedule, dayCount),
     }));
   }
 
@@ -691,11 +710,18 @@ export default function Templates({
     }));
   }
 
-  function handleDeleteProgramFormDay(dayId) {
-    setProgramForm((draft) => ({
-      ...draft,
-      schedule: removeProgramScheduleItem(draft.schedule, dayId),
-    }));
+  function handleProgramFormDayDragStart(event, day, index) {
+    setDraggingProgramFormDayId(day.id);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-program-schedule-index', String(index));
+  }
+
+  function handleProgramFormDayDrop(event, targetIndex) {
+    event.preventDefault();
+    const sourceIndex = Number.parseInt(event.dataTransfer.getData('application/x-program-schedule-index'), 10);
+    setDraggingProgramFormDayId(null);
+    if (Number.isNaN(sourceIndex) || sourceIndex === targetIndex) return;
+    handleMoveProgramFormDay(sourceIndex, targetIndex);
   }
 
   function updateProgramProgression(patch) {
@@ -1315,13 +1341,40 @@ export default function Templates({
           <hr className="divider" />
           <div className="program-week-heading">
             <strong>Repeating Cycle</strong>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={handleAddProgramFormDay}>
-              <Plus size={14} /> Add Day
-            </button>
+            <div className="program-cycle-day-count" aria-label="Program cycle day count">
+              <span>Days: {programForm.schedule.length}</span>
+              <button
+                type="button"
+                className="btn-icon"
+                title="Remove cycle day"
+                onClick={() => handleSetProgramFormDayCount(programForm.schedule.length - 1)}
+                disabled={programForm.schedule.length <= PROGRAM_SCHEDULE_MIN_DAYS}
+              >
+                <Minus size={15} />
+              </button>
+              <button
+                type="button"
+                className="btn-icon"
+                title="Add cycle day"
+                onClick={() => handleSetProgramFormDayCount(programForm.schedule.length + 1)}
+                disabled={programForm.schedule.length >= PROGRAM_SCHEDULE_MAX_DAYS}
+              >
+                <Plus size={15} />
+              </button>
+            </div>
           </div>
           <div className="program-schedule-editor">
             {programForm.schedule.map((day, index) => (
-              <div key={day.id} className="program-schedule-row">
+              <div
+                key={day.id}
+                className={`program-schedule-row${draggingProgramFormDayId === day.id ? ' dragging' : ''}`}
+                draggable
+                onDragStart={(event) => handleProgramFormDayDragStart(event, day, index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => handleProgramFormDayDrop(event, index)}
+                onDragEnd={() => setDraggingProgramFormDayId(null)}
+              >
+                <GripVertical className="program-schedule-grip" size={16} aria-hidden="true" />
                 <span className="program-schedule-day">{cycleDayLabel(index)}</span>
                 {templates.length === 0 ? (
                   <span className="program-schedule-empty">Create a routine first</span>
@@ -1337,31 +1390,6 @@ export default function Templates({
                     ))}
                   </select>
                 )}
-                <div className="flex gap-8 items-center">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleMoveProgramFormDay(index, index - 1)}
-                    disabled={index === 0}
-                  >
-                    Up
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleMoveProgramFormDay(index, index + 1)}
-                    disabled={index === programForm.schedule.length - 1}
-                  >
-                    Down
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleDeleteProgramFormDay(day.id)}
-                  >
-                    Remove
-                  </button>
-                </div>
               </div>
             ))}
             {programForm.schedule.length === 0 && (

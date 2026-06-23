@@ -976,6 +976,20 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .program-rule-highlight svg {
   color: var(--accent);
 }
+.program-cycle-day-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.program-cycle-day-count span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+}
 .program-schedule-editor {
   display: flex;
   flex-direction: column;
@@ -984,22 +998,27 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 }
 .program-schedule-row {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  align-items: flex-start;
+  grid-template-columns: 20px 72px minmax(0, 1fr);
+  align-items: center;
   gap: 8px;
   margin-bottom: 0;
-  padding: 4px 0;
+  padding: 6px 0;
+}
+.program-schedule-row.dragging {
+  opacity: 0.58;
+}
+.program-schedule-grip {
+  color: var(--text-muted);
+  cursor: grab;
 }
 .program-schedule-day {
   color: var(--text);
   font-size: 13px;
   font-weight: 700;
-  padding-top: 8px;
 }
 .program-schedule-empty {
   color: var(--text-muted);
   font-size: 13px;
-  padding-top: 8px;
 }
 .program-schedule-options {
   display: grid;
