@@ -29,6 +29,7 @@ import {
   normalizeProgram,
   programAdherence as summarizeProgramAdherence,
   programSlotForDate,
+  removeProgramRestDay,
   replaceProgramScheduleItem,
   scheduleItemTitle,
   swapProgramScheduleDays,
@@ -689,6 +690,23 @@ export default function Templates({
     }
   }
 
+  async function handleRemoveProgramRestDay(day) {
+    if (!activeProgram || saving || !day?.dayKey || !day.isInsertedRest) return;
+    setSaving(true);
+    try {
+      const updatedProgram = withProgramActivity(
+        removeProgramRestDay(activeProgram, day.dayKey),
+        'rest_remove',
+        'Removed inserted rest day',
+        dateLabel(day.date),
+      );
+      const updated = await saveProgram(cleanProgram(updatedProgram));
+      onProgramsUpdate(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleSetProgramFormDayCount(dayCount) {
     setProgramForm((draft) => ({
       ...draft,
@@ -919,15 +937,27 @@ export default function Templates({
                         </div>
                       </div>
                       <div className="program-upcoming-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleInsertProgramRestDay(day)}
-                          disabled={saving || day.isInsertedRest}
-                          aria-label={`Insert rest day on ${dateLabel(day.date)}`}
-                        >
-                          <Plus size={12} /> Rest
-                        </button>
+                        {day.isInsertedRest ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm program-remove-rest"
+                            onClick={() => handleRemoveProgramRestDay(day)}
+                            disabled={saving}
+                            aria-label={`Remove inserted rest day on ${dateLabel(day.date)}`}
+                          >
+                            <Minus size={12} /> Remove
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleInsertProgramRestDay(day)}
+                            disabled={saving}
+                            aria-label={`Insert rest day on ${dateLabel(day.date)}`}
+                          >
+                            <Plus size={12} /> Rest
+                          </button>
+                        )}
                         <em>{upcomingDayStatusLabel(day)}</em>
                       </div>
                     </div>

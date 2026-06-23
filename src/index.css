@@ -830,6 +830,9 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   flex: 0 0 auto;
   gap: 8px;
 }
+.program-remove-rest {
+  color: var(--danger);
+}
 .program-upcoming-day strong,
 .program-upcoming-day span {
   display: block;

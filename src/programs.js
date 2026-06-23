@@ -131,6 +131,15 @@ export function insertProgramRestDay(program, dayKey) {
   };
 }
 
+export function removeProgramRestDay(program, dayKey) {
+  const normalized = normalizeProgram(program);
+  if (!parseLocalDate(dayKey)) return normalized;
+  return {
+    ...normalized,
+    insertedRestDays: normalized.insertedRestDays.filter((value) => value !== dayKey),
+  };
+}
+
 export function programSlotForDate(program, date, templatesById = null) {
   const normalized = normalizeProgram(program);
   const targetDate = typeof date === 'string' ? parseLocalDate(date) : startOfToday(date);

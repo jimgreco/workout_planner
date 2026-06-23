@@ -208,6 +208,9 @@ struct TemplatesView: View {
                 onInsertRest: { day in
                     Task { await insertRestDay(day) }
                 },
+                onRemoveRest: { day in
+                    Task { await removeRestDay(day) }
+                },
                 onSelectDay: { day in
                     sheet = .programDay(day.id)
                 }
@@ -385,6 +388,28 @@ struct TemplatesView: View {
         }
     }
 
+    private func removeRestDay(_ day: ProgramUpcomingDay) async {
+        guard !isSaving,
+              day.isInsertedRest,
+              let program = ProgramCyclePlanner.activeProgram(from: store.programs)
+        else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            let updated = programWithActivity(
+                ProgramCyclePlanner.removeRestDay(program, dayKey: day.dayKey),
+                type: "rest_remove",
+                title: "Removed inserted rest day",
+                detail: ProgramCyclePlanner.displayDate(day.date)
+            )
+            try await store.saveProgram(updated)
+        } catch {
+            if !isCancellationError(error) {
+                store.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func programWithActivity(_ program: TrainingProgram, type: String, title: String, detail: String? = nil) -> TrainingProgram {
         var updated = program
         let entry = ProgramActivity(type: type, title: title, detail: detail)
@@ -518,6 +543,7 @@ private struct ProgramSummaryCard: View {
     let onStart: (WorkoutTemplate) -> Void
     let onSkip: (ProgramNextWorkout) -> Void
     let onInsertRest: (ProgramUpcomingDay) -> Void
+    let onRemoveRest: (ProgramUpcomingDay) -> Void
     let onSelectDay: (ProgramCycleDay) -> Void
 
     private var nextWorkout: ProgramNextWorkout? {
@@ -580,7 +606,11 @@ private struct ProgramSummaryCard: View {
 
                     ProgramWeekGrid(days: cycle, onSelectDay: onSelectDay)
 
-                    ProgramUpcomingList(days: upcoming, onInsertRest: onInsertRest)
+                    ProgramUpcomingList(
+                        days: upcoming,
+                        onInsertRest: onInsertRest,
+                        onRemoveRest: onRemoveRest
+                    )
 
                     if adherence.scheduled > 0 {
                         ProgramAdherenceRow(summary: adherence)
@@ -729,6 +759,7 @@ private struct ProgramWeekGrid: View {
 private struct ProgramUpcomingList: View {
     let days: [ProgramUpcomingDay]
     let onInsertRest: (ProgramUpcomingDay) -> Void
+    let onRemoveRest: (ProgramUpcomingDay) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -746,7 +777,11 @@ private struct ProgramUpcomingList: View {
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(days) { day in
-                        ProgramUpcomingRow(day: day, onInsertRest: onInsertRest)
+                        ProgramUpcomingRow(
+                            day: day,
+                            onInsertRest: onInsertRest,
+                            onRemoveRest: onRemoveRest
+                        )
                     }
                 }
             }
@@ -760,6 +795,7 @@ private struct ProgramUpcomingList: View {
 private struct ProgramUpcomingRow: View {
     let day: ProgramUpcomingDay
     let onInsertRest: (ProgramUpcomingDay) -> Void
+    let onRemoveRest: (ProgramUpcomingDay) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -775,15 +811,27 @@ private struct ProgramUpcomingRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 6) {
-                Button {
-                    onInsertRest(day)
-                } label: {
-                    Label("Rest", systemImage: "plus")
-                        .font(.system(size: 12, weight: .semibold))
+                if day.isInsertedRest {
+                    Button(role: .destructive) {
+                        onRemoveRest(day)
+                    } label: {
+                        Label("Remove", systemImage: "minus")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Remove inserted rest day on \(ProgramCyclePlanner.displayDate(day.date))")
+                } else {
+                    Button {
+                        onInsertRest(day)
+                    } label: {
+                        Label("Rest", systemImage: "plus")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Insert rest day on \(ProgramCyclePlanner.displayDate(day.date))")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(day.isInsertedRest)
 
                 Text(statusLabel)
                     .font(.system(size: 10, weight: .heavy))

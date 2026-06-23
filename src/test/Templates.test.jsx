@@ -370,6 +370,42 @@ describe('Routines page', () => {
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
+  it('removes an inserted rest day and pulls the schedule forward', async () => {
+    const onProgramsUpdate = vi.fn();
+    render(
+      <Templates
+        mode="programs"
+        templates={[
+          { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] },
+          { id: 'tmpl-2', name: 'Pull Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[]}
+        programs={[buildProgram([
+          cycleDay('day-1', 'tmpl-1'),
+          cycleDay('day-2', 'tmpl-2'),
+        ], {
+          insertedRestDays: [dayKey(0)],
+        })]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onProgramsUpdate={onProgramsUpdate}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /remove inserted rest day on today/i }));
+
+    await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
+    expect(saveProgram.mock.calls[0][0].insertedRestDays).toEqual([]);
+    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
+      type: 'rest_remove',
+      title: 'Removed inserted rest day',
+    });
+    expect(onProgramsUpdate).toHaveBeenCalled();
+  });
+
   it('shows recent program activity', () => {
     render(
       <Templates

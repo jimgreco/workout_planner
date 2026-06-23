@@ -911,6 +911,13 @@ enum ProgramCyclePlanner {
         return updated
     }
 
+    static func removeRestDay(_ program: TrainingProgram, dayKey: String) -> TrainingProgram {
+        guard DateHelpers.apiDay.date(from: dayKey) != nil else { return program }
+        var updated = program
+        updated.insertedRestDays.removeAll { $0 == dayKey }
+        return updated
+    }
+
     static func cycleDays(program: TrainingProgram?, templates: [WorkoutTemplate], logs: [WorkoutLog]) -> [ProgramCycleDay] {
         guard let program else { return [] }
         let templatesById = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
