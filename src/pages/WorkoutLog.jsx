@@ -61,33 +61,6 @@ function formatProgramDate(date) {
   return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function isHandledOn(logs, template, dayKey) {
-  return logs.some((log) => (
-    log.date === dayKey
-    && (log.status === 'finished' || log.status === 'skipped')
-    && String(log.name ?? '').trim().toLowerCase() === template.name.trim().toLowerCase()
-  ));
-}
-
-function nextProgramWorkout(program, templates, logs) {
-  if (!program?.schedule?.length) return null;
-  const byId = new Map(templates.map((template) => [template.id, template]));
-  const today = startOfToday();
-  for (let offset = 0; offset < 14; offset += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + offset);
-    const dayKey = localDateKey(date);
-    const scheduled = (program.schedule ?? [])
-      .filter((item) => item.weekday === date.getDay())
-      .map((entry) => byId.get(entry.templateId))
-      .filter(Boolean);
-    for (const template of scheduled) {
-      if (!isHandledOn(logs, template, dayKey)) return { program, template, date };
-    }
-  }
-  return null;
-}
-
 function numberValue(value) {
   const parsed = Number.parseFloat(String(value ?? '').trim());
   return Number.isFinite(parsed) ? parsed : 0;

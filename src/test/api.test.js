@@ -57,7 +57,15 @@ function mockFetch(responseMap) {
 const EX   = { id: 'ex-1', name: 'Bench Press', muscleGroup: 'Chest', notes: '' };
 const TMPL = { id: 'tmpl-1', name: 'Push Day', description: '', exerciseItems: [] };
 const LOG  = { id: 'log-1', name: 'Session', date: '2026-01-01', notes: '', exerciseItems: [] };
-const PROGRAM = { id: 'program-1', name: 'Strength Plan', active: true, schedule: [{ weekday: 1, templateId: 'tmpl-1' }] };
+const PROGRAM = {
+  id: 'program-1',
+  name: 'Strength Plan',
+  active: true,
+  startDate: '2026-01-01',
+  insertedRestDays: [],
+  schedule: [{ id: 'program-day-1', templateId: 'tmpl-1' }],
+  activity: [],
+};
 
 beforeEach(() => {
   resetData();
@@ -201,7 +209,12 @@ describe('templates', () => {
 describe('programs', () => {
   it('saveProgram creates and returns active-first list', async () => {
     mockFetch({ 'PUT *': () => ({ body: PROGRAM }) });
-    const list = await saveProgram({ name: 'Strength Plan', active: true, schedule: [{ weekday: 1, templateId: 'tmpl-1' }] });
+    const list = await saveProgram({
+      name: 'Strength Plan',
+      active: true,
+      startDate: '2026-01-01',
+      schedule: [{ id: 'program-day-1', templateId: 'tmpl-1' }],
+    });
     expect(list).toHaveLength(1);
     expect(list[0].name).toBe('Strength Plan');
   });
