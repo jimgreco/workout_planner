@@ -23,9 +23,15 @@ struct WorkoutPlannerLiveActivity: Widget {
                 .activitySystemActionForegroundColor(forgeAccent)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.center) {
+                DynamicIslandExpandedRegion(.leading) {
                     if context.state.isResting {
-                        DynamicIslandExpandedRestView(state: context.state, isStale: context.isStale)
+                        DynamicIslandExpandedRestStatusView(state: context.state)
+                    }
+                }
+
+                DynamicIslandExpandedRegion(.trailing) {
+                    if context.state.isResting {
+                        DynamicIslandExpandedRestTimerView(state: context.state, isStale: context.isStale)
                     }
                 }
 
@@ -40,7 +46,7 @@ struct WorkoutPlannerLiveActivity: Widget {
             } compactLeading: {
                 LiveActivityCompactLeadingLabel(state: context.state, isStale: context.isStale)
             } compactTrailing: {
-                LiveActivityCompactTrailingLabel(state: context.state)
+                LiveActivityCompactTrailingLabel(state: context.state, isStale: context.isStale)
             } minimal: {
                 LiveActivityMinimalLabel(state: context.state, isStale: context.isStale)
             }
@@ -49,14 +55,49 @@ struct WorkoutPlannerLiveActivity: Widget {
     }
 }
 
-private struct DynamicIslandExpandedRestView: View {
+private struct DynamicIslandExpandedRestStatusView: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+
+    private var subtitle: String {
+        if let restExerciseName = state.restExerciseName,
+           !restExerciseName.isEmpty {
+            return restExerciseName
+        }
+        return state.workoutName
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "timer")
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(forgeAccent)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Rest")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundStyle(liveActivityText)
+                    .lineLimit(1)
+
+                Text(subtitle)
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    .foregroundStyle(liveActivitySecondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+        }
+        .frame(maxWidth: 112, alignment: .leading)
+        .padding(.leading, 4)
+    }
+}
+
+private struct DynamicIslandExpandedRestTimerView: View {
     let state: WorkoutLiveActivityAttributes.ContentState
     let isStale: Bool
 
     var body: some View {
-        LiveActivityIslandTimerLabel(state: state, fontSize: 18, isStale: isStale)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 4)
+        LiveActivityIslandTimerLabel(state: state, fontSize: 17, isStale: isStale)
+            .frame(minWidth: 48, alignment: .trailing)
+            .padding(.trailing, 4)
     }
 }
 
@@ -809,7 +850,9 @@ private struct LiveActivityCompactLeadingLabel: View {
     @ViewBuilder
     var body: some View {
         if state.isResting {
-            LiveActivityIslandTimerLabel(state: state, fontSize: 12, isStale: isStale)
+            Image(systemName: "timer")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(liveActivityTimerTint(for: state, isStale: isStale))
         } else {
             Text(label)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
@@ -823,11 +866,12 @@ private struct LiveActivityCompactLeadingLabel: View {
 
 private struct LiveActivityCompactTrailingLabel: View {
     let state: WorkoutLiveActivityAttributes.ContentState
+    let isStale: Bool
 
     @ViewBuilder
     var body: some View {
         if state.isResting {
-            EmptyView()
+            LiveActivityIslandTimerLabel(state: state, fontSize: 12, isStale: isStale)
         } else {
             Text(state.reps.isEmpty ? state.setLabel : state.reps)
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
