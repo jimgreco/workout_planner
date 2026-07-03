@@ -108,6 +108,26 @@ describe('progress calculations', () => {
     expect(bestPersonalBestSet([{ reps: '20', weight: '' }], 'none')).toBeNull();
   });
 
+  it('counts linked side reps once for volume', () => {
+    const progress = buildProgress([
+      {
+        id: 'linked',
+        name: 'Legs',
+        date: '2026-05-23',
+        status: 'finished',
+        exerciseItems: [
+          {
+            exerciseId: 'curl',
+            weightType: 'weight',
+            sets: [{ reps: '', repsLeft: '10', repsRight: '10', repMode: 'linkedSides', weight: '50' }],
+          },
+        ],
+      },
+    ], exercises, 'all');
+
+    expect(progress.totalVolume).toBe(500);
+  });
+
   it('filters the 7-day range inclusively', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-24T12:00:00'));

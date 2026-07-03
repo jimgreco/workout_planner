@@ -140,13 +140,18 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType']),
+    new Set(['reps', 'repsLeft', 'repsRight', 'repMode', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType']),
     `set ${index + 1}`,
   );
   const set = {};
   for (const field of ['reps', 'repsLeft', 'repsRight', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight']) {
     const str = stringValue(value[field], `set.${field}`, { max: 64 });
     if (str !== undefined) set[field] = str;
+  }
+  const repMode = stringValue(value.repMode, 'set.repMode', { max: 32 });
+  if (repMode !== undefined) {
+    if (!new Set(['single', 'separateSides', 'linkedSides']).has(repMode)) fail('set.repMode is invalid');
+    set.repMode = repMode;
   }
   const placeholderWeightType = stringValue(value.placeholderWeightType, 'set.placeholderWeightType', { max: 16 });
   if (placeholderWeightType !== undefined) {

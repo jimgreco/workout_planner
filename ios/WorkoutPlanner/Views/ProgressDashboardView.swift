@@ -566,11 +566,12 @@ func exerciseHistory(exerciseId: String, logs: [WorkoutLog]) -> [ExerciseHistory
     logs.finishedWorkoutLogs().compactMap { log in
         guard let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId }) else { return nil }
         let best = item.sets.compactMap { set -> ExerciseBestSet? in
+            let reps = repBest(set)
             let score: Double
             if item.weightType == "none" {
-                score = number(set.reps)
+                score = reps
             } else {
-                score = estimatedOneRepMax(weight: effectiveWeight(set.weight, weightType: item.weightType), reps: set.reps)
+                score = estimatedOneRepMax(weight: effectiveWeight(set.weight, weightType: item.weightType), reps: reps)
             }
             guard score > 0 else { return nil }
             return ExerciseBestSet(set: set, weightType: item.weightType, score: score, date: log.date)
@@ -670,8 +671,21 @@ private func strongestExerciseImprovement(exercises: [Exercise], logs: [WorkoutL
 
 func volumeForItem(_ item: ExerciseItem) -> Double {
     item.sets.reduce(0) { total, set in
-        total + effectiveWeight(set.weight, weightType: item.weightType) * number(set.reps)
+        total + effectiveWeight(set.weight, weightType: item.weightType) * repTotal(set)
     }
+}
+
+func repTotal(_ set: WorkoutSet) -> Double {
+    let reps = number(set.reps)
+    if set.repMode == "single" || set.repMode == "linkedSides" {
+        return max(reps, number(set.repsLeft), number(set.repsRight))
+    }
+    let sideTotal = number(set.repsLeft) + number(set.repsRight)
+    return sideTotal > 0 ? sideTotal : reps
+}
+
+func repBest(_ set: WorkoutSet) -> Double {
+    max(number(set.reps), number(set.repsLeft), number(set.repsRight))
 }
 
 func number(_ value: String?) -> Double {
@@ -687,7 +701,10 @@ func effectiveWeight(_ weight: String?, weightType: String?) -> Double {
 }
 
 func estimatedOneRepMax(weight: Double, reps: String?) -> Double {
-    let reps = number(reps)
+    estimatedOneRepMax(weight: weight, reps: number(reps))
+}
+
+func estimatedOneRepMax(weight: Double, reps: Double) -> Double {
     guard weight > 0, reps > 0 else { return 0 }
     return weight * (1 + reps / 30)
 }

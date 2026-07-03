@@ -50,6 +50,7 @@ struct WorkoutLiveActivitySharedSet: Codable, Hashable {
     var reps: String?
     var repsLeft: String?
     var repsRight: String?
+    var repMode: String?
     var weight: String?
     var placeholderReps: String?
     var placeholderRepsLeft: String?

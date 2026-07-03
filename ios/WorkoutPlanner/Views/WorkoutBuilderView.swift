@@ -219,6 +219,7 @@ struct WorkoutBuilderView: View {
                     reps: String(repCount),
                     repsLeft: exercise.isUnilateral == true ? String(repCount) : nil,
                     repsRight: exercise.isUnilateral == true ? String(repCount) : nil,
+                    repMode: exercise.isUnilateral == true ? "separateSides" : nil,
                     weight: ""
                 )
         }
@@ -1686,6 +1687,7 @@ private struct ExerciseSetsCard: View {
             reps: last.reps ?? (planningMode ? "" : String(defaultReps)),
             repsLeft: planningMode ? nil : last.repsLeft,
             repsRight: planningMode ? nil : last.repsRight,
+            repMode: planningMode ? nil : last.repMode,
             weight: last.weight ?? "",
             placeholderReps: last.placeholderReps,
             placeholderRepsLeft: planningMode ? nil : last.placeholderRepsLeft,

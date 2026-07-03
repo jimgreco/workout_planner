@@ -752,6 +752,7 @@ struct WorkoutLogView: View {
                     reps: "",
                     repsLeft: isUnilateral ? "" : nil,
                     repsRight: isUnilateral ? "" : nil,
+                    repMode: last.sets[offset].repMode,
                     weight: "",
                     placeholderReps: lastReps.isEmpty ? targetPlaceholder : "\(lastReps) (\(targetPlaceholder))",
                     placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? targetLeftPlaceholder : "\(lastLeft) (\(targetLeftPlaceholder))") : nil,
@@ -764,6 +765,7 @@ struct WorkoutLogView: View {
                 reps: "",
                 repsLeft: isUnilateral ? "" : nil,
                 repsRight: isUnilateral ? "" : nil,
+                repMode: isUnilateral ? WorkoutLiveRepMode.separateSides.rawValue : nil,
                 weight: "",
                 placeholderReps: targetPlaceholder,
                 placeholderRepsLeft: isUnilateral ? targetLeftPlaceholder : nil,
@@ -1135,6 +1137,7 @@ struct WorkoutLogView: View {
                         reps: set.reps,
                         repsLeft: set.repsLeft,
                         repsRight: set.repsRight,
+                        repMode: set.repMode,
                         weight: set.weight,
                         placeholderReps: set.placeholderReps,
                         placeholderRepsLeft: set.placeholderRepsLeft,
@@ -1176,6 +1179,7 @@ struct WorkoutLogView: View {
                         reps: set.reps,
                         repsLeft: set.repsLeft,
                         repsRight: set.repsRight,
+                        repMode: set.repMode,
                         weight: set.weight,
                         placeholderReps: set.placeholderReps,
                         placeholderRepsLeft: set.placeholderRepsLeft,
@@ -1569,6 +1573,12 @@ private let liveQuickControlHeight: CGFloat = 102
 private let liveQuickChipHeight: CGFloat = 28
 private let liveGridSpacing: CGFloat = 6
 
+private enum WorkoutLiveRepMode: String {
+    case single
+    case separateSides
+    case linkedSides
+}
+
 private struct WorkoutLiveActivityCard: View {
     @Binding var items: [ExerciseItem]
     let exercises: [Exercise]
@@ -1584,7 +1594,7 @@ private struct WorkoutLiveActivityCard: View {
     let onChanged: () -> Void
     let onTextChanged: () -> Void
     let onEditExercise: (Exercise) -> Void
-    @State private var recordsSideRepsByExercise: [String: Bool] = [:]
+    @State private var repModeByExercise: [String: WorkoutLiveRepMode] = [:]
 
     private var totalSets: Int {
         items.reduce(0) { $0 + $1.sets.count }
@@ -1841,13 +1851,13 @@ private struct WorkoutLiveActivityCard: View {
 
     private func currentSetSection(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, isUpNext: Bool) -> some View {
         let showsWeight = context.item.weightType != "none"
-        let recordsSideReps = recordsSideReps(for: context)
+        let repMode = repMode(for: context)
 
         return VStack(alignment: .leading, spacing: 8) {
             currentSetHeader(context, isUpNext: isUpNext)
 
             VStack(alignment: .leading, spacing: liveGridSpacing) {
-                quickEntryPanel(context, set: set, recordsSideReps: recordsSideReps, showsWeight: showsWeight)
+                quickEntryPanel(context, set: set, repMode: repMode, showsWeight: showsWeight)
 
                 if advancedMode {
                     LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: liveGridSpacing) {
@@ -1932,7 +1942,7 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     @ViewBuilder
-    private func quickEntryPanel(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, recordsSideReps: Bool, showsWeight: Bool) -> some View {
+    private func quickEntryPanel(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, repMode: WorkoutLiveRepMode, showsWeight: Bool) -> some View {
         let repRange = quickRepRange(for: context.exercise)
         let weightBinding = weightValueBinding(set, context: context)
         let weightSeed = showsWeight ? weightSeedValue(for: context) : nil
@@ -1940,7 +1950,7 @@ private struct WorkoutLiveActivityCard: View {
 
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: liveGridSpacing) {
-                repEntryPanel(context, set: set, recordsSideReps: recordsSideReps, range: repRange)
+                repEntryPanel(context, set: set, repMode: repMode, range: repRange)
                     .frame(maxWidth: .infinity)
 
                 WorkoutLiveWeightAdjuster(
@@ -1968,15 +1978,15 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     @ViewBuilder
-    private func repEntryPanel(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, recordsSideReps: Bool, range: ClosedRange<Int>) -> some View {
-        let mode = recordsSideRepsBinding(for: context)
+    private func repEntryPanel(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>, repMode: WorkoutLiveRepMode, range: ClosedRange<Int>) -> some View {
+        let mode = repModeBinding(for: context)
         let title = context.exercise.usesTime == true ? "Secs" : "Reps"
-        if recordsSideReps {
+        if repMode == .separateSides {
             WorkoutLiveSideRepWheel(
                 title: title,
                 leftValue: repsValueBinding(set, \.repsLeft, fallback: sideRepsFallback(context.set, left: true)),
                 rightValue: repsValueBinding(set, \.repsRight, fallback: sideRepsFallback(context.set, left: false)),
-                recordsSideReps: mode,
+                repMode: mode,
                 leftCaption: sideRepCaption(for: context.set, left: true),
                 rightCaption: sideRepCaption(for: context.set, left: false),
                 range: range
@@ -1984,32 +1994,36 @@ private struct WorkoutLiveActivityCard: View {
         } else {
             WorkoutLiveRepWheel(
                 title: title,
-                value: commonRepsValueBinding(set, context: context),
-                recordsSideReps: mode,
+                value: commonRepsValueBinding(set, context: context, repMode: repMode),
+                repMode: mode,
                 caption: repCaption(for: context.set),
                 range: range
             )
         }
     }
 
-    private func recordsSideRepsBinding(for context: WorkoutLiveSetContext) -> Binding<Bool> {
+    private func repModeBinding(for context: WorkoutLiveSetContext) -> Binding<WorkoutLiveRepMode> {
         Binding(
-            get: { recordsSideReps(for: context) },
-            set: { recordsSideReps in
-                updateRecordsSideReps(recordsSideReps, for: context)
+            get: { repMode(for: context) },
+            set: { repMode in
+                updateRepMode(repMode, for: context)
             }
         )
     }
 
-    private func recordsSideReps(for context: WorkoutLiveSetContext) -> Bool {
-        if let override = recordsSideRepsByExercise[repModeKey(for: context)] {
+    private func repMode(for context: WorkoutLiveSetContext) -> WorkoutLiveRepMode {
+        if let override = repModeByExercise[repModeKey(for: context)] {
             return override
         }
-        return context.exercise.isUnilateral == true
+        if let saved = context.set.repMode,
+           let mode = WorkoutLiveRepMode(rawValue: saved) {
+            return mode
+        }
+        return context.exercise.isUnilateral == true ? .separateSides : .single
     }
 
-    private func updateRecordsSideReps(_ recordsSideReps: Bool, for context: WorkoutLiveSetContext) {
-        recordsSideRepsByExercise[repModeKey(for: context)] = recordsSideReps
+    private func updateRepMode(_ repMode: WorkoutLiveRepMode, for context: WorkoutLiveSetContext) {
+        repModeByExercise[repModeKey(for: context)] = repMode
         guard items.indices.contains(context.exerciseIndex),
               items[context.exerciseIndex].sets.indices.contains(context.setIndex)
         else { return }
@@ -2019,7 +2033,12 @@ private struct WorkoutLiveActivityCard: View {
         let text = String(value)
         var changed = false
 
-        if recordsSideReps {
+        if set.repMode != repMode.rawValue {
+            set.repMode = repMode.rawValue
+            changed = true
+        }
+
+        if repMode == .separateSides {
             if cleaned(set.repsLeft) == nil {
                 set.repsLeft = text
                 changed = true
@@ -2028,7 +2047,11 @@ private struct WorkoutLiveActivityCard: View {
                 set.repsRight = text
                 changed = true
             }
-        } else if context.exercise.isUnilateral == true {
+            if cleaned(set.reps) != nil {
+                set.reps = ""
+                changed = true
+            }
+        } else if repMode == .linkedSides || context.exercise.isUnilateral == true {
             if set.repsLeft != text {
                 set.repsLeft = text
                 changed = true
@@ -2129,7 +2152,7 @@ private struct WorkoutLiveActivityCard: View {
         )
     }
 
-    private func commonRepsValueBinding(_ set: Binding<WorkoutSet>, context: WorkoutLiveSetContext) -> Binding<Int> {
+    private func commonRepsValueBinding(_ set: Binding<WorkoutSet>, context: WorkoutLiveSetContext, repMode: WorkoutLiveRepMode) -> Binding<Int> {
         Binding(
             get: {
                 sharedRepsValue(for: set.wrappedValue)
@@ -2140,12 +2163,16 @@ private struct WorkoutLiveActivityCard: View {
             },
             set: { value in
                 let text = String(max(0, value))
-                if context.exercise.isUnilateral == true {
+                if repMode == .linkedSides || context.exercise.isUnilateral == true {
                     set.wrappedValue.repsLeft = text
                     set.wrappedValue.repsRight = text
                     set.wrappedValue.reps = ""
+                    set.wrappedValue.repMode = repMode.rawValue
                 } else {
                     set.wrappedValue.reps = text
+                    set.wrappedValue.repsLeft = nil
+                    set.wrappedValue.repsRight = nil
+                    set.wrappedValue.repMode = repMode.rawValue
                 }
                 onTextChanged()
             }
@@ -2167,9 +2194,15 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func fillQuickEntryDefaults(_ context: WorkoutLiveSetContext, set: Binding<WorkoutSet>) {
+        let repMode = repMode(for: context)
         var changed = false
 
-        if recordsSideReps(for: context) {
+        if set.wrappedValue.repMode != repMode.rawValue {
+            set.wrappedValue.repMode = repMode.rawValue
+            changed = true
+        }
+
+        if repMode == .separateSides {
             if cleaned(set.wrappedValue.repsLeft) == nil,
                let seed = repSeedValue(from: sideRepsFallback(context.set, left: true)) {
                 set.wrappedValue.repsLeft = String(seed)
@@ -2181,13 +2214,17 @@ private struct WorkoutLiveActivityCard: View {
                 set.wrappedValue.repsRight = String(seed)
                 changed = true
             }
+            if cleaned(set.wrappedValue.reps) != nil {
+                set.wrappedValue.reps = ""
+                changed = true
+            }
         } else {
             let seed = sharedRepsValue(for: set.wrappedValue)
                 ?? repSeedValue(from: context.set.placeholderReps)
                 ?? repSeedValue(from: sideRepsFallback(context.set, left: true))
                 ?? repSeedValue(from: sideRepsFallback(context.set, left: false))
             if let seed {
-                if context.exercise.isUnilateral == true {
+                if repMode == .linkedSides || context.exercise.isUnilateral == true {
                     let text = String(seed)
                     if cleaned(set.wrappedValue.repsLeft) == nil || set.wrappedValue.repsLeft != text {
                         set.wrappedValue.repsLeft = text
@@ -2774,7 +2811,7 @@ private struct WorkoutLiveInput: View {
 private struct WorkoutLiveRepWheel: View {
     let title: String
     @Binding var value: Int
-    @Binding var recordsSideReps: Bool
+    @Binding var repMode: WorkoutLiveRepMode
     let caption: String?
     let range: ClosedRange<Int>
 
@@ -2788,7 +2825,7 @@ private struct WorkoutLiveRepWheel: View {
 
                 Spacer(minLength: 0)
 
-                WorkoutLiveRepModeToggle(recordsSideReps: $recordsSideReps)
+                WorkoutLiveRepModeToggle(repMode: $repMode)
             }
 
             HStack(spacing: 6) {
@@ -2884,7 +2921,7 @@ private struct WorkoutLiveSideRepWheel: View {
     let title: String
     @Binding var leftValue: Int
     @Binding var rightValue: Int
-    @Binding var recordsSideReps: Bool
+    @Binding var repMode: WorkoutLiveRepMode
     let leftCaption: String?
     let rightCaption: String?
     let range: ClosedRange<Int>
@@ -2899,7 +2936,7 @@ private struct WorkoutLiveSideRepWheel: View {
 
                 Spacer(minLength: 0)
 
-                WorkoutLiveRepModeToggle(recordsSideReps: $recordsSideReps)
+                WorkoutLiveRepModeToggle(repMode: $repMode)
             }
 
             VStack(spacing: 4) {
@@ -2994,16 +3031,13 @@ private struct WorkoutLiveSideRepControl: View {
 }
 
 private struct WorkoutLiveRepModeToggle: View {
-    @Binding var recordsSideReps: Bool
+    @Binding var repMode: WorkoutLiveRepMode
 
     var body: some View {
         HStack(spacing: 1) {
-            modeButton("1x", isSelected: !recordsSideReps) {
-                recordsSideReps = false
-            }
-            modeButton("2x", isSelected: recordsSideReps) {
-                recordsSideReps = true
-            }
+            modeButton("1x", mode: .single)
+            modeButton("2x", mode: .separateSides)
+            modeButton("2x*", mode: .linkedSides)
         }
         .padding(2)
         .background(Theme.surface)
@@ -3012,13 +3046,16 @@ private struct WorkoutLiveRepModeToggle: View {
         .accessibilityLabel("Rep mode")
     }
 
-    private func modeButton(_ title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func modeButton(_ title: String, mode: WorkoutLiveRepMode) -> some View {
+        let isSelected = repMode == mode
+        return Button {
+            repMode = mode
+        } label: {
             Text(title)
                 .font(.system(size: 9, weight: .heavy))
                 .monospacedDigit()
                 .foregroundStyle(isSelected ? .white : Theme.muted)
-                .frame(width: 27, height: 18)
+                .frame(width: 30, height: 18)
                 .background(isSelected ? Theme.accent : Color.clear)
                 .clipShape(Capsule())
         }

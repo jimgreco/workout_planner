@@ -19,6 +19,9 @@ function effectiveWeight(weight, weightType = 'weight') {
 
 function setRepTotal(set) {
   const reps = numeric(set.reps);
+  if (set.repMode === 'single' || set.repMode === 'linkedSides') {
+    return Math.max(reps, numeric(set.repsLeft), numeric(set.repsRight));
+  }
   const sideTotal = numeric(set.repsLeft) + numeric(set.repsRight);
   return sideTotal > 0 ? sideTotal : reps;
 }

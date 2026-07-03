@@ -51,7 +51,7 @@ test('validates nested workout log limits and statuses', () => {
       supersetGroup: 'A',
       description: 'Keep elbows tucked',
       useIndividualReps: true,
-      sets: [{ reps: '', repsLeft: '8', repsRight: '8', weight: '', placeholderReps: '8', placeholderRepsLeft: '8', placeholderRepsRight: '8', placeholderWeight: '135', placeholderWeightType: 'weight', restTargetSeconds: 120, rpe: '8.5', rir: '2', setType: 'warmup' }],
+      sets: [{ reps: '', repsLeft: '8', repsRight: '8', repMode: 'linkedSides', weight: '', placeholderReps: '8', placeholderRepsLeft: '8', placeholderRepsRight: '8', placeholderWeight: '135', placeholderWeightType: 'weight', restTargetSeconds: 120, rpe: '8.5', rir: '2', setType: 'warmup' }],
     }],
   }, 'log-1');
 
@@ -64,6 +64,7 @@ test('validates nested workout log limits and statuses', () => {
   assert.equal(log.exerciseItems[0].useIndividualReps, true);
   assert.equal(log.exerciseItems[0].sets[0].placeholderReps, '8');
   assert.equal(log.exerciseItems[0].sets[0].repsLeft, '8');
+  assert.equal(log.exerciseItems[0].sets[0].repMode, 'linkedSides');
   assert.equal(log.exerciseItems[0].sets[0].placeholderRepsLeft, '8');
   assert.equal(log.exerciseItems[0].sets[0].placeholderWeightType, 'weight');
   assert.equal(log.exerciseItems[0].sets[0].restTargetSeconds, 120);

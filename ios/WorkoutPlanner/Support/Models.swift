@@ -72,6 +72,7 @@ struct WorkoutSet: Codable, Equatable {
     var reps: String?
     var repsLeft: String?
     var repsRight: String?
+    var repMode: String?
     var weight: String?
     var placeholderReps: String?
     var placeholderRepsLeft: String?
@@ -89,6 +90,7 @@ struct WorkoutSet: Codable, Equatable {
         reps: String? = "",
         repsLeft: String? = nil,
         repsRight: String? = nil,
+        repMode: String? = nil,
         weight: String? = "",
         placeholderReps: String? = nil,
         placeholderRepsLeft: String? = nil,
@@ -105,6 +107,7 @@ struct WorkoutSet: Codable, Equatable {
         self.reps = reps
         self.repsLeft = repsLeft
         self.repsRight = repsRight
+        self.repMode = repMode
         self.weight = weight
         self.placeholderReps = placeholderReps
         self.placeholderRepsLeft = placeholderRepsLeft
