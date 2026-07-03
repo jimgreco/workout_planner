@@ -3036,7 +3036,7 @@ private struct WorkoutLiveWeightAdjuster: View {
     let allowsEntry: Bool
     let onLoadChange: (String) -> Void
     @State private var draftValue = ""
-    @FocusState private var isWeightFocused: Bool
+    @State private var isWeightFocused = false
 
     private var controls: [(label: String, delta: Double?)] {
         [
@@ -3087,18 +3087,15 @@ private struct WorkoutLiveWeightAdjuster: View {
 
             if allowsEntry {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    TextField("0", text: weightText)
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Theme.text)
-                        .monospacedDigit()
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.leading)
-                        .focused($isWeightFocused)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                    DoneAccessoryTextField(
+                        text: weightText,
+                        isFocused: $isWeightFocused,
+                        placeholder: "0",
+                        keyboardType: .decimalPad,
+                        accessibilityLabel: "Weight"
+                    )
+                    .frame(height: 30)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Weight")
 
                     if let caption {
                         Text(caption)
@@ -3182,15 +3179,6 @@ private struct WorkoutLiveWeightAdjuster: View {
         .onReceive(NotificationCenter.default.publisher(for: .workoutInputFocusDismissed)) { _ in
             isWeightFocused = false
         }
-        .toolbar {
-            if isWeightFocused {
-                ToolbarItem(placement: .keyboard) {
-                    KeyboardDoneToolbar {
-                        isWeightFocused = false
-                    }
-                }
-            }
-        }
     }
 
     private var weightText: Binding<String> {
@@ -3241,6 +3229,99 @@ private struct WorkoutLiveWeightAdjuster: View {
         }
         value = max(0, parsed)
         draftValue = formatProgressionNumber(max(0, parsed))
+    }
+}
+
+private struct DoneAccessoryTextField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    let placeholder: String
+    let keyboardType: UIKeyboardType
+    let accessibilityLabel: String
+
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField(frame: .zero)
+        textField.delegate = context.coordinator
+        textField.placeholder = placeholder
+        textField.keyboardType = keyboardType
+        textField.borderStyle = .none
+        textField.backgroundColor = .clear
+        textField.textAlignment = .left
+        textField.adjustsFontSizeToFitWidth = true
+        textField.minimumFontSize = 17
+        textField.accessibilityLabel = accessibilityLabel
+        textField.inputAccessoryView = context.coordinator.makeToolbar()
+        textField.addTarget(context.coordinator, action: #selector(Coordinator.textDidChange(_:)), for: .editingChanged)
+        applyStyle(to: textField)
+        return textField
+    }
+
+    func updateUIView(_ textField: UITextField, context: Context) {
+        context.coordinator.parent = self
+        if textField.text != text {
+            textField.text = text
+        }
+        applyStyle(to: textField)
+        if isFocused, !textField.isFirstResponder {
+            DispatchQueue.main.async {
+                textField.becomeFirstResponder()
+            }
+        } else if !isFocused, textField.isFirstResponder {
+            DispatchQueue.main.async {
+                textField.resignFirstResponder()
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    private func applyStyle(to textField: UITextField) {
+        textField.font = .monospacedDigitSystemFont(ofSize: 24, weight: .heavy)
+        textField.textColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.91, green: 0.91, blue: 0.94, alpha: 1)
+                : UIColor(red: 0.133, green: 0.133, blue: 0.133, alpha: 1)
+        }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: DoneAccessoryTextField
+
+        init(parent: DoneAccessoryTextField) {
+            self.parent = parent
+        }
+
+        func makeToolbar() -> UIToolbar {
+            let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 44))
+            toolbar.items = [
+                UIBarButtonItem(systemItem: .flexibleSpace),
+                UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(doneTapped))
+            ]
+            toolbar.sizeToFit()
+            toolbar.tintColor = UIColor(red: 1.0, green: 0.22, blue: 0.36, alpha: 1)
+            return toolbar
+        }
+
+        @objc func textDidChange(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+
+        @objc func doneTapped() {
+            parent.isFocused = false
+            NotificationCenter.default.post(name: .keyboardDoneToolbarDismissed, object: nil)
+            NotificationCenter.default.post(name: .workoutInputFocusDismissed, object: nil)
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.isFocused = true
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            parent.isFocused = false
+        }
     }
 }
 
