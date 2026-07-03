@@ -965,6 +965,8 @@ struct WorkoutLogView: View {
     }
 
     private func markSetCompleted(exerciseIndex: Int, setIndex: Int) {
+        dismissWorkoutInputFocus()
+
         guard items.indices.contains(exerciseIndex),
               items[exerciseIndex].sets.indices.contains(setIndex)
         else { return }
@@ -1003,29 +1005,18 @@ struct WorkoutLogView: View {
         if items.indices.contains(nextExercise) {
             activeExerciseIndex = nextExercise
             activeSetIndex = nextSet
-            focusLiveActivityReps(itemIndex: nextExercise, setIndex: nextSet)
         }
         scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: now)
         updateExternalLiveActivityNow()
         saveNow(status: currentStatus())
     }
 
-    private func focusLiveActivityReps(itemIndex: Int, setIndex: Int) {
-        let nextField = repsFocusField(itemIndex: itemIndex, setIndex: setIndex)
+    private func dismissWorkoutInputFocus() {
         focusedTextField = nil
         focusedBuilderField = nil
         focusedLiveActivityField = nil
-
-        Task { @MainActor in
-            await Task.yield()
-            guard shouldShowLiveActivityCard,
-                  activeExerciseIndex == itemIndex,
-                  activeSetIndex == setIndex,
-                  items.indices.contains(itemIndex),
-                  items[itemIndex].sets.indices.contains(setIndex)
-            else { return }
-            focusedLiveActivityField = nextField
-        }
+        NotificationCenter.default.post(name: .workoutInputFocusDismissed, object: nil)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func clearBuilderFieldForEntry(_ field: WorkoutBuilderFocusedField) {
@@ -1060,15 +1051,6 @@ struct WorkoutLogView: View {
             items[itemIndex].sets[setIndex].rir = ""
         }
         hasPendingBuilderCommit = true
-    }
-
-    private func repsFocusField(itemIndex: Int, setIndex: Int) -> WorkoutBuilderFocusedField {
-        if items.indices.contains(itemIndex),
-           let exercise = store.exercise(id: items[itemIndex].exerciseId),
-           exercise.isUnilateral == true {
-            return .repsLeft(itemIndex: itemIndex, setIndex: setIndex)
-        }
-        return .reps(itemIndex: itemIndex, setIndex: setIndex)
     }
 
     private func endRest(exerciseIndex: Int, setIndex: Int) {
@@ -3197,7 +3179,7 @@ private struct WorkoutLiveWeightAdjuster: View {
                 normalizeDraftValue()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .keyboardDoneToolbarDismissed)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .workoutInputFocusDismissed)) { _ in
             isWeightFocused = false
         }
     }

@@ -71,6 +71,18 @@ function formatProgramNumber(value) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
 }
 
+function blurActiveEditableElement() {
+  if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return;
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof HTMLElement)) return;
+  if (
+    activeElement.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
+    || activeElement.isContentEditable
+  ) {
+    activeElement.blur();
+  }
+}
+
 function setRepValue(set) {
   return Math.max(numberValue(set?.reps), numberValue(set?.repsLeft), numberValue(set?.repsRight));
 }
@@ -441,6 +453,7 @@ export default function WorkoutLog({
 
   
   function handleSetCompleted(exIdx, setIdx) {
+    blurActiveEditableElement();
     if (!workoutId) return;
 
     const targetEx = items[exIdx];

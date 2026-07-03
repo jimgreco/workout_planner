@@ -411,6 +411,21 @@ describe('WorkoutBuilder', () => {
       expect(onSetCompleted).toHaveBeenCalledWith(0, 0);
     });
 
+    it('blurs the active set input when completing a set', () => {
+      const onSetCompleted = vi.fn();
+      const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
+      render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} onSetCompleted={onSetCompleted} />);
+
+      const weightInput = screen.getByLabelText(/weight for set 1 of bench press/i);
+      weightInput.focus();
+      expect(weightInput).toHaveFocus();
+
+      fireEvent.click(screen.getByRole('button', { name: /complete set 1 for bench press/i }));
+
+      expect(weightInput).not.toHaveFocus();
+      expect(onSetCompleted).toHaveBeenCalledWith(0, 0);
+    });
+
     it('calls onSetCompleted again from a completed set button', () => {
       const onSetCompleted = vi.fn();
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100', restDuration: 45 }] }];

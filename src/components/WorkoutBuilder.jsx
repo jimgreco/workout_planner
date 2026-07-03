@@ -70,6 +70,18 @@ function formatWeightNumber(value) {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
 }
 
+function blurActiveEditableElement() {
+  if (typeof document === 'undefined' || typeof HTMLElement === 'undefined') return;
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof HTMLElement)) return;
+  if (
+    activeElement.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
+    || activeElement.isContentEditable
+  ) {
+    activeElement.blur();
+  }
+}
+
 function contextualWeightPlaceholder(weight, sourceWeightType, targetWeightType) {
   const raw = String(weight ?? '').trim();
   if (!raw) return '';
@@ -769,7 +781,10 @@ export default function WorkoutBuilder({
                         <button
                           type="button"
                           className={`set-complete-btn ${setIsCompleted(set) ? 'completed' : ''}`}
-                          onClick={() => onSetCompleted && onSetCompleted(idx, si)}
+                          onClick={() => {
+                            blurActiveEditableElement();
+                            onSetCompleted?.(idx, si);
+                          }}
                           disabled={!setCanComplete(item, set)}
                           title={setIsCompleted(set) ? 'Set complete' : 'Complete set'}
                           aria-label={`Complete set ${si + 1} for ${ex.name}`}

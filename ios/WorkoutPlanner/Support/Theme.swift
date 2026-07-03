@@ -2,6 +2,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let keyboardDoneToolbarDismissed = Notification.Name("keyboardDoneToolbarDismissed")
+    static let workoutInputFocusDismissed = Notification.Name("workoutInputFocusDismissed")
 }
 
 enum Theme {
@@ -108,6 +109,7 @@ struct KeyboardDoneToolbar: View {
         Button {
             action()
             NotificationCenter.default.post(name: .keyboardDoneToolbarDismissed, object: nil)
+            NotificationCenter.default.post(name: .workoutInputFocusDismissed, object: nil)
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         } label: {
             HStack {
