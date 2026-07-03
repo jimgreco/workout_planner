@@ -98,11 +98,15 @@ jobs:
           security default-keychain -s "$KEYCHAIN_PATH"
 
           printf '%s' "$CERT_P12" | base64 -d > "$RUNNER_TEMP/distribution.p12"
-          if ! openssl pkcs12 -legacy -in "$RUNNER_TEMP/distribution.p12" -noout -passin pass:"$CERT_PWD"; then
+          OPENSSL_PKCS12_ARGS=()
+          if openssl pkcs12 -help 2>&1 | grep -q -- '-legacy'; then
+            OPENSSL_PKCS12_ARGS=(-legacy)
+          fi
+          if ! openssl pkcs12 "${OPENSSL_PKCS12_ARGS[@]}" -in "$RUNNER_TEMP/distribution.p12" -noout -passin pass:"$CERT_PWD"; then
             echo "Certificate import preflight failed; check IOS_DIST_CERT_P12 and IOS_DIST_CERT_PASSWORD."
             exit 1
           fi
-          openssl pkcs12 -legacy -in "$RUNNER_TEMP/distribution.p12" -clcerts -nokeys -passin pass:"$CERT_PWD" -out "$RUNNER_TEMP/distribution-cert.pem"
+          openssl pkcs12 "${OPENSSL_PKCS12_ARGS[@]}" -in "$RUNNER_TEMP/distribution.p12" -clcerts -nokeys -passin pass:"$CERT_PWD" -out "$RUNNER_TEMP/distribution-cert.pem"
           openssl x509 -in "$RUNNER_TEMP/distribution-cert.pem" -outform DER -out "$RUNNER_TEMP/distribution-cert.der"
 
           security import "$RUNNER_TEMP/distribution.p12" \
