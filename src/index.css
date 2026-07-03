@@ -2626,17 +2626,25 @@ input:focus, select:focus, textarea:focus {
   opacity: 1;
 }
 .rest-alert {
+  position: fixed;
+  top: calc(72px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 150;
+  width: min(calc(100vw - 32px), 520px);
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 0;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  box-shadow: var(--shadow);
   color: var(--text);
   font-size: 14px;
   font-weight: 700;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 /* ── History List ───────────────────────────────────────── */
