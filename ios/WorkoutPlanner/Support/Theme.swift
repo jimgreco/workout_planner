@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let keyboardDoneToolbarDismissed = Notification.Name("keyboardDoneToolbarDismissed")
+}
+
 enum Theme {
     static let accent = Color(red: 1.0, green: 0.22, blue: 0.36)
     static let accentDark = Color(red: 0.89, green: 0.11, blue: 0.37)
@@ -101,7 +105,11 @@ struct KeyboardDoneToolbar: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            action()
+            NotificationCenter.default.post(name: .keyboardDoneToolbarDismissed, object: nil)
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        } label: {
             HStack {
                 Spacer(minLength: 0)
                 Text("Done")

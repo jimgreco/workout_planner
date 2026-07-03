@@ -3197,6 +3197,9 @@ private struct WorkoutLiveWeightAdjuster: View {
                 normalizeDraftValue()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .keyboardDoneToolbarDismissed)) { _ in
+            isWeightFocused = false
+        }
     }
 
     private var weightText: Binding<String> {
