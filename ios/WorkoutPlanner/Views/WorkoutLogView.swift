@@ -2822,10 +2822,13 @@ private struct WorkoutLiveRepWheel: View {
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
 
                 Spacer(minLength: 0)
 
-                WorkoutLiveRepModeToggle(repMode: $repMode)
+                WorkoutLiveRepModeMenu(repMode: $repMode)
             }
 
             HStack(spacing: 6) {
@@ -2933,10 +2936,13 @@ private struct WorkoutLiveSideRepWheel: View {
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(Theme.muted)
                     .textCase(.uppercase)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
 
                 Spacer(minLength: 0)
 
-                WorkoutLiveRepModeToggle(repMode: $repMode)
+                WorkoutLiveRepModeMenu(repMode: $repMode)
             }
 
             VStack(spacing: 4) {
@@ -3030,37 +3036,44 @@ private struct WorkoutLiveSideRepControl: View {
     }
 }
 
-private struct WorkoutLiveRepModeToggle: View {
+private struct WorkoutLiveRepModeMenu: View {
     @Binding var repMode: WorkoutLiveRepMode
 
     var body: some View {
-        HStack(spacing: 1) {
-            modeButton("1x", mode: .single)
-            modeButton("2x", mode: .separateSides)
-            modeButton("2x*", mode: .linkedSides)
-        }
-        .padding(2)
-        .background(Theme.surface)
-        .clipShape(Capsule())
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Rep mode")
-    }
-
-    private func modeButton(_ title: String, mode: WorkoutLiveRepMode) -> some View {
-        let isSelected = repMode == mode
-        return Button {
-            repMode = mode
+        Menu {
+            Button("1x") { repMode = .single }
+            Button("2x") { repMode = .separateSides }
+            Button("2x*") { repMode = .linkedSides }
         } label: {
-            Text(title)
-                .font(.system(size: 9, weight: .heavy))
-                .monospacedDigit()
-                .foregroundStyle(isSelected ? .white : Theme.muted)
-                .frame(width: 30, height: 18)
-                .background(isSelected ? Theme.accent : Color.clear)
-                .clipShape(Capsule())
+            HStack(spacing: 4) {
+                Text(modeLabel)
+                    .font(.system(size: 10, weight: .heavy))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.text)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .heavy))
+                    .foregroundStyle(Theme.muted.opacity(0.72))
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(Theme.surface)
+            .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel("Rep mode")
+        .accessibilityValue(modeLabel)
+    }
+
+    private var modeLabel: String {
+        switch repMode {
+        case .single:
+            return "1x"
+        case .separateSides:
+            return "2x"
+        case .linkedSides:
+            return "2x*"
+        }
     }
 }
 
