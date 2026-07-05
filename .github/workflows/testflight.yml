@@ -98,15 +98,24 @@ jobs:
           security default-keychain -s "$KEYCHAIN_PATH"
 
           printf '%s' "$CERT_P12" | base64 -d > "$RUNNER_TEMP/distribution.p12"
-          OPENSSL_PKCS12_ARGS=()
+          OPENSSL_PKCS12_LEGACY_ARG=""
           if openssl pkcs12 -help 2>&1 | grep -q -- '-legacy'; then
-            OPENSSL_PKCS12_ARGS=(-legacy)
+            OPENSSL_PKCS12_LEGACY_ARG="-legacy"
           fi
-          if ! openssl pkcs12 "${OPENSSL_PKCS12_ARGS[@]}" -in "$RUNNER_TEMP/distribution.p12" -noout -passin pass:"$CERT_PWD"; then
+
+          run_pkcs12() {
+            if [ -n "$OPENSSL_PKCS12_LEGACY_ARG" ]; then
+              openssl pkcs12 "$OPENSSL_PKCS12_LEGACY_ARG" "$@"
+            else
+              openssl pkcs12 "$@"
+            fi
+          }
+
+          if ! run_pkcs12 -in "$RUNNER_TEMP/distribution.p12" -noout -passin pass:"$CERT_PWD"; then
             echo "Certificate import preflight failed; check IOS_DIST_CERT_P12 and IOS_DIST_CERT_PASSWORD."
             exit 1
           fi
-          openssl pkcs12 "${OPENSSL_PKCS12_ARGS[@]}" -in "$RUNNER_TEMP/distribution.p12" -clcerts -nokeys -passin pass:"$CERT_PWD" -out "$RUNNER_TEMP/distribution-cert.pem"
+          run_pkcs12 -in "$RUNNER_TEMP/distribution.p12" -clcerts -nokeys -passin pass:"$CERT_PWD" -out "$RUNNER_TEMP/distribution-cert.pem"
           openssl x509 -in "$RUNNER_TEMP/distribution-cert.pem" -outform DER -out "$RUNNER_TEMP/distribution-cert.der"
 
           security import "$RUNNER_TEMP/distribution.p12" \
