@@ -744,20 +744,25 @@ struct WorkoutLogView: View {
             let targetLeftPlaceholder = progressedReps.isEmpty ? targetLeft : progressedReps
             let targetRightPlaceholder = progressedReps.isEmpty ? targetRight : progressedReps
             if let last, last.sets.indices.contains(offset) {
-                let lastReps = last.sets[offset].reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let lastLeft = last.sets[offset].repsLeft?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
-                let lastRight = last.sets[offset].repsRight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastReps
+                let lastSet = last.sets[offset]
+                let lastRepMode = WorkoutLiveRepMode(rawValue: lastSet.repMode ?? "")
+                let preservesSideHistory = isUnilateral
+                    || lastRepMode == .separateSides
+                    || lastRepMode == .linkedSides
+                let lastReps = lastSet.reps?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let lastLeft = firstFilled([lastSet.repsLeft, lastReps]) ?? ""
+                let lastRight = firstFilled([lastSet.repsRight, lastReps]) ?? ""
                 let placeholderWeightType = last.weightType ?? preferredWeightType
                 return WorkoutSet(
                     reps: "",
-                    repsLeft: isUnilateral ? "" : nil,
-                    repsRight: isUnilateral ? "" : nil,
-                    repMode: last.sets[offset].repMode,
+                    repsLeft: preservesSideHistory ? "" : nil,
+                    repsRight: preservesSideHistory ? "" : nil,
+                    repMode: lastSet.repMode,
                     weight: "",
                     placeholderReps: lastReps.isEmpty ? targetPlaceholder : "\(lastReps) (\(targetPlaceholder))",
-                    placeholderRepsLeft: isUnilateral ? (lastLeft.isEmpty ? targetLeftPlaceholder : "\(lastLeft) (\(targetLeftPlaceholder))") : nil,
-                    placeholderRepsRight: isUnilateral ? (lastRight.isEmpty ? targetRightPlaceholder : "\(lastRight) (\(targetRightPlaceholder))") : nil,
-                    placeholderWeight: last.sets[offset].weight,
+                    placeholderRepsLeft: preservesSideHistory ? (lastLeft.isEmpty ? targetLeftPlaceholder : "\(lastLeft) (\(targetLeftPlaceholder))") : nil,
+                    placeholderRepsRight: preservesSideHistory ? (lastRight.isEmpty ? targetRightPlaceholder : "\(lastRight) (\(targetRightPlaceholder))") : nil,
+                    placeholderWeight: lastSet.weight,
                     placeholderWeightType: placeholderWeightType
                 )
             }
@@ -1996,7 +2001,7 @@ private struct WorkoutLiveActivityCard: View {
                 title: title,
                 value: commonRepsValueBinding(set, context: context, repMode: repMode),
                 repMode: mode,
-                caption: repCaption(for: context.set),
+                caption: repCaption(for: context.set, mode: repMode),
                 range: range
             )
         }
@@ -2023,13 +2028,14 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func updateRepMode(_ repMode: WorkoutLiveRepMode, for context: WorkoutLiveSetContext) {
+        let previousMode = self.repMode(for: context)
         repModeByExercise[repModeKey(for: context)] = repMode
         guard items.indices.contains(context.exerciseIndex),
               items[context.exerciseIndex].sets.indices.contains(context.setIndex)
         else { return }
 
         var set = items[context.exerciseIndex].sets[context.setIndex]
-        let value = sharedRepsValue(for: set) ?? 0
+        let value = sharedRepsValue(for: set, mode: previousMode) ?? 0
         let text = String(value)
         var changed = false
 
@@ -2099,15 +2105,33 @@ private struct WorkoutLiveActivityCard: View {
         return set.placeholderRepsRight ?? set.placeholderReps
     }
 
-    private func repCaption(for set: WorkoutSet) -> String? {
+    private func repCaption(for set: WorkoutSet, mode: WorkoutLiveRepMode) -> String? {
+        let sideTarget = combinedSideRepText(
+            left: repTargetText(from: set.placeholderRepsLeft),
+            right: repTargetText(from: set.placeholderRepsRight)
+        )
+        let sideLast = combinedSideRepText(
+            left: repLastText(from: set.placeholderRepsLeft),
+            right: repLastText(from: set.placeholderRepsRight)
+        )
+        let commonTarget = repTargetText(from: set.placeholderReps)
+        let commonLast = repLastText(from: set.placeholderReps)
+        let prefersSideHistory = mode == .separateSides || mode == .linkedSides
         var parts: [String] = []
-        if let target = repTargetText(from: set.placeholderReps) {
+        if let target = prefersSideHistory ? (sideTarget ?? commonTarget) : (commonTarget ?? sideTarget) {
             parts.append("Goal \(target)")
         }
-        if let last = repLastText(from: set.placeholderReps) {
+        if let last = prefersSideHistory ? (sideLast ?? commonLast) : (commonLast ?? sideLast) {
             parts.append("Last \(last)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: "  ")
+    }
+
+    private func combinedSideRepText(left: String?, right: String?) -> String? {
+        if let left, let right {
+            return left == right ? left : "\(left)/\(right)"
+        }
+        return left ?? right
     }
 
     private func sideRepCaption(for set: WorkoutSet, left: Bool) -> String? {
@@ -2155,10 +2179,7 @@ private struct WorkoutLiveActivityCard: View {
     private func commonRepsValueBinding(_ set: Binding<WorkoutSet>, context: WorkoutLiveSetContext, repMode: WorkoutLiveRepMode) -> Binding<Int> {
         Binding(
             get: {
-                sharedRepsValue(for: set.wrappedValue)
-                    ?? repSeedValue(from: context.set.placeholderReps)
-                    ?? repSeedValue(from: sideRepsFallback(context.set, left: true))
-                    ?? repSeedValue(from: sideRepsFallback(context.set, left: false))
+                sharedRepsValue(for: set.wrappedValue, mode: repMode)
                     ?? 0
             },
             set: { value in
@@ -2219,10 +2240,7 @@ private struct WorkoutLiveActivityCard: View {
                 changed = true
             }
         } else {
-            let seed = sharedRepsValue(for: set.wrappedValue)
-                ?? repSeedValue(from: context.set.placeholderReps)
-                ?? repSeedValue(from: sideRepsFallback(context.set, left: true))
-                ?? repSeedValue(from: sideRepsFallback(context.set, left: false))
+            let seed = sharedRepsValue(for: set.wrappedValue, mode: repMode)
             if let seed {
                 if repMode == .linkedSides || context.exercise.isUnilateral == true {
                     let text = String(seed)
@@ -2270,20 +2288,33 @@ private struct WorkoutLiveActivityCard: View {
         return max(0, Int(value.rounded()))
     }
 
-    private func sharedRepsValue(for set: WorkoutSet) -> Int? {
-        if let value = repValue(from: set.reps) {
-            return value
-        }
-        if let left = repValue(from: set.repsLeft),
-           let right = repValue(from: set.repsRight),
+    private func sharedRepsValue(for set: WorkoutSet, mode: WorkoutLiveRepMode) -> Int? {
+        let commonValue = repValue(from: set.reps)
+        let leftValue = repValue(from: set.repsLeft)
+        let rightValue = repValue(from: set.repsRight)
+        let sideValue: Int?
+        if let left = leftValue,
+           let right = rightValue,
            left == right {
-            return left
+            sideValue = left
+        } else {
+            sideValue = leftValue ?? rightValue
         }
-        return repValue(from: set.repsLeft)
-            ?? repValue(from: set.repsRight)
-            ?? repSeedValue(from: set.placeholderReps)
-            ?? repSeedValue(from: set.placeholderRepsLeft)
-            ?? repSeedValue(from: set.placeholderRepsRight)
+
+        switch mode {
+        case .single:
+            return commonValue
+                ?? sideValue
+                ?? repSeedValue(from: set.placeholderReps)
+                ?? repSeedValue(from: set.placeholderRepsLeft)
+                ?? repSeedValue(from: set.placeholderRepsRight)
+        case .separateSides, .linkedSides:
+            return sideValue
+                ?? commonValue
+                ?? repSeedValue(from: set.placeholderRepsLeft)
+                ?? repSeedValue(from: set.placeholderRepsRight)
+                ?? repSeedValue(from: set.placeholderReps)
+        }
     }
 
     private func weightSeedValue(for context: WorkoutLiveSetContext) -> Double? {
