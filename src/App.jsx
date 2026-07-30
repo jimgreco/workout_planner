@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   LifeBuoy,
   ExternalLink,
+  MoreHorizontal,
 } from 'lucide-react';
 import { getStoredUser, getStoredCredential, storeUser, clearStoredUser, DEV_BYPASS, DEV_USER } from './auth.js';
 import {
@@ -48,13 +49,20 @@ import Modal from './components/Modal.jsx';
 import { personalBestLabel } from './progress.js';
 
 const PAGES = [
-  { id: 'log',       label: 'Workout',          icon: Dumbbell },
+  { id: 'log',       label: 'Train',            icon: Dumbbell },
   { id: 'programs',  label: 'Program',          icon: ClipboardList },
   { id: 'routines',  label: 'Routines',         icon: LayoutGrid },
   { id: 'exercises', label: 'Exercises', icon: Library },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
 ];
+const NAV_GROUPS = [
+  { label: 'Train', pages: ['log', 'programs'] },
+  { label: 'Build', pages: ['routines', 'exercises'] },
+  { label: 'Review', pages: ['progress', 'history'] },
+];
+const MOBILE_PAGES = ['log', 'programs', 'progress', 'history'];
+const MOBILE_MORE_PAGES = ['routines', 'exercises'];
 const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';
 const CRASH_REPORT_KEY = 'forge.lastCrashReportAt.v1';
 const CRASH_REPORT_COOLDOWN_MS = 30 * 60 * 1000;
@@ -177,6 +185,7 @@ export default function App() {
   const [loadRequest, setLoadRequest] = useState(0);
   const [page, setPage]           = useState('log');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMore, setShowMobileMore] = useState(false);
   const [accountModal, setAccountModal] = useState(null); // null | 'feedback' | 'import' | 'delete' | 'support'
   const [feedbackText, setFeedbackText] = useState('');
   const [importDraft, setImportDraft] = useState(emptyImportDraft);
@@ -201,6 +210,7 @@ export default function App() {
   const [pendingTemplate, setPendingTemplate] = useState(null);
   const [pendingProgram, setPendingProgram] = useState(null);
   const [editingLog, setEditingLog] = useState(null);
+  const pagesById = Object.fromEntries(PAGES.map((item) => [item.id, item]));
 
   // ── Load data after login (or on first render with a valid session) ────────
   useEffect(() => {
@@ -241,6 +251,7 @@ export default function App() {
     setEditingLog(null);
     setPage('log');
     setShowUserMenu(false);
+    setShowMobileMore(false);
     setAccountModal(null);
     setImportDraft(emptyImportDraft());
     setShowOnboarding(false);
@@ -391,6 +402,7 @@ export default function App() {
   function navigate(id) {
     setPage(id);
     setShowUserMenu(false);
+    setShowMobileMore(false);
   }
 
   async function handleExportData() {
@@ -567,29 +579,24 @@ export default function App() {
   // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      {/* Integrated Top Navigation (Mobile) */}
-      <header className="mobile-nav">
-        <nav className="mobile-nav-center">
-          {PAGES.map((p) => (
-            <button
-              key={p.id}
-              className={`mobile-nav-item ${page === p.id ? 'active' : ''}`}
-              onClick={() => navigate(p.id)}
-            >
-              <p.icon size={20} strokeWidth={page === p.id ? 2.5 : 2} />
-              <span className="mobile-nav-label">{p.label}</span>
-            </button>
-          ))}
-        </nav>
+      <header className="mobile-topbar">
+        <div className="mobile-brand">
+          <Logo variant="mark" className="app-logo-mark" title="" />
+          <div>
+            <strong>Forge</strong>
+            <span>{pagesById[page]?.label}</span>
+          </div>
+        </div>
 
         <div className="mobile-nav-right">
-          <button 
-            className="mobile-avatar-btn" 
-            onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); }}
+          <button
+            className="mobile-avatar-btn"
+            onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowMobileMore(false); }}
+            aria-label="Open account menu"
           >
             {user.picture ? (
-              <img src={user.picture} alt="User menu" className="mobile-avatar" referrerPolicy="no-referrer" />
-            ) : <div className="mobile-avatar-placeholder" />}
+              <img src={user.picture} alt="" className="mobile-avatar" referrerPolicy="no-referrer" />
+            ) : <div className="mobile-avatar-placeholder">{user.name?.charAt(0) || 'F'}</div>}
           </button>
         </div>
 
@@ -600,26 +607,79 @@ export default function App() {
         )}
       </header>
 
+      <nav className="mobile-nav" aria-label="Primary navigation">
+        <div className="mobile-nav-center">
+          {MOBILE_PAGES.map((id) => {
+            const p = pagesById[id];
+            return (
+            <button
+              key={p.id}
+              className={`mobile-nav-item ${page === p.id ? 'active' : ''}`}
+              onClick={() => navigate(p.id)}
+            >
+              <p.icon size={20} strokeWidth={page === p.id ? 2.5 : 2} />
+              <span className="mobile-nav-label">{p.label}</span>
+            </button>
+            );
+          })}
+          <button
+            className={`mobile-nav-item ${MOBILE_MORE_PAGES.includes(page) || showMobileMore ? 'active' : ''}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setShowMobileMore((value) => !value);
+              setShowUserMenu(false);
+            }}
+            aria-expanded={showMobileMore}
+          >
+            <MoreHorizontal size={21} strokeWidth={2.2} />
+            <span className="mobile-nav-label">More</span>
+          </button>
+        </div>
+        {showMobileMore && (
+          <div className="mobile-more-menu" onClick={(event) => event.stopPropagation()}>
+            <span className="section-kicker">Build your training</span>
+            {MOBILE_MORE_PAGES.map((id) => {
+              const item = pagesById[id];
+              return (
+                <button key={id} onClick={() => { navigate(id); setShowMobileMore(false); }}>
+                  <span className="mobile-more-icon"><item.icon size={20} /></span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{id === 'routines' ? 'Reusable workout blueprints' : 'Movements, notes, and personal bests'}</small>
+                  </span>
+                  <ChevronRight size={17} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </nav>
+
       {/* Sidebar (Desktop only) */}
       <nav className="sidebar">
         <div className="sidebar-logo">
           <Logo className="app-logo-full" />
         </div>
 
-        <div className="nav-group">
-          {PAGES.map((p) => (
-            <button
-              key={p.id}
-              className={`nav-item ${page === p.id ? 'active' : ''}`}
-              onClick={() => navigate(p.id)}
-              style={{ padding: '10px 14px', gap: '12px' }}
-            >
-              <p.icon size={18} className="nav-icon" strokeWidth={page === p.id ? 2.5 : 2} />
-              <span className="nav-label" style={{ fontSize: '14.5px' }}>{p.label}</span>
-              {page === p.id && <ChevronRight size={14} className="active-chevron" />}
-            </button>
-          ))}
-        </div>
+        {NAV_GROUPS.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <span className="nav-group-label">{group.label}</span>
+            {group.pages.map((id) => {
+              const p = pagesById[id];
+              return (
+                <button
+                  key={p.id}
+                  className={`nav-item ${page === p.id ? 'active' : ''}`}
+                  onClick={() => navigate(p.id)}
+                >
+                  <p.icon size={19} className="nav-icon" strokeWidth={page === p.id ? 2.5 : 2} />
+                  <span className="nav-label">{p.label}</span>
+                  {page === p.id && <ChevronRight size={14} className="active-chevron" />}
+                </button>
+              );
+            })}
+          </div>
+        ))}
 
         <div className="sidebar-spacer" />
 

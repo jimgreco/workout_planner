@@ -6,49 +6,51 @@ extension Notification.Name {
 }
 
 enum Theme {
-    static let accent = Color(red: 1.0, green: 0.22, blue: 0.36)
-    static let accentDark = Color(red: 0.89, green: 0.11, blue: 0.37)
-    static let success = Color(red: 0.0, green: 0.52, blue: 0.54)
-    static let warning = Color(red: 1.0, green: 0.71, blue: 0.0)
-    static let danger = Color(red: 1.0, green: 0.22, blue: 0.36)
+    // Heated steel: warm, energetic, and purpose-built for a training product.
+    static let accent = Color(red: 0.94, green: 0.35, blue: 0.16)
+    static let accentDark = Color(red: 0.81, green: 0.26, blue: 0.09)
+    static let accentLight = Color(red: 1.0, green: 0.53, blue: 0.36)
+    static let success = Color(red: 0.07, green: 0.54, blue: 0.41)
+    static let warning = Color(red: 0.85, green: 0.54, blue: 0.09)
+    static let danger = Color(red: 0.81, green: 0.25, blue: 0.28)
 
     static let background = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.059, green: 0.059, blue: 0.075, alpha: 1)
-            : UIColor.white
+            ? UIColor(red: 0.047, green: 0.055, blue: 0.047, alpha: 1)
+            : UIColor(red: 0.957, green: 0.953, blue: 0.933, alpha: 1)
     })
 
     static let surface = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.102, green: 0.102, blue: 0.141, alpha: 1)
-            : UIColor(red: 0.969, green: 0.969, blue: 0.969, alpha: 1)
+            ? UIColor(red: 0.082, green: 0.094, blue: 0.082, alpha: 1)
+            : UIColor.white
     })
 
     static let surface2 = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.141, green: 0.141, blue: 0.2, alpha: 1)
-            : UIColor(red: 0.922, green: 0.922, blue: 0.922, alpha: 1)
+            ? UIColor(red: 0.125, green: 0.141, blue: 0.122, alpha: 1)
+            : UIColor(red: 0.914, green: 0.910, blue: 0.882, alpha: 1)
     })
 
     static let border = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.18, green: 0.18, blue: 0.26, alpha: 1)
-            : UIColor(red: 0.867, green: 0.867, blue: 0.867, alpha: 1)
+            ? UIColor(red: 0.173, green: 0.192, blue: 0.169, alpha: 1)
+            : UIColor(red: 0.847, green: 0.843, blue: 0.812, alpha: 1)
     })
 
     static let text = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.91, green: 0.91, blue: 0.94, alpha: 1)
-            : UIColor(red: 0.133, green: 0.133, blue: 0.133, alpha: 1)
+            ? UIColor(red: 0.957, green: 0.945, blue: 0.914, alpha: 1)
+            : UIColor(red: 0.09, green: 0.098, blue: 0.082, alpha: 1)
     })
 
     static let muted = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.53, green: 0.53, blue: 0.6, alpha: 1)
-            : UIColor(red: 0.443, green: 0.443, blue: 0.443, alpha: 1)
+            ? UIColor(red: 0.61, green: 0.62, blue: 0.58, alpha: 1)
+            : UIColor(red: 0.42, green: 0.43, blue: 0.39, alpha: 1)
     })
 
-    static let radius: CGFloat = 8
+    static let radius: CGFloat = 14
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
@@ -56,13 +58,22 @@ struct PrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: compact ? 13 : 14, weight: .semibold))
+            .font(.system(size: compact ? 13 : 15, weight: .bold))
             .foregroundStyle(.white)
             .padding(.horizontal, compact ? 12 : 16)
-            .padding(.vertical, compact ? 8 : 10)
-            .background(configuration.isPressed ? Theme.accentDark : Theme.accent)
+            .padding(.vertical, compact ? 9 : 12)
+            .background(
+                LinearGradient(
+                    colors: configuration.isPressed
+                        ? [Theme.accentDark, Theme.accent]
+                        : [Theme.accentLight, Theme.accent, Theme.accentDark],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .shadow(color: Theme.accent.opacity(configuration.isPressed ? 0.08 : 0.2), radius: 10, y: 5)
     }
 }
 
@@ -74,8 +85,8 @@ struct SecondaryButtonStyle: ButtonStyle {
             .font(.system(size: compact ? 13 : 14, weight: .semibold))
             .foregroundStyle(Theme.text)
             .padding(.horizontal, compact ? 12 : 16)
-            .padding(.vertical, compact ? 8 : 10)
-            .background(Theme.background)
+            .padding(.vertical, compact ? 9 : 12)
+            .background(Theme.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                     .stroke(Theme.border, lineWidth: 1)
@@ -92,7 +103,7 @@ struct DangerButtonStyle: ButtonStyle {
             .foregroundStyle(Theme.danger)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(Theme.background)
+            .background(Theme.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                     .stroke(Theme.danger, lineWidth: 1)
@@ -152,7 +163,7 @@ struct IconCircleButton: View {
                 .font(.system(size: iconSize, weight: .semibold))
                 .foregroundStyle(disabled ? Theme.muted.opacity(0.4) : tint)
                 .frame(width: size, height: size)
-                .background(Theme.background)
+                .background(Theme.surface)
                 .overlay(Circle().stroke(borderTint, lineWidth: borderLineWidth))
                 .clipShape(Circle())
         }
@@ -187,14 +198,14 @@ struct Card<Content: View>: View {
 
     var body: some View {
         content
-            .padding(14)
-            .background(Theme.background)
+            .padding(16)
+            .background(Theme.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                     .stroke(Theme.border, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-            .shadow(color: .black.opacity(0.045), radius: 3, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 4)
     }
 }
 
@@ -219,7 +230,7 @@ struct Badge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(accent ? Theme.accent.opacity(0.1) : Theme.surface2)
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .clipShape(Capsule())
         .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -260,7 +271,7 @@ struct FieldBackground: ViewModifier {
             .foregroundStyle(Theme.text)
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .background(Theme.background)
+            .background(Theme.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
                     .stroke(Theme.border, lineWidth: 1)

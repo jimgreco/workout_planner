@@ -3381,7 +3381,7 @@ private struct DoneAccessoryTextField: UIViewRepresentable {
                 UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(doneTapped))
             ]
             toolbar.sizeToFit()
-            toolbar.tintColor = UIColor(red: 1.0, green: 0.22, blue: 0.36, alpha: 1)
+            toolbar.tintColor = UIColor(red: 0.94, green: 0.35, blue: 0.16, alpha: 1)
             return toolbar
         }
 

@@ -45,7 +45,7 @@ export default function Logo({ variant = 'full', tone = 'auto', className = '', 
             Forge
           </text>
           <text className="forge-logo-subtitle" x="80" y="54" dominantBaseline="middle">
-            Workout Planner
+            Strength Training
           </text>
         </g>
       )}

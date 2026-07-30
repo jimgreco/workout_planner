@@ -14,7 +14,7 @@ enum AppPage: String, CaseIterable, Identifiable, Hashable {
 
     var label: String {
         switch self {
-        case .log: return "Workout"
+        case .log: return "Train"
         case .progress: return "Progress"
         case .history: return "History"
         case .templates: return "Program"
