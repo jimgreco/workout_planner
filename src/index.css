@@ -5,15 +5,15 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Airbnb-inspired palette: vibrant, clean, and high-contrast */
+  /* Forge palette defaults; the 2026 visual system below adds full surface tokens. */
   --bg: #ffffff;
   --surface: #f7f7f7;
   --surface2: #ebebeb;
   --border: #dddddd;
-  --accent: #ff385c; /* Airbnb's signature Rausch */
-  --accent-dark: #e31c5f;
-  --accent-light: #ff7d96;
-  --danger: #ff385c;
+  --accent: #f05a28;
+  --accent-dark: #cf4216;
+  --accent-light: #ff875d;
+  --danger: #cf3f46;
   --success: #008489;
   --warn: #ffb400;
   --text: #222222;
@@ -79,9 +79,9 @@ html, body, #root {
 .forge-logo {
   display: block;
   flex-shrink: 0;
-  --logo-pink: var(--accent);
-  --logo-pink-dark: var(--accent-dark);
-  --logo-pink-light: var(--accent-light);
+  --logo-ember: var(--accent);
+  --logo-ember-dark: var(--accent-dark);
+  --logo-ember-light: var(--accent-light);
   --logo-word: var(--text);
   --logo-subtitle: var(--text-muted);
   --logo-letter: #ffffff;
@@ -94,9 +94,9 @@ html, body, #root {
   --logo-word: #f7f7fb;
   --logo-subtitle: #aaaabb;
 }
-.forge-logo-flame-main { fill: var(--logo-pink); }
-.forge-logo-flame-side { fill: var(--logo-pink-dark); }
-.forge-logo-flame-highlight { fill: var(--logo-pink-light); }
+.forge-logo-flame-main { fill: var(--logo-ember); }
+.forge-logo-flame-side { fill: var(--logo-ember-dark); }
+.forge-logo-flame-highlight { fill: var(--logo-ember-light); }
 .forge-logo-letter { fill: var(--logo-letter); }
 .forge-logo-word {
   fill: var(--logo-word);
@@ -3286,9 +3286,9 @@ h3 {
 }
 
 .forge-logo {
-  --logo-pink: var(--accent);
-  --logo-pink-dark: var(--accent-dark);
-  --logo-pink-light: var(--accent-light);
+  --logo-ember: var(--accent);
+  --logo-ember-dark: var(--accent-dark);
+  --logo-ember-light: var(--accent-light);
 }
 
 .card,

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="forge-inlay" x1="25" y1="18" x2="31.55" y2="51.75" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF6"/>
+      <stop offset="0.55" stop-color="#F8F3E8"/>
+      <stop offset="1" stop-color="#E8DDCA"/>
+    </linearGradient>
+  </defs>
+  <g transform="matrix(11 0 0 11 196 160)">
+    <path fill="url(#forge-inlay)" d="M25 18H48L44.25 25.5H34.5L33.95 31.5H43.5L39.75 38.75H33.25L31.55 51.75L28.35 55H22L25.25 25.5Z"/>
+  </g>
+</svg>

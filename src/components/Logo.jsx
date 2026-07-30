@@ -36,7 +36,7 @@ export default function Logo({ variant = 'full', tone = 'auto', className = '', 
         />
         <path
           className="forge-logo-letter"
-          d="M24.2 21.5h18.5c1.8 0 3.2 1.4 3.2 3.2s-1.4 3.2-3.2 3.2H31.1v6.2h9.2c1.8 0 3.2 1.4 3.2 3.2s-1.4 3.2-3.2 3.2h-9.2v8.7c0 1.9-1.5 3.4-3.4 3.4s-3.5-1.5-3.5-3.4V24.9c0-1.9 1.5-3.4 3.4-3.4Z"
+          d="M25 18H48L44.25 25.5H34.5L33.95 31.5H43.5L39.75 38.75H33.25L31.55 51.75L28.35 55H22L25.25 25.5Z"
         />
       </g>
       {!isMarkOnly && (
