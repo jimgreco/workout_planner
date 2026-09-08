@@ -142,7 +142,7 @@ private struct ProgressStats {
 
             for item in log.exerciseItems {
                 let itemVolume = volumeForItem(item)
-                let setCount = item.sets.count
+                let setCount = item.sets.filter(isRecordedWorkingSet).count
                 let muscleGroup = exerciseById[item.exerciseId]?.muscleGroup ?? "Other"
                 volume += itemVolume
                 sets += setCount
@@ -563,9 +563,11 @@ private struct ProgressRow: View {
 }
 
 func exerciseHistory(exerciseId: String, logs: [WorkoutLog]) -> [ExerciseHistoryEntry] {
-    logs.finishedWorkoutLogs().compactMap { log in
+    let baseline = logs.finishedWorkoutLogs().flatMap { $0.exerciseItems }.first { $0.exerciseId == exerciseId }?.baselineId
+    return logs.finishedWorkoutLogs().compactMap { log in
         guard let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId }) else { return nil }
-        let best = item.sets.compactMap { set -> ExerciseBestSet? in
+        guard item.baselineId == baseline else { return nil }
+        let best = item.sets.filter(isRecordedWorkingSet).compactMap { set -> ExerciseBestSet? in
             let reps = repBest(set)
             let score: Double
             if item.weightType == "none" {
@@ -583,7 +585,7 @@ func exerciseHistory(exerciseId: String, logs: [WorkoutLog]) -> [ExerciseHistory
             logName: log.name,
             date: log.date,
             item: item,
-            setCount: item.sets.count,
+            setCount: item.sets.filter(isRecordedWorkingSet).count,
             volume: volumeForItem(item),
             bestSet: best
         )
@@ -652,7 +654,7 @@ private func trendSummary(_ logs: [WorkoutLog]) -> (workouts: Int, volume: Doubl
     for log in logs {
         for item in log.exerciseItems {
             volume += volumeForItem(item)
-            sets += item.sets.count
+            sets += item.sets.filter(isRecordedWorkingSet).count
         }
     }
     return (logs.count, volume, sets)
@@ -670,7 +672,7 @@ private func strongestExerciseImprovement(exercises: [Exercise], logs: [WorkoutL
 }
 
 func volumeForItem(_ item: ExerciseItem) -> Double {
-    item.sets.reduce(0) { total, set in
+    item.sets.filter(isRecordedWorkingSet).reduce(0) { total, set in
         total + effectiveWeight(set.weight, weightType: item.weightType) * repTotal(set)
     }
 }

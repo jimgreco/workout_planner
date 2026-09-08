@@ -3558,3 +3558,8 @@ input:focus, select:focus, textarea:focus {
   font-weight: 680;
   letter-spacing: -0.01em;
 }
+
+.exercise-evidence { display: grid; gap: 8px; padding: 12px 0; }
+.exercise-evidence label { display: grid; gap: 4px; }
+.exercise-evidence small { color: var(--text-muted); }
+.set-effort-controls { flex-wrap: wrap; }

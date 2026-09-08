@@ -1,3 +1,4 @@
+import { isWorkingSet } from './setEvidence.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseDay(day) {
@@ -70,6 +71,7 @@ export function personalBestLabel(personalBest, usesTime = false) {
 
 export function bestPersonalBestSet(sets = [], weightType = 'weight') {
   return sets.reduce((best, set) => {
+    if (!isWorkingSet(set)) return best;
     const weightValue = effectiveWeight(set.weight, weightType);
     if (weightValue <= 0) return best;
     const repsValue = setRepBest(set);
@@ -130,11 +132,12 @@ export function estimateOneRepMax(weight, reps) {
 }
 
 export function getExerciseHistory(exerciseId, logs = []) {
+  const baseline = finishedLogs(logs).flatMap(log => log.exerciseItems || []).find(item => item.exerciseId === exerciseId)?.baselineId;
   return finishedLogs(logs)
     .map((log) => {
       const item = (log.exerciseItems || []).find((entry) => entry.exerciseId === exerciseId);
-      if (!item) return null;
-      const sets = item.sets || [];
+      if (!item || (item.baselineId || null) !== (baseline || null)) return null;
+      const sets = (item.sets || []).filter(isWorkingSet);
       const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
       const bestSet = sets.reduce((best, set) => {
         const weight = effectiveWeight(set.weight, item.weightType);
@@ -223,7 +226,7 @@ function summarizeLogsForTrend(logs, exerciseById) {
   for (const log of logs) {
     workouts += 1;
     for (const item of log.exerciseItems || []) {
-      const itemSets = item.sets || [];
+      const itemSets = (item.sets || []).filter(isWorkingSet);
       sets += itemSets.length;
       volume += itemSets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
       if (!exerciseById.has(item.exerciseId)) exerciseById.set(item.exerciseId, { id: item.exerciseId, name: 'Unknown', muscleGroup: 'Other' });
@@ -306,7 +309,7 @@ export function buildProgress(logs = [], exercises = [], rangeDays = '90') {
     for (const item of log.exerciseItems || []) {
       const exercise = exerciseById.get(item.exerciseId);
       const muscleGroup = exercise?.muscleGroup || 'Other';
-      const sets = item.sets || [];
+      const sets = (item.sets || []).filter(isWorkingSet);
       const setCount = sets.length;
       const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
       totalVolume += volume;

@@ -191,3 +191,22 @@ describe('progress calculations', () => {
     }
   });
 });
+
+
+it('excludes blanks, skipped sets and warmups and compares only the latest technique baseline', () => {
+  const sample = [
+    { id: 'old', date: '2026-08-01', status: 'finished', exerciseItems: [{ exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '8', weight: '200' }] }] },
+    { id: 'new', date: '2026-09-01', status: 'finished', exerciseItems: [{ exerciseId: 'bench', baselineId: 'new-depth', weightType: 'weight', techniqueNote: 'Controlled', sets: [
+      { reps: '8', weight: '150', completion: 'recorded' },
+      { reps: '8', weight: '250', completion: 'skipped' },
+      { reps: '', weight: '', placeholderReps: '12', placeholderWeight: '300' },
+      { reps: '10', weight: '50', setType: 'warmup' },
+      { reps: '9', weight: '300', completion: 'unrecorded' }
+    ] }] }
+  ];
+  const result = summarizeExercise(exercises[0], sample);
+  expect(result.history).toHaveLength(1);
+  expect(result.totalSets).toBe(1);
+  expect(result.totalVolume).toBe(1200);
+  expect(bestPersonalBestSet(sample[1].exerciseItems[0].sets, 'weight').weightValue).toBe(150);
+});

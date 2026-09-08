@@ -102,3 +102,7 @@ node backend/local-server.mjs
 - `GET /healthz` and `GET /version` are public production smoke endpoints.
 - Server errors include `requestId` and `X-Request-Id`; preserve those in
   support-facing client messages.
+
+## Training evidence
+
+Workout sets support optional `completion` (`recorded`, `skipped`, `unrecorded`). Legacy sets count only when actual positive reps are present; placeholders, skipped sets and warm-ups do not count as working-set progress. Keep web `src/setEvidence.js` and native `isRecordedWorkingSet` aligned. RIR is available in normal logging; unknown stays blank. Exercise items carry optional `baselineId` and `techniqueNote`; carry these into subsequent workouts and compare only within the current baseline. Preserve prior workouts and avoid comparing new-baseline sets against old global personal bests. Export these fields unchanged.

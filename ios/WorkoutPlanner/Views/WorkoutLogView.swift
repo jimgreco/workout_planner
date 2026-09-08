@@ -567,7 +567,7 @@ struct WorkoutLogView: View {
             var pbExerciseIds: [String] = []
             var pbExercises: [String] = []
 
-            for item in items {
+            for item in items where item.baselineId == nil {
                 let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType)
                 guard var exercise = store.exercise(id: item.exerciseId),
                       isPersonalBestImprovement(candidate, over: exercise.personalBest),
@@ -786,7 +786,9 @@ struct WorkoutLogView: View {
             supersetGroup: item.supersetGroup,
             description: item.description,
             useIndividualReps: item.useIndividualReps,
-            sets: sets
+            sets: sets,
+            baselineId: last?.baselineId ?? item.baselineId,
+            techniqueNote: last?.techniqueNote ?? item.techniqueNote
         )
     }
 
@@ -990,6 +992,7 @@ struct WorkoutLogView: View {
             return
         }
 
+        items[exerciseIndex].sets[setIndex].completion = "recorded"
         let now = Date().timeIntervalSince1970 * 1000
         for exIndex in items.indices {
             for currentSetIndex in items[exIndex].sets.indices {
@@ -1843,7 +1846,7 @@ private struct WorkoutLiveActivityCard: View {
                 .foregroundStyle(Theme.success)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("All sets logged")
+                Text("All sets reviewed")
                     .font(.system(size: 19, weight: .heavy))
                     .foregroundStyle(Theme.text)
 
@@ -1864,10 +1867,32 @@ private struct WorkoutLiveActivityCard: View {
             VStack(alignment: .leading, spacing: liveGridSpacing) {
                 quickEntryPanel(context, set: set, repMode: repMode, showsWeight: showsWeight)
 
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Reps left with the same form", selection: stringBinding(set, \.rir)) {
+                        Text("Not sure").tag("")
+                        ForEach(0...10, id: \.self) { Text(String($0)).tag(String($0)) }
+                    }
+                    Picker("Set status", selection: Binding(get: {
+                        set.wrappedValue.completion ?? (hasRecordedWorkoutReps(set.wrappedValue) ? "recorded" : "unrecorded")
+                    }, set: { value in set.wrappedValue.completion = value; onChanged() })) {
+                        Text("Not recorded").tag("unrecorded")
+                        Text("Recorded").tag("recorded")
+                        Text("Skipped").tag("skipped")
+                    }
+                    setTypeMenu(set: set, height: liveSecondaryTileHeight)
+                    TextField("Technique / equipment note", text: Binding(get: {
+                        items[context.exerciseIndex].techniqueNote ?? ""
+                    }, set: { value in items[context.exerciseIndex].techniqueNote = String(value.prefix(300)); onTextChanged() }))
+                    Button("Start new technique baseline") {
+                        items[context.exerciseIndex].baselineId = DateHelpers.todayString() + "_" + UUID().uuidString
+                        onChanged()
+                    }
+                    if items[context.exerciseIndex].baselineId != nil {
+                        Text("New comparison baseline. Past workouts stay unchanged.").font(.caption).foregroundStyle(Theme.muted)
+                    }
+                }
                 if advancedMode {
                     LazyVGrid(columns: liveFieldColumns(count: 3), alignment: .leading, spacing: liveGridSpacing) {
-                        setTypeMenu(set: set, height: liveSecondaryTileHeight)
-
                         WorkoutLiveInput(
                             title: "RPE",
                             text: stringBinding(set, \.rpe),
@@ -1877,20 +1902,13 @@ private struct WorkoutLiveActivityCard: View {
                         )
                         .focused($focusedField, equals: .rpe(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
 
-                        WorkoutLiveInput(
-                            title: "RIR",
-                            text: stringBinding(set, \.rir),
-                            placeholder: "-",
-                            keyboard: .decimalPad,
-                            height: liveSecondaryTileHeight
-                        )
-                        .focused($focusedField, equals: .rir(itemIndex: context.exerciseIndex, setIndex: context.setIndex))
+
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
 
-            if let personalBest = personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true) {
+            if context.item.baselineId == nil, let personalBest = personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true) {
                 Label("PB \(personalBest)", systemImage: "star.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.accent)
@@ -2501,7 +2519,9 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func isCompleted(_ set: WorkoutSet) -> Bool {
-        set.restStartTime != nil || set.restDuration != nil
+        if set.completion == "skipped" { return true }
+        if set.completion == "unrecorded" { return false }
+        return set.restStartTime != nil || set.restDuration != nil
     }
 
     private func repsLabel(for set: WorkoutSet) -> String? {

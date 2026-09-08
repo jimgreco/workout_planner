@@ -299,6 +299,8 @@ export default function WorkoutLog({
         weightType,
         restTargetSeconds: item.restTargetSeconds,
         supersetGroup: item.supersetGroup,
+        baselineId: lastItem?.baselineId || item.baselineId,
+        techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote,
         description: item.description,
         useIndividualReps: item.useIndividualReps,
         sets: item.sets.map((s, si) => {
@@ -419,7 +421,7 @@ export default function WorkoutLog({
           }
           return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
         });
-        return { ...item, sets: merged, weightType };
+        return { ...item, sets: merged, weightType, baselineId: lastItem?.baselineId || item.baselineId, techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote };
       });
     }
 
@@ -487,7 +489,7 @@ export default function WorkoutLog({
       ...ex,
       sets: ex.sets.map((s, si) => {
         if (i === exIdx && si === setIdx) {
-          return { ...s, restStartTime: now, restDuration: null };
+          return { ...s, completion: 'recorded', restStartTime: now, restDuration: null };
         }
         if (s.restStartTime && !s.restDuration) {
           return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
@@ -632,7 +634,9 @@ export default function WorkoutLog({
           weightType,
           restTargetSeconds: item.restTargetSeconds,
           supersetGroup: item.supersetGroup,
-          description: item.description,
+          baselineId: lastItem?.baselineId || item.baselineId,
+        techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote,
+        description: item.description,
           useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
             const targetReps = plannedRepText(s, String(settings.defaultReps));
@@ -702,6 +706,7 @@ export default function WorkoutLog({
       const pbExercises = [];
       let currentExercises = [...exercises];
       for (const item of items) {
+        if (item.baselineId) continue;
         const candidate = bestPersonalBestSet(item.sets, item.weightType);
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
         if (!ex || !isPersonalBestImprovement(candidate, ex.personalBest)) continue;

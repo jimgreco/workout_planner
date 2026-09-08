@@ -167,3 +167,14 @@ test('validates repeating cycle programs', () => {
     ValidationError,
   );
 });
+
+
+test('preserves evidence fields and rejects invalid set status or excessive notes', () => {
+  const item = { exerciseId: 'squat', baselineId: 'deeper-2026', techniqueNote: 'Deeper squat', sets: [{ reps: '8', weight: '50', completion: 'skipped', rir: '2', setType: 'working' }] };
+  const log = { id: 'evidence-log', name: 'Lower', date: '2026-09-21', status: 'finished', exerciseItems: [item] };
+  const result = validateLog(log, log.id);
+  assert.equal(result.exerciseItems[0].baselineId, item.baselineId);
+  assert.equal(result.exerciseItems[0].sets[0].completion, 'skipped');
+  assert.throws(() => validateLog({ ...log, exerciseItems: [{ ...item, techniqueNote: 'x'.repeat(301) }] }, log.id), ValidationError);
+  assert.throws(() => validateLog({ ...log, exerciseItems: [{ ...item, sets: [{ completion: 'assumed' }] }] }, log.id), ValidationError);
+});

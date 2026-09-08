@@ -84,6 +84,7 @@ struct WorkoutSet: Codable, Equatable {
     var restTargetSeconds: Int?
     var rpe: String?
     var rir: String?
+    var completion: String?
     var setType: String?
 
     init(
@@ -102,7 +103,8 @@ struct WorkoutSet: Codable, Equatable {
         restTargetSeconds: Int? = nil,
         rpe: String? = nil,
         rir: String? = nil,
-        setType: String? = nil
+        setType: String? = nil,
+        completion: String? = nil
     ) {
         self.reps = reps
         self.repsLeft = repsLeft
@@ -120,10 +122,13 @@ struct WorkoutSet: Codable, Equatable {
         self.rpe = rpe
         self.rir = rir
         self.setType = setType
+        self.completion = completion
     }
 }
 
 struct ExerciseItem: Codable, Identifiable, Equatable {
+    var baselineId: String?
+    var techniqueNote: String?
     var id: String { exerciseId }
     var exerciseId: String
     var weightType: String?
@@ -133,7 +138,9 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var useIndividualReps: Bool?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet]) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil) {
+        self.baselineId = baselineId
+        self.techniqueNote = techniqueNote
         self.exerciseId = exerciseId
         self.weightType = weightType
         self.restTargetSeconds = restTargetSeconds
@@ -1209,6 +1216,7 @@ func personalBestLabel(_ best: PersonalBest?, usesTime: Bool = false) -> String?
 
 func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "weight") -> PersonalBestCandidate? {
     sets.reduce(PersonalBestCandidate?.none) { current, set in
+        guard isRecordedWorkingSet(set) else { return current }
         let weight = effectivePersonalBestWeight(set.weight, weightType: weightType)
         guard weight > 0 else { return current }
         let reps = personalBestNumber(set.reps)
@@ -1352,4 +1360,16 @@ func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil)
         return "+\(restDurationText(abs(remaining)))"
     }
     return restDurationText(seconds)
+}
+
+
+func hasRecordedWorkoutReps(_ set: WorkoutSet) -> Bool {
+    guard set.completion != "skipped", set.completion != "unrecorded" else { return false }
+    return [set.reps, set.repsLeft, set.repsRight].contains { raw in
+        guard let n = Double(raw ?? "") else { return false }
+        return n.isFinite && n > 0
+    }
+}
+func isRecordedWorkingSet(_ set: WorkoutSet) -> Bool {
+    hasRecordedWorkoutReps(set) && set.setType != "warmup"
 }

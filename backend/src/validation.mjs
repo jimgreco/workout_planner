@@ -140,7 +140,7 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'repsLeft', 'repsRight', 'repMode', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType']),
+    new Set(['reps', 'repsLeft', 'repsRight', 'repMode', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType', 'completion']),
     `set ${index + 1}`,
   );
   const set = {};
@@ -162,6 +162,11 @@ function workoutSet(value, index) {
     const str = stringValue(value[field], `set.${field}`, { max: 8 });
     if (str !== undefined) set[field] = str;
   }
+  const completion = stringValue(value.completion, 'set.completion', { max: 16 });
+  if (completion !== undefined) {
+    if (!['recorded', 'skipped', 'unrecorded'].includes(completion)) fail('set.completion is invalid');
+    set.completion = completion;
+  }
   const setType = stringValue(value.setType, 'set.setType', { max: 16 });
   if (setType !== undefined) {
     if (!SET_TYPES.has(setType)) fail('set.setType is invalid');
@@ -178,7 +183,7 @@ function workoutSet(value, index) {
 
 function exerciseItem(value, index) {
   assertObject(value, `exerciseItems[${index}]`);
-  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps']), `exerciseItems[${index}]`);
+  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps', 'baselineId', 'techniqueNote']), `exerciseItems[${index}]`);
   const exerciseId = validateId(value.exerciseId, `exerciseItems[${index}].exerciseId`);
   const weightType = stringValue(value.weightType, `exerciseItems[${index}].weightType`, { max: 16 }) ?? 'weight';
   if (!WEIGHT_TYPES.has(weightType)) fail(`exerciseItems[${index}].weightType is invalid`);
@@ -190,6 +195,9 @@ function exerciseItem(value, index) {
     weightType,
     sets: value.sets.map(workoutSet),
   };
+  if (value.baselineId != null) item.baselineId = validateId(value.baselineId, 'baselineId');
+  const techniqueNote = stringValue(value.techniqueNote, 'techniqueNote', { max: 300 });
+  if (techniqueNote !== undefined) item.techniqueNote = techniqueNote;
   const description = stringValue(value.description, `exerciseItems[${index}].description`, { max: 1000 });
   if (description !== undefined) item.description = description;
   const useIndividualReps = boolValue(value.useIndividualReps, `exerciseItems[${index}].useIndividualReps`);

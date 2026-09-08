@@ -397,7 +397,7 @@ describe('WorkoutBuilder', () => {
       
       expect(screen.queryByRole('columnheader', { name: 'Weight' })).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/weight for set 1 of deadlift/i)).not.toBeInTheDocument();
-      expect(container.querySelectorAll('input[type="number"]')).toHaveLength(2); // Effort fields still render
+      expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1); // RPE remains numeric; RIR is a quick picker
       expect(screen.getByDisplayValue('20')).toBeInTheDocument(); // Reps input should still be there
     });
 
@@ -477,7 +477,7 @@ describe('WorkoutBuilder', () => {
 
       fireEvent.change(screen.getByLabelText(/set type for set 1 of bench press/i), { target: { value: 'warmup' } });
       fireEvent.change(screen.getByLabelText(/rpe for set 1 of bench press/i), { target: { value: '8.5' } });
-      fireEvent.change(screen.getByLabelText(/rir for set 1 of bench press/i), { target: { value: '2' } });
+      fireEvent.change(screen.getByLabelText(/reps left for set 1 of bench press/i), { target: { value: '2' } });
 
       expect(onChange).toHaveBeenCalledTimes(3);
       expect(onChange.mock.calls[0][0][0].sets[0].setType).toBe('warmup');
@@ -485,13 +485,13 @@ describe('WorkoutBuilder', () => {
       expect(onChange.mock.calls[2][0][0].sets[0].rir).toBe('2');
     });
 
-    it('hides type, RPE, and RIR controls unless advanced mode is enabled', () => {
+    it('shows useful evidence controls without advanced mode while keeping RPE advanced', () => {
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
       render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} />);
 
-      expect(screen.queryByLabelText(/set type for set 1 of bench press/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/set type for set 1 of bench press/i)).toBeInTheDocument();
       expect(screen.queryByLabelText(/rpe for set 1 of bench press/i)).not.toBeInTheDocument();
-      expect(screen.queryByLabelText(/rir for set 1 of bench press/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/reps left for set 1 of bench press/i)).toBeInTheDocument();
     });
 
     it('calls onRestTargetReached when active rest passes its target', async () => {

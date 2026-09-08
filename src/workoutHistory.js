@@ -1,3 +1,4 @@
+import { isWorkingSet } from './setEvidence.js';
 const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'none']);
 
 function logSortKey(log = {}) {
@@ -104,7 +105,8 @@ export function routineExerciseNeedsWeightIncrease(item = {}, logs = []) {
   if (lastItem.sets.length < item.sets.length) return false;
 
   const loggedSet = lastItem.sets[item.sets.length - 1];
-  if (!loggedSet) return false;
+  if (!loggedSet || !isWorkingSet(loggedSet)) return false;
+  if (item.baselineId && item.baselineId !== lastItem.baselineId) return false;
 
   if (caps.common !== null) {
     return loggedRepValue(loggedSet) >= caps.common;

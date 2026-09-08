@@ -1,3 +1,4 @@
+import { completionLabel } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
 import { personalBestLabel } from '../progress.js';
@@ -329,7 +330,7 @@ export default function WorkoutBuilder({
       return {
         ...item,
         sets: item.sets.map((s, si) =>
-          si === setIdx ? setRepField(s, field, value) : s,
+          si === setIdx ? { ...setRepField(s, field, value), ...(['reps', 'repsLeft', 'repsRight'].includes(field) ? { completion: 'recorded' } : {}) } : s,
         ),
       };
     });
@@ -438,6 +439,8 @@ export default function WorkoutBuilder({
   }
 
   function setIsCompleted(set) {
+    if (set.completion === "skipped") return true;
+    if (set.completion === "unrecorded") return false;
     return Boolean(set.restStartTime || set.restDuration);
   }
 
@@ -483,7 +486,7 @@ export default function WorkoutBuilder({
                       <Target size={12} aria-hidden="true" /> Add weight
                     </span>
                   )}
-                  {ex.personalBest?.weight && (
+                  {!item.baselineId && ex.personalBest?.weight && (
                     <span className="pb-label">
                       • PB: {personalBestLabel(ex.personalBest, ex.usesTime)}
                       {onResetPersonalBest && !planningMode && !readOnly && (
@@ -556,6 +559,16 @@ export default function WorkoutBuilder({
                     </button>
                   )}
                 </div>
+                {!planningMode && <div className="exercise-evidence">
+                  <label>Technique / equipment note
+                    <input type="text" maxLength={300} value={item.techniqueNote || ''} disabled={readOnly}
+                      placeholder="Depth, bench angle, machine setting…"
+                      onChange={e => updateItem(idx, { techniqueNote: e.target.value })} />
+                  </label>
+                  {item.baselineId && <small>New comparison baseline · {item.baselineId.slice(0, 10)}</small>}
+                  {!readOnly && <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateItem(idx, { baselineId: `${new Date().toISOString().slice(0, 10)}_${crypto.randomUUID()}` })}>Start new technique baseline</button>}
+                  <small>Use a new baseline after changing technique or equipment. Past workouts stay unchanged. Reps left means more reps with the same form.</small>
+                </div>}
                 {(item.description || !readOnly) && (
                   <textarea
                     className="exercise-description-input"
@@ -807,7 +820,7 @@ export default function WorkoutBuilder({
                       </td>
                     )}
                   </tr>
-                    {advancedMode && !readOnly && !planningMode && (
+                    {!readOnly && !planningMode && (
                       <tr className="set-effort-row">
                         <td aria-hidden="true"></td>
                         <td colSpan={setColumnCount - 1}>
@@ -824,7 +837,7 @@ export default function WorkoutBuilder({
                                 ))}
                               </select>
                             </label>
-                            <label>
+                            {advancedMode && <label>
                               <span>RPE</span>
                               <input
                                 type="number"
@@ -838,21 +851,16 @@ export default function WorkoutBuilder({
                                 onChange={(e) => updateSet(idx, si, 'rpe', e.target.value, { textEntry: true })}
                                 aria-label={`RPE for set ${si + 1} of ${ex.name}`}
                               />
+                            </label>}
+                            <label><span>Reps left</span>
+                              <select value={set.rir || ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
+                                <option value="">Not sure</option>{['0','1','2','3','4','5','6','7','8','9','10'].map(v => <option key={v} value={v}>{v}</option>)}
+                              </select>
                             </label>
-                            <label>
-                              <span>RIR</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="10"
-                                step="1"
-                                placeholder="-"
-                                value={set.rir || ''}
-                                onFocus={() => handleSetTextFocus(idx, si, 'rir')}
-                                onBlur={handleSetTextBlur}
-                                onChange={(e) => updateSet(idx, si, 'rir', e.target.value, { textEntry: true })}
-                                aria-label={`RIR for set ${si + 1} of ${ex.name}`}
-                              />
+                            <label><span>Set status</span>
+                              <select value={completionLabel(set)} onChange={e => updateSet(idx, si, 'completion', e.target.value)} aria-label={`Status for set ${si + 1} of ${ex.name}`}>
+                                <option value="unrecorded">Not recorded</option><option value="recorded">Recorded</option><option value="skipped">Skipped</option>
+                              </select>
                             </label>
                           </div>
                         </td>
