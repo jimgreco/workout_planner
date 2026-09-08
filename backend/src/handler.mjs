@@ -728,6 +728,7 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
   const now = new Date().toISOString();
   return {
     ...body,
+    ...(SK.startsWith('LOG#') && existing?.prescription ? { prescription: existing.prescription } : {}),
     updatedAt: now,
     revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,
   };

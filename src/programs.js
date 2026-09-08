@@ -48,6 +48,7 @@ export function createProgramScheduleItem(overrides = {}) {
     id: trimString(overrides.id) || randomId('program-day'),
     ...(templateId ? { templateId } : {}),
     ...(notes ? { notes } : {}),
+    ...(overrides.optional ? { optional: true } : {}),
   };
 }
 
@@ -161,7 +162,7 @@ export function programSlotForDate(program, date, templatesById = null) {
     };
   }
 
-  if (targetDate < startDate) {
+  if (targetDate < startDate || (normalized.endDate && dayKey > normalized.endDate)) {
     return {
       date: targetDate,
       dayKey,
@@ -171,7 +172,7 @@ export function programSlotForDate(program, date, templatesById = null) {
       template: null,
       templateId: '',
       isInsertedRest: false,
-      isBeforeStart: true,
+      isBeforeStart: targetDate < startDate,
       isRest: true,
     };
   }
@@ -231,7 +232,7 @@ export function isHandledOn(logs, template, dayKey) {
   return logs.some((log) => (
     log.date === dayKey
     && (log.status === 'finished' || log.status === 'skipped')
-    && String(log.name ?? '').trim().toLowerCase() === template.name.trim().toLowerCase()
+    && (log.prescription ? log.prescription.templateId === template.id : String(log.name ?? '').trim().toLowerCase() === template.name.trim().toLowerCase())
   ));
 }
 
@@ -245,6 +246,7 @@ export function nextProgramWorkout(program, templates, logs, lookaheadDays = 28)
     const date = new Date(today);
     date.setDate(today.getDate() + offset);
     const slot = programSlotForDate(normalized, date, templatesById);
+    if (slot.scheduleItem?.optional && phaseForDate(program, slot.dayKey)?.allowOptional === false) continue;
     if (!slot.template || isHandledOn(logs, slot.template, slot.dayKey)) continue;
     return {
       program: normalized,
@@ -267,9 +269,10 @@ function programStatus(slot, logs) {
     return logs.some((log) => (
       log.date === slot.dayKey
       && log.status === 'finished'
-      && String(log.name ?? '').trim().toLowerCase() === slot.template.name.trim().toLowerCase()
+      && (log.prescription ? log.prescription.templateId === slot.template.id : String(log.name ?? '').trim().toLowerCase() === slot.template.name.trim().toLowerCase())
     )) ? 'done' : 'skipped';
   }
+  if (slot.scheduleItem?.optional) return 'optional';
   return slot.date < startOfToday() ? 'missed' : 'planned';
 }
 
@@ -308,6 +311,7 @@ export function programAdherence(program, templates, logs, weeks = 4) {
 
   const summary = {
     weeks,
+    optionalCompleted: 0,
     scheduled: 0,
     completed: 0,
     skipped: 0,
@@ -321,12 +325,15 @@ export function programAdherence(program, templates, logs, weeks = 4) {
   for (let date = new Date(start); date <= today; date.setDate(date.getDate() + 1)) {
     const slot = programSlotForDate(normalized, date, templatesById);
     if (!slot.template) continue;
+    if (slot.scheduleItem?.optional) {
+      continue;
+    }
     summary.scheduled += 1;
     if (isHandledOn(logs, slot.template, slot.dayKey)) {
       const completed = logs.some((log) => (
         log.date === slot.dayKey
         && log.status === 'finished'
-        && String(log.name ?? '').trim().toLowerCase() === slot.template.name.trim().toLowerCase()
+        && (log.prescription ? log.prescription.templateId === slot.template.id : String(log.name ?? '').trim().toLowerCase() === slot.template.name.trim().toLowerCase())
       ));
       if (completed) summary.completed += 1;
       else summary.skipped += 1;
@@ -337,8 +344,27 @@ export function programAdherence(program, templates, logs, weeks = 4) {
     }
   }
 
+  summary.optionalCompleted = logs.filter(log => log.status === 'finished' && log.prescription?.programId === program.id && log.prescription?.optional && log.date >= localDateKey(start) && log.date <= localDateKey(today)).length;
   summary.completionRate = summary.scheduled > 0
     ? Math.round((summary.completed / summary.scheduled) * 100)
     : 0;
   return summary;
+}
+
+export function activeProgramForDate(programs, day = localDateKey(new Date())) {
+  const eligible = programs.filter(p => (p.active || p.scheduledActivation) && p.startDate <= day);
+  // The latest scheduled program supersedes the former one; an ended program does not resurrect it.
+  const current = eligible.sort((a,b) => b.startDate.localeCompare(a.startDate))[0];
+  return current && (!current.endDate || day <= current.endDate) ? current : null;
+}
+export function phaseForDate(program, day) {
+  return program?.phases?.find(p => p.startDate <= day && day <= p.endDate) ?? null;
+}
+export function routinePrescription(template, program, day) {
+  const phase = phaseForDate(program, day);
+  const optional = Boolean(program?.schedule?.find(s => s.templateId === template.id)?.optional);
+  const exerciseItems = JSON.parse(JSON.stringify(template.exerciseItems || [])).map(item => { let working = 0; return { ...item, sets: phase?.setsPerExercise ? item.sets.filter(set => set.setType === 'warmup' || ++working <= phase.setsPerExercise) : item.sets }; });
+  return { templateId: template.id, templateName: template.name, day, optional, exerciseItems,
+    ...(program ? { programId: program.id, programName: program.name } : {}),
+    ...(phase ? { phaseName: phase.name, ...(phase.targetRir != null ? { targetRir: phase.targetRir } : {}) } : {}) };
 }

@@ -126,7 +126,48 @@ struct WorkoutSet: Codable, Equatable {
     }
 }
 
+struct EquipmentSetup: Codable, Identifiable, Equatable {
+    var id = UUID().uuidString
+    var name = ""
+    var gym = ""
+    var machine = ""
+    var seat = ""
+    var grip = ""
+    var loadConvention = ""
+}
+struct TrainingPhase: Codable, Identifiable, Equatable {
+    var id = UUID().uuidString
+    var name = ""
+    var startDate: String
+    var endDate: String
+    var setsPerExercise: Int?
+    var targetRir: Int?
+    var notes: String?
+    var allowOptional: Bool?
+}
+struct WorkoutPrescription: Codable, Equatable {
+    var templateId: String
+    var templateName: String
+    var programId: String?
+    var programName: String?
+    var phaseName: String?
+    var day: String
+    var optional: Bool
+    var exerciseItems: [ExerciseItem]
+    var targetRir: Int?
+    static func make(template: WorkoutTemplate, program: TrainingProgram?, day: String) -> WorkoutPrescription {
+        let phase = program?.phases?.first { $0.startDate <= day && day <= $0.endDate }
+        let items = template.exerciseItems.map { original in
+            var item = original
+            if let cap = phase?.setsPerExercise { var working = 0; item.sets = item.sets.filter { set in if set.setType == "warmup" { return true }; working += 1; return working <= cap } }
+            return item
+        }
+        return WorkoutPrescription(templateId: template.id, templateName: template.name, programId: program?.id, programName: program?.name, phaseName: phase?.name, day: day, optional: program?.schedule.first { $0.templateId == template.id }?.optional == true, exerciseItems: items, targetRir: phase?.targetRir)
+    }
+}
+
 struct ExerciseItem: Codable, Identifiable, Equatable {
+    var setupProfile: EquipmentSetup?
     var baselineId: String?
     var techniqueNote: String?
     var id: String { exerciseId }
@@ -138,7 +179,8 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var useIndividualReps: Bool?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil, setupProfile: EquipmentSetup? = nil) {
+        self.setupProfile = setupProfile
         self.baselineId = baselineId
         self.techniqueNote = techniqueNote
         self.exerciseId = exerciseId
@@ -180,8 +222,10 @@ struct ProgramScheduleItem: Codable, Identifiable, Equatable {
     var id: String
     var templateId: String?
     var notes: String?
+    var optional: Bool?
 
-    init(id: String = UUID().uuidString, templateId: String? = nil, notes: String? = nil) {
+    init(id: String = UUID().uuidString, templateId: String? = nil, notes: String? = nil, optional: Bool? = nil) {
+        self.optional = optional
         self.id = id
         self.templateId = templateId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         self.notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -190,6 +234,7 @@ struct ProgramScheduleItem: Codable, Identifiable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case id
         case templateId
+        case optional
         case notes
     }
 
@@ -197,6 +242,7 @@ struct ProgramScheduleItem: Codable, Identifiable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? UUID().uuidString
         templateId = try container.decodeIfPresent(String.self, forKey: .templateId)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        optional = try container.decodeIfPresent(Bool.self, forKey: .optional)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 }
@@ -272,6 +318,9 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
     var name: String
     var description: String?
     var schedule: [ProgramScheduleItem]
+    var endDate: String?
+    var scheduledActivation: Bool?
+    var phases: [TrainingPhase]?
     var startDate: String
     var insertedRestDays: [String]
     var active: Bool?
@@ -317,6 +366,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         case name
         case description
         case schedule
+        case endDate, scheduledActivation, phases
         case startDate
         case insertedRestDays
         case active
@@ -334,6 +384,9 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         description = try container.decodeIfPresent(String.self, forKey: .description)
         schedule = try container.decodeIfPresent([ProgramScheduleItem].self, forKey: .schedule) ?? []
+        endDate = try container.decodeIfPresent(String.self, forKey: .endDate)
+        scheduledActivation = try container.decodeIfPresent(Bool.self, forKey: .scheduledActivation)
+        phases = try container.decodeIfPresent([TrainingPhase].self, forKey: .phases)
         startDate = try container.decodeIfPresent(String.self, forKey: .startDate) ?? DateHelpers.todayString()
         insertedRestDays = (try container.decodeIfPresent([String].self, forKey: .insertedRestDays) ?? []).sorted()
         active = try container.decodeIfPresent(Bool.self, forKey: .active)
@@ -347,6 +400,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
 }
 
 struct WorkoutLog: Codable, Identifiable, Equatable {
+    var prescription: WorkoutPrescription?
     var id: String
     var name: String
     var date: String
@@ -374,8 +428,10 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         hasPB: Bool? = nil,
         pbExerciseIds: [String]? = nil,
         updatedAt: String? = nil,
+        prescription: WorkoutPrescription? = nil,
         revision: Int? = nil
     ) {
+        self.prescription = prescription
         self.id = id
         self.name = name
         self.date = date
@@ -813,6 +869,7 @@ struct ProgramAdherenceSummary {
     let skipped: Int
     let missed: Int
     let remainingToday: Int
+    var optionalCompleted: Int = 0
 
     var completionRate: Int {
         guard scheduled > 0 else { return 0 }
@@ -839,7 +896,10 @@ enum ProgramCyclePlanner {
     }
 
     static func activeProgram(from programs: [TrainingProgram]) -> TrainingProgram? {
-        programs.first { $0.active == true }
+        let today = DateHelpers.todayString()
+        let current = programs.filter { ($0.active == true || $0.scheduledActivation == true) && $0.startDate <= today }.sorted { $0.startDate > $1.startDate }.first
+        guard let current, current.endDate == nil || today <= current.endDate! else { return nil }
+        return current
     }
 
     static func scheduleTitle(for item: ProgramScheduleItem, templates: [WorkoutTemplate]) -> String {
@@ -864,6 +924,7 @@ enum ProgramCyclePlanner {
     }
 
     static func statusLabel(for day: ProgramUpcomingDay) -> String {
+        if day.scheduleItem?.optional == true && day.status != .done && day.status != .skipped { return "Optional" }
         if day.isBeforeStart { return "Before start" }
         if day.isInsertedRest { return "Inserted rest" }
         switch day.status {
@@ -960,6 +1021,7 @@ enum ProgramCyclePlanner {
                   !handledOn(logs: logs, template: template, dayKey: currentSlot.dayKey)
             else { continue }
 
+            if scheduleItem.optional == true && program.phases?.first(where: { $0.startDate <= currentSlot.dayKey && currentSlot.dayKey <= $0.endDate })?.allowOptional == false { continue }
             return ProgramNextWorkout(
                 date: date,
                 dayKey: currentSlot.dayKey,
@@ -1012,7 +1074,7 @@ enum ProgramCyclePlanner {
         var date = start
         while date <= today {
             let currentSlot = slot(for: date, program: program, templatesById: templatesById)
-            if let template = currentSlot.template {
+            if let template = currentSlot.template, currentSlot.scheduleItem?.optional != true {
                 scheduled += 1
                 if completedOn(logs: logs, template: template, dayKey: currentSlot.dayKey) {
                     completed += 1
@@ -1033,7 +1095,8 @@ enum ProgramCyclePlanner {
             completed: completed,
             skipped: skipped,
             missed: missed,
-            remainingToday: remainingToday
+            remainingToday: remainingToday,
+            optionalCompleted: logs.filter { $0.status == "finished" && $0.prescription?.programId == program.id && $0.prescription?.optional == true && $0.date >= DateHelpers.dayString(from: start) && $0.date <= DateHelpers.dayString(from: today) }.count
         )
     }
 
@@ -1065,6 +1128,7 @@ enum ProgramCyclePlanner {
         if handledOn(logs: logs, template: template, dayKey: slot.dayKey) {
             return completedOn(logs: logs, template: template, dayKey: slot.dayKey) ? .done : .skipped
         }
+        if slot.scheduleItem?.optional == true { return .planned }
         return slot.date < Calendar.current.startOfDay(for: Date()) ? .missed : .planned
     }
 
@@ -1077,8 +1141,8 @@ enum ProgramCyclePlanner {
             return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: false, isBeforeStart: false)
         }
 
-        if targetDate < Calendar.current.startOfDay(for: startDate) {
-            return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: false, isBeforeStart: true)
+        if targetDate < Calendar.current.startOfDay(for: startDate) || (program.endDate != nil && dayKey > program.endDate!) {
+            return ProgramSlot(date: targetDate, dayKey: dayKey, scheduleIndex: nil, scheduleItem: nil, template: nil, isInsertedRest: false, isBeforeStart: targetDate < Calendar.current.startOfDay(for: startDate))
         }
 
         if program.insertedRestDays.contains(dayKey) {
@@ -1115,8 +1179,7 @@ enum ProgramCyclePlanner {
         return logs.contains { log in
             log.date == dayKey
                 && log.status == "finished"
-                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .caseInsensitiveCompare(templateName) == .orderedSame
+                && (log.prescription.map { $0.templateId == template.id } ?? (log.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(templateName) == .orderedSame))
         }
     }
 
@@ -1125,8 +1188,7 @@ enum ProgramCyclePlanner {
         return logs.contains { log in
             log.date == dayKey
                 && log.status == "skipped"
-                && log.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .caseInsensitiveCompare(templateName) == .orderedSame
+                && (log.prescription.map { $0.templateId == template.id } ?? (log.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(templateName) == .orderedSame))
         }
     }
 

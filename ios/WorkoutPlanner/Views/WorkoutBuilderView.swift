@@ -569,6 +569,7 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.accent)
             }
 
+            if !planningMode { EquipmentSetupPicker(item: $item, logs: logs, readOnly: readOnly, onChanged: { onChanged?() }) }
             if !readOnly || (item.description?.isEmpty == false) {
                 TextField("Exercise notes, cues, or substitution reason", text: Binding(
                     get: { item.description ?? "" },
@@ -2052,5 +2053,53 @@ private struct RestTimerText: View {
         else { return Theme.success }
         let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
         return elapsed >= targetSeconds ? Theme.danger : Theme.accent
+    }
+}
+
+
+struct EquipmentSetupPicker: View {
+    @Binding var item: ExerciseItem
+    var logs: [WorkoutLog]
+    var readOnly = false
+    var onChanged: () -> Void
+    @State private var editing = false
+    @State private var draft = EquipmentSetup()
+    private var profiles: [EquipmentSetup] {
+        var result: [String: EquipmentSetup] = [:]
+        for log in logs { for entry in log.exerciseItems where entry.exerciseId == item.exerciseId { if let p = entry.setupProfile { result[p.id] = p } } }
+        if let p = item.setupProfile { result[p.id] = p }
+        return result.values.sorted { $0.name < $1.name }
+    }
+    private func useProfile(_ profile: EquipmentSetup?) {
+        item.setupProfile = profile; item.baselineId = profile?.id ?? UUID().uuidString
+        for index in item.sets.indices { item.sets[index].placeholderWeight = "" }
+        onChanged()
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
+                useProfile(profiles.first { $0.id == id })
+            })) { Text("Unspecified").tag(""); ForEach(profiles) { Text($0.name).tag($0.id) } }.disabled(readOnly)
+            if let p = item.setupProfile { Text([p.gym,p.machine,p.seat,p.grip,p.loadConvention].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(Theme.muted) }
+            if !readOnly { Button("Save a new setup") { draft = EquipmentSetup(); editing = true } }
+        }
+        .sheet(isPresented: $editing) {
+            NavigationStack {
+                Form {
+                    TextField("Setup name", text: $draft.name)
+                    TextField("Gym", text: $draft.gym)
+                    TextField("Machine / model", text: $draft.machine)
+                    TextField("Seat / bench setting", text: $draft.seat)
+                    TextField("Grip / attachment", text: $draft.grip)
+                    TextField("Load convention: per hand, total, stack", text: $draft.loadConvention)
+                    Text("Each setup has its own comparison baseline. Previous workouts keep their original settings.").font(.caption)
+                }.navigationTitle("Equipment setup").toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editing = false } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Use setup") {
+                        useProfile(draft); editing = false
+                    }.disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || [draft.name,draft.gym,draft.machine,draft.seat,draft.grip,draft.loadConvention].contains { $0.count > 120 }) }
+                }
+            }
+        }
     }
 }

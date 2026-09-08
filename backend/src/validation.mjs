@@ -181,9 +181,46 @@ function workoutSet(value, index) {
   return set;
 }
 
+function setupProfile(value) {
+  assertObject(value, 'setupProfile');
+  assertAllowedKeys(value, new Set(['id','name','gym','machine','seat','grip','loadConvention']), 'setupProfile');
+  const result = { id: validateId(value.id, 'setupProfile.id') };
+  for (const key of ['name','gym','machine','seat','grip','loadConvention']) result[key] = stringValue(value[key], `setupProfile.${key}`, { required: key === 'name', max: 120, allowEmpty: key !== 'name' }) ?? '';
+  return result;
+}
+function programPhases(value, start, end) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 24) fail('Use at most 24 phases.');
+  let previousEnd = '';
+  const phaseIds = new Set();
+  return [...value].sort((a,b) => String(a.startDate).localeCompare(String(b.startDate))).map(v => {
+    assertObject(v, 'phase');
+    assertAllowedKeys(v, new Set(['id','name','startDate','endDate','setsPerExercise','targetRir','notes','allowOptional']), 'phase');
+    const phase = { id: validateId(v.id,'phase.id'), name: stringValue(v.name,'phase.name',{required:true,max:120,allowEmpty:false}), startDate: dateValue(v.startDate,'phase.startDate',{required:true}), endDate: dateValue(v.endDate,'phase.endDate',{required:true}) };
+    if (phaseIds.has(phase.id)) fail('Phase ids must be unique.');
+    phaseIds.add(phase.id);
+    if (phase.endDate < phase.startDate || phase.startDate < start || (end && phase.endDate > end) || phase.startDate <= previousEnd) fail('Phase dates must be ordered, nonoverlapping, and inside the program dates.');
+    previousEnd = phase.endDate;
+    if (v.setsPerExercise != null) phase.setsPerExercise = optionalIntValue(v.setsPerExercise,'phase.setsPerExercise',1,20);
+    if (v.targetRir != null) phase.targetRir = optionalIntValue(v.targetRir,'phase.targetRir',0,10);
+    phase.notes = stringValue(v.notes,'phase.notes',{max:1000}) ?? '';
+    phase.allowOptional = boolValue(v.allowOptional,'phase.allowOptional') ?? true;
+    return phase;
+  });
+}
+function prescription(value) {
+  assertObject(value, 'prescription');
+  assertAllowedKeys(value, new Set(['templateId','templateName','programId','programName','phaseName','day','optional','exerciseItems','targetRir']), 'prescription');
+  const result = { templateId: validateId(value.templateId,'prescription.templateId'), templateName: stringValue(value.templateName,'prescription.templateName',{required:true,max:120}), day: dateValue(value.day,'prescription.day',{required:true}), optional: boolValue(value.optional,'prescription.optional') ?? false, exerciseItems: exerciseItems(value.exerciseItems,'prescription.exerciseItems') };
+  if (value.programId) result.programId = validateId(value.programId,'prescription.programId');
+  for (const key of ['programName','phaseName']) if (value[key] != null) result[key] = stringValue(value[key],`prescription.${key}`,{max:120});
+  if (value.targetRir != null) result.targetRir = optionalIntValue(value.targetRir,'prescription.targetRir',0,10);
+  return result;
+}
+
 function exerciseItem(value, index) {
   assertObject(value, `exerciseItems[${index}]`);
-  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps', 'baselineId', 'techniqueNote']), `exerciseItems[${index}]`);
+  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps', 'baselineId', 'techniqueNote', 'setupProfile']), `exerciseItems[${index}]`);
   const exerciseId = validateId(value.exerciseId, `exerciseItems[${index}].exerciseId`);
   const weightType = stringValue(value.weightType, `exerciseItems[${index}].weightType`, { max: 16 }) ?? 'weight';
   if (!WEIGHT_TYPES.has(weightType)) fail(`exerciseItems[${index}].weightType is invalid`);
@@ -195,6 +232,7 @@ function exerciseItem(value, index) {
     weightType,
     sets: value.sets.map(workoutSet),
   };
+  if (value.setupProfile != null) item.setupProfile = setupProfile(value.setupProfile);
   if (value.baselineId != null) item.baselineId = validateId(value.baselineId, 'baselineId');
   const techniqueNote = stringValue(value.techniqueNote, 'techniqueNote', { max: 300 });
   if (techniqueNote !== undefined) item.techniqueNote = techniqueNote;
@@ -280,12 +318,13 @@ export function validateTemplate(body, pathId) {
 
 function programScheduleItem(value, index) {
   assertObject(value, `schedule[${index}]`);
-  assertAllowedKeys(value, new Set(['id', 'templateId', 'notes']), `schedule[${index}]`);
+  assertAllowedKeys(value, new Set(['id', 'templateId', 'notes', 'optional']), `schedule[${index}]`);
   const item = {
     id: validateId(value.id, `schedule[${index}].id`),
   };
   const templateId = stringValue(value.templateId, `schedule[${index}].templateId`, { max: 128, allowEmpty: true });
   if (templateId) item.templateId = validateId(templateId, `schedule[${index}].templateId`);
+  if (value.optional != null) item.optional = boolValue(value.optional,'optional');
   const notes = stringValue(value.notes, `schedule[${index}].notes`, { max: 500 });
   if (notes !== undefined) item.notes = notes;
   return item;
@@ -392,7 +431,7 @@ export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'startDate', 'insertedRestDays', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'startDate', 'endDate', 'scheduledActivation', 'phases', 'insertedRestDays', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -404,6 +443,9 @@ export function validateProgram(body, pathId) {
     startDate: dateValue(body.startDate, 'startDate', { required: true }),
     insertedRestDays: programInsertedRestDays(body.insertedRestDays),
   };
+  if (body.endDate) { program.endDate = dateValue(body.endDate,'endDate'); if (program.endDate < program.startDate) fail('End date must follow the start date.'); }
+  program.scheduledActivation = boolValue(body.scheduledActivation,'scheduledActivation') ?? false;
+  program.phases = programPhases(body.phases,program.startDate,program.endDate);
   const description = stringValue(body.description, 'description', { max: 1000 });
   if (description !== undefined) program.description = description;
   const active = boolValue(body.active, 'active');
@@ -423,7 +465,7 @@ export function validateLog(body, pathId) {
   assertObject(body, 'log');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'date', 'notes', 'readiness', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'date', 'notes', 'readiness', 'prescription', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
     'log',
   );
   requireMatchingId(body, pathId);
@@ -439,6 +481,7 @@ export function validateLog(body, pathId) {
   };
   const notes = stringValue(body.notes, 'notes', { max: 2000 });
   if (notes !== undefined) log.notes = notes;
+  if (body.prescription != null) log.prescription = prescription(body.prescription);
   const readiness = optionalIntValue(body.readiness, 'readiness', 1, 5);
   if (readiness !== undefined) log.readiness = readiness;
   const startTime = isoDateTimeValue(body.startTime, 'startTime');

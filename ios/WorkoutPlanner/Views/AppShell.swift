@@ -41,6 +41,13 @@ struct AppShell: View {
 
     var body: some View {
         tabShell
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 8) {
+                    Button("Nutrition · Macrovana") { UIApplication.shared.open(URL(string: "dailymacros://companion")!, options: [:]) { opened in if !opened { DispatchQueue.main.async { UIApplication.shared.open(URL(string: "https://macrovana.com")!) } } } }
+                    Spacer()
+                    Label("Training · Forge", systemImage: "dumbbell.fill").fontWeight(.semibold)
+                }.font(.caption).padding(.horizontal, 16).padding(.vertical, 10).background(Theme.surface)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.background)
             .tint(Theme.accent)

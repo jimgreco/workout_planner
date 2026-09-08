@@ -1,3 +1,4 @@
+import { activeProgramForDate, routinePrescription } from '../programs.js';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Check, X, Clock, Trophy, Clipboard, Trash2 } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
@@ -227,6 +228,7 @@ export default function WorkoutLog({
   const today = new Date().toISOString().slice(0, 10);
 
   // ── State ────────────────────────────────────────────────────────────────────
+  const prescriptionRef = useRef(null);
   const [workoutId, setWorkoutId]   = useState(null);
   const [name, setName]             = useState('');
   const [date, setDate]             = useState(today);
@@ -251,7 +253,7 @@ export default function WorkoutLog({
   const isPlanningMode = !!workoutId && !startTime && !isEditing.current;
   const lastWeightTypeByExerciseId = useMemo(() => lastWeightTypesByExerciseId(logs), [logs]);
   const activeProgramWorkouts = programs
-    .filter((program) => program.active)
+    .filter((program) => program.id === activeProgramForDate(programs)?.id)
     .map((program) => getNextProgramWorkout(program, templates, logs))
     .filter(Boolean);
 
@@ -267,6 +269,7 @@ export default function WorkoutLog({
       setName(editingLog.name || '');
       setDate(editingLog.date || today);
       setNotes(editingLog.notes || '');
+      prescriptionRef.current = editingLog.prescription || null;
       setReadiness(editingLog.readiness ? String(editingLog.readiness) : '');
       setItems(JSON.parse(JSON.stringify(editingLog.exerciseItems || [])));
       setStartTime(editingLog.startTime || null);
@@ -279,6 +282,7 @@ export default function WorkoutLog({
       setName(active.name || '');
       setDate(active.date || today);
       setNotes(active.notes || '');
+      prescriptionRef.current = active.prescription || null;
       setReadiness(active.readiness ? String(active.readiness) : '');
       setItems(JSON.parse(JSON.stringify(active.exerciseItems || [])));
       setStartTime(active.startTime || null);
@@ -288,8 +292,10 @@ export default function WorkoutLog({
   // ── Load initial template ────────────────────────────────────────────────
   useEffect(() => {
     if (!initialTemplate || isActive) return;
-    const program = initialProgram || null;
-    const templateItems = (initialTemplate.exerciseItems || []).map((item) => {
+    const active = activeProgramForDate(programs,date);
+    const program = initialProgram || (active?.schedule.some(day=>day.templateId===initialTemplate.id) ? active : null);
+    prescriptionRef.current = routinePrescription(initialTemplate, program, date);
+    const templateItems = prescriptionRef.current.exerciseItems.map((item) => {
       const lastItem = getLastItemForExercise(item.exerciseId, logs);
       const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
       const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
@@ -301,6 +307,7 @@ export default function WorkoutLog({
         supersetGroup: item.supersetGroup,
         baselineId: lastItem?.baselineId || item.baselineId,
         techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote,
+        setupProfile: lastItem?.setupProfile ?? item.setupProfile,
         description: item.description,
         useIndividualReps: item.useIndividualReps,
         sets: item.sets.map((s, si) => {
@@ -308,12 +315,14 @@ export default function WorkoutLog({
           const targetLeft = plannedSideRepText(s, 'left', targetReps);
           const targetRight = plannedSideRepText(s, 'right', targetReps);
           const programTargets = programTargetsForSet(s, lastItem?.sets?.[si], program, hitTarget, hitCap, settings.defaultReps, date);
-          const programReps = program ? (programRepRangeText(program, date) || programTargets.reps) : '';
+          const programReps = program && ((program.progression?.type && program.progression.type !== 'none') || programDeloadActive(program, date)) ? (programRepRangeText(program, date) || programTargets.reps) : '';
           const goalReps = programReps || targetReps;
           const goalLeft = programReps || targetLeft;
           const goalRight = programReps || targetRight;
           if (lastItem && lastItem.sets && si < lastItem.sets.length) {
             return {
+              setType: s.setType,
+              repMode: s.repMode,
               reps: '',
               repsLeft: '',
               repsRight: '',
@@ -326,6 +335,8 @@ export default function WorkoutLog({
             };
           }
           return {
+            setType: s.setType,
+            repMode: s.repMode,
             reps: '',
             repsLeft: '',
             repsRight: '',
@@ -366,6 +377,7 @@ export default function WorkoutLog({
         notes: data.notes,
         ...(readinessValue(data.readiness) ? { readiness: readinessValue(data.readiness) } : {}),
         exerciseItems: data.items,
+        ...(prescriptionRef.current ? {prescription: prescriptionRef.current} : {}),
         startTime: data.startTime,
         status: data.status || 'active',
       });
@@ -619,6 +631,10 @@ export default function WorkoutLog({
   }
 
   function applyTemplateToWorkout(t, program = null) {
+    const active = activeProgramForDate(programs,date);
+    if (!program && active?.schedule.some(day=>day.templateId===t.id)) program = active;
+    if (!prescriptionRef.current) prescriptionRef.current = routinePrescription(t, program, date);
+    t = {...t, exerciseItems: routinePrescription(t,program,date).exerciseItems};
 
     const currentExerciseIds = new Set(items.map(item => item.exerciseId));
     
@@ -636,6 +652,7 @@ export default function WorkoutLog({
           supersetGroup: item.supersetGroup,
           baselineId: lastItem?.baselineId || item.baselineId,
         techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote,
+        setupProfile: lastItem?.setupProfile ?? item.setupProfile,
         description: item.description,
           useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
@@ -643,12 +660,14 @@ export default function WorkoutLog({
             const targetLeft = plannedSideRepText(s, 'left', targetReps);
             const targetRight = plannedSideRepText(s, 'right', targetReps);
             const programTargets = programTargetsForSet(s, lastItem?.sets?.[si], program, hitTarget, hitCap, settings.defaultReps, date);
-            const programReps = program ? (programRepRangeText(program, date) || programTargets.reps) : '';
+            const programReps = program && ((program.progression?.type && program.progression.type !== 'none') || programDeloadActive(program, date)) ? (programRepRangeText(program, date) || programTargets.reps) : '';
             const goalReps = programReps || targetReps;
             const goalLeft = programReps || targetLeft;
             const goalRight = programReps || targetRight;
             if (lastItem && lastItem.sets && si < lastItem.sets.length) {
               return {
+                setType: s.setType,
+                repMode: s.repMode,
                 reps: '',
                 repsLeft: '',
                 repsRight: '',
@@ -661,6 +680,8 @@ export default function WorkoutLog({
               };
             }
             return {
+              setType: s.setType,
+              repMode: s.repMode,
               reps: '',
               repsLeft: '',
               repsRight: '',
@@ -731,6 +752,7 @@ export default function WorkoutLog({
         notes,
         ...(readinessValue(readiness) ? { readiness: readinessValue(readiness) } : {}),
         exerciseItems: items,
+        ...(prescriptionRef.current ? {prescription: prescriptionRef.current} : {}),
         startTime,
         endTime,
         status: 'finished',
@@ -801,6 +823,7 @@ export default function WorkoutLog({
   }
 
   function resetWorkout() {
+    prescriptionRef.current = null;
     setWorkoutId(null);
     setName('');
     setDate(today);
@@ -987,6 +1010,7 @@ export default function WorkoutLog({
       />
 
       <hr className="divider" style={{ opacity: 0.3, margin: '16px 0' }} />
+      {prescriptionRef.current && <section className="exercise-evidence" aria-label="Starting prescription"><h3>Starting prescription</h3><p>{prescriptionRef.current.templateName} · {prescriptionRef.current.phaseName || 'Routine'} · {prescriptionRef.current.optional ? 'Optional' : 'Required'}</p><p>{prescriptionRef.current.exerciseItems.reduce((n,item)=>n+item.sets.length,0)} prescribed sets{prescriptionRef.current.targetRir != null ? ` · Target ${prescriptionRef.current.targetRir} reps left` : ''}</p><details><summary>View original prescription</summary>{prescriptionRef.current.exerciseItems.map((item,index)=><p key={index}>{exercises.find(e=>e.id===item.exerciseId)?.name || item.exerciseId}: {item.sets.map(s=>s.reps || s.placeholderReps || 'unspecified reps').join(' / ')}</p>)}</details></section>}
       <div className="form-group">
         <label>Session Notes (optional)</label>
         <textarea

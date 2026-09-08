@@ -18,6 +18,7 @@ struct WorkoutPlannerApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .preferredColorScheme(.dark)
                 .environmentObject(auth)
                 .environmentObject(store)
                 .onOpenURL { url in

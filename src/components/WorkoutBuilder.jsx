@@ -560,6 +560,7 @@ export default function WorkoutBuilder({
                   )}
                 </div>
                 {!planningMode && <div className="exercise-evidence">
+                  <EquipmentSetup item={item} logs={logs} readOnly={readOnly} onChange={patch=>updateItem(idx,patch)} />
                   <label>Technique / equipment note
                     <input type="text" maxLength={300} value={item.techniqueNote || ''} disabled={readOnly}
                       placeholder="Depth, bench angle, machine setting…"
@@ -922,4 +923,20 @@ export default function WorkoutBuilder({
       )}
     </div>
   );
+}
+
+function EquipmentSetup({item,logs,readOnly,onChange}) {
+  const [draft,setDraft] = useState(null);
+  function applyProfile(profile) {
+    const sets = item.sets.map(set=>({...set,placeholderWeight:'',placeholderReps:set.placeholderReps?.match(/\(([^)]+)\)$/)?.[1] || set.placeholderReps}));
+    onChange({setupProfile:profile,baselineId:profile?.id||crypto.randomUUID(),sets});
+  }
+  const profiles = [...new Map([...(logs||[]).flatMap(log=>log.exerciseItems||[]).filter(i=>i.exerciseId===item.exerciseId).map(i=>i.setupProfile),item.setupProfile].filter(Boolean).map(p=>[p.id,p])).values()];
+  return <div className="equipment-setup">
+    <label>Equipment setup<select disabled={readOnly} value={item.setupProfile?.id||''} onChange={e=>{const profile=profiles.find(p=>p.id===e.target.value); applyProfile(profile);}}><option value="">Unspecified setup</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+    {item.setupProfile && <small>{['gym','machine','seat','grip','loadConvention'].map(k=>item.setupProfile[k]).filter(Boolean).join(' · ')}</small>}
+    {!readOnly && !draft && <button type="button" className="btn btn-secondary btn-sm" onClick={()=>setDraft({name:'',gym:'',machine:'',seat:'',grip:'',loadConvention:''})}>Save a new setup</button>}
+    {draft && <fieldset><legend>New equipment setup</legend>{Object.keys(draft).map(k=><label key={k}>{({name:'Setup name',gym:'Gym',machine:'Machine / model',seat:'Seat / bench setting',grip:'Grip / attachment',loadConvention:'Load convention (per hand, total, stack)'})[k]}<input type="text" maxLength={120} value={draft[k]} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></label>)}<button type="button" className="btn btn-primary" disabled={!draft.name.trim()} onClick={()=>{const profile={...draft,name:draft.name.trim(),id:crypto.randomUUID()};applyProfile(profile);setDraft(null);}}>Use setup</button><button type="button" className="btn btn-secondary" onClick={()=>setDraft(null)}>Cancel</button></fieldset>}
+    <small>Each setup has its own comparison baseline. Saved workouts retain their original settings.</small>
+  </div>;
 }

@@ -589,6 +589,7 @@ export default function App() {
         </div>
 
         <div className="mobile-nav-right">
+          <div className="companion-switch" aria-label="Companion apps"><a href="https://macrovana.com">Nutrition</a><span aria-current="page">Training</span></div>
           <button
             className="mobile-avatar-btn"
             onClick={(e) => { e.stopPropagation(); setShowUserMenu(!showUserMenu); setShowMobileMore(false); }}
@@ -661,6 +662,7 @@ export default function App() {
           <Logo className="app-logo-full" />
         </div>
 
+        <div className="companion-switch" aria-label="Companion apps"><a href="https://macrovana.com">Nutrition</a><span aria-current="page">Training</span></div>
         {NAV_GROUPS.map((group) => (
           <div className="nav-group" key={group.label}>
             <span className="nav-group-label">{group.label}</span>

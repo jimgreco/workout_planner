@@ -6,48 +6,48 @@ extension Notification.Name {
 }
 
 enum Theme {
-    // Heated steel: warm, energetic, and purpose-built for a training product.
-    static let accent = Color(red: 0.94, green: 0.35, blue: 0.16)
-    static let accentDark = Color(red: 0.81, green: 0.26, blue: 0.09)
-    static let accentLight = Color(red: 1.0, green: 0.53, blue: 0.36)
+    // Shared Macrovana companion palette: cool surfaces and a restrained cyan accent.
+    static let accent = Color(red: 0, green: 0.812, blue: 1)
+    static let accentDark = Color(red: 0, green: 0.65, blue: 0.83)
+    static let accentLight = Color(red: 0.35, green: 0.88, blue: 1)
     static let success = Color(red: 0.07, green: 0.54, blue: 0.41)
     static let warning = Color(red: 0.85, green: 0.54, blue: 0.09)
     static let danger = Color(red: 0.81, green: 0.25, blue: 0.28)
 
     static let background = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.047, green: 0.055, blue: 0.047, alpha: 1)
-            : UIColor(red: 0.957, green: 0.953, blue: 0.933, alpha: 1)
+            ? UIColor(red: 0.027, green: 0.035, blue: 0.059, alpha: 1)
+            : UIColor(red: 0.953, green: 0.965, blue: 0.980, alpha: 1)
     })
 
     static let surface = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.082, green: 0.094, blue: 0.082, alpha: 1)
+            ? UIColor(red: 0.051, green: 0.067, blue: 0.118, alpha: 1)
             : UIColor.white
     })
 
     static let surface2 = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.125, green: 0.141, blue: 0.122, alpha: 1)
-            : UIColor(red: 0.914, green: 0.910, blue: 0.882, alpha: 1)
+            ? UIColor(red: 0.071, green: 0.094, blue: 0.157, alpha: 1)
+            : UIColor(red: 0.91, green: 0.94, blue: 0.97, alpha: 1)
     })
 
     static let border = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.173, green: 0.192, blue: 0.169, alpha: 1)
-            : UIColor(red: 0.847, green: 0.843, blue: 0.812, alpha: 1)
+            ? UIColor(red: 0.15, green: 0.19, blue: 0.27, alpha: 1)
+            : UIColor(red: 0.83, green: 0.87, blue: 0.92, alpha: 1)
     })
 
     static let text = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.957, green: 0.945, blue: 0.914, alpha: 1)
-            : UIColor(red: 0.09, green: 0.098, blue: 0.082, alpha: 1)
+            ? UIColor(red: 0.953, green: 0.969, blue: 0.984, alpha: 1)
+            : UIColor(red: 0.08, green: 0.12, blue: 0.2, alpha: 1)
     })
 
     static let muted = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.61, green: 0.62, blue: 0.58, alpha: 1)
-            : UIColor(red: 0.42, green: 0.43, blue: 0.39, alpha: 1)
+            ? UIColor(red: 0.65, green: 0.70, blue: 0.78, alpha: 1)
+            : UIColor(red: 0.32, green: 0.4, blue: 0.5, alpha: 1)
     })
 
     static let radius: CGFloat = 14
@@ -59,21 +59,13 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: compact ? 13 : 15, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color(red: 0.025, green: 0.06, blue: 0.10))
             .padding(.horizontal, compact ? 12 : 16)
             .padding(.vertical, compact ? 9 : 12)
-            .background(
-                LinearGradient(
-                    colors: configuration.isPressed
-                        ? [Theme.accentDark, Theme.accent]
-                        : [Theme.accentLight, Theme.accent, Theme.accentDark],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .background(configuration.isPressed ? Theme.accentDark : Theme.accent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .shadow(color: Theme.accent.opacity(configuration.isPressed ? 0.08 : 0.2), radius: 10, y: 5)
+            .shadow(color: .clear, radius: 0)
     }
 }
 

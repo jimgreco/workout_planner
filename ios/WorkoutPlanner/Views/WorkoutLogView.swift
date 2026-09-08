@@ -12,6 +12,7 @@ struct WorkoutLogView: View {
         case notes
     }
 
+    @State private var prescription: WorkoutPrescription?
     @State private var workoutId: String?
     @State private var name = ""
     @State private var date = Date()
@@ -52,7 +53,7 @@ struct WorkoutLogView: View {
     }
     private var activeProgramWorkouts: [WorkoutProgramStart] {
         store.programs
-            .filter { $0.active == true }
+            .filter { $0.id == ProgramCyclePlanner.activeProgram(from: store.programs)?.id }
             .compactMap { nextProgramWorkout(program: $0) }
     }
 
@@ -75,6 +76,16 @@ struct WorkoutLogView: View {
                         startingPointSection
                     }
                     exercisesSection
+                    if let prescription {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Starting prescription").font(.headline)
+                            Text(prescription.templateName)
+                            if let phase = prescription.phaseName { Text(phase).foregroundStyle(Theme.muted) }
+                            if let rir = prescription.targetRir { Text("Target: \(rir) reps left") }
+                            Text(prescription.optional ? "Optional training" : "Required training")
+                            Text("\(prescription.exerciseItems.reduce(0) { $0 + $1.sets.count }) prescribed sets · \(prescription.day)").font(.caption)
+                        }.padding().background(Theme.surface).clipShape(RoundedRectangle(cornerRadius: 18))
+                    }
                     notesSection
                 }
                 .padding(.horizontal, 16)
@@ -469,6 +480,7 @@ struct WorkoutLogView: View {
         name = log.name
         date = DateHelpers.date(from: log.date)
         notes = log.notes ?? ""
+        prescription = log.prescription
         readiness = log.readiness ?? 0
         items = log.exerciseItems
         startTime = log.startTime
@@ -591,7 +603,8 @@ struct WorkoutLogView: View {
                 endTime: isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : endTime,
                 status: "finished",
                 hasPB: !pbExerciseIds.isEmpty,
-                pbExerciseIds: pbExerciseIds
+                pbExerciseIds: pbExerciseIds,
+                prescription: prescription
             )
             try await store.saveLog(log)
             WorkoutLiveActivityController.shared.end(
@@ -670,7 +683,8 @@ struct WorkoutLogView: View {
             readiness: readiness > 0 ? readiness : nil,
             exerciseItems: items,
             startTime: startTime,
-            status: status
+            status: status,
+            prescription: prescription
         )
     }
 
@@ -707,8 +721,12 @@ struct WorkoutLogView: View {
     }
 
     private func applyTemplate(_ template: WorkoutTemplate, replace: Bool, program: TrainingProgram? = nil) {
+        let active = ProgramCyclePlanner.activeProgram(from: store.programs)
+        let program = program ?? (active?.schedule.contains { $0.templateId == template.id } == true ? active : nil)
+        let planned = WorkoutPrescription.make(template: template, program: program, day: DateHelpers.dayString(from: date))
+        if replace || prescription == nil { prescription = planned }
         let existingIds = Set(replace ? [] : items.map(\.exerciseId))
-        let templateItems = template.exerciseItems
+        let templateItems = planned.exerciseItems
             .filter { !existingIds.contains($0.exerciseId) }
             .map { item in prepopulated(item, program: program) }
 
@@ -739,7 +757,8 @@ struct WorkoutLogView: View {
             let targetLeft = plannedSideRepText(set, side: .left, fallback: targetReps)
             let targetRight = plannedSideRepText(set, side: .right, fallback: targetReps)
             let targets = programTargets(for: set, lastSet: last?.sets.indices.contains(offset) == true ? last?.sets[offset] : nil, program: program, hitTarget: hitTarget, hitCap: hitCap)
-            let progressedReps = program == nil ? "" : (programRepRangeGoal(for: program) ?? targets.reps)
+            let modifiesReps = (program?.progression?.type != nil && program?.progression?.type != "none") || activeDeload(for: program) != nil
+            let progressedReps = modifiesReps ? (programRepRangeGoal(for: program) ?? targets.reps) : ""
             let targetPlaceholder = progressedReps.isEmpty ? targetReps : progressedReps
             let targetLeftPlaceholder = progressedReps.isEmpty ? targetLeft : progressedReps
             let targetRightPlaceholder = progressedReps.isEmpty ? targetRight : progressedReps
@@ -763,7 +782,8 @@ struct WorkoutLogView: View {
                     placeholderRepsLeft: preservesSideHistory ? (lastLeft.isEmpty ? targetLeftPlaceholder : "\(lastLeft) (\(targetLeftPlaceholder))") : nil,
                     placeholderRepsRight: preservesSideHistory ? (lastRight.isEmpty ? targetRightPlaceholder : "\(lastRight) (\(targetRightPlaceholder))") : nil,
                     placeholderWeight: lastSet.weight,
-                    placeholderWeightType: placeholderWeightType
+                    placeholderWeightType: placeholderWeightType,
+                    setType: set.setType
                 )
             }
             return WorkoutSet(
@@ -776,7 +796,8 @@ struct WorkoutLogView: View {
                 placeholderRepsLeft: isUnilateral ? targetLeftPlaceholder : nil,
                 placeholderRepsRight: isUnilateral ? targetRightPlaceholder : nil,
                 placeholderWeight: targets.weight,
-                placeholderWeightType: preferredWeightType
+                placeholderWeightType: preferredWeightType,
+                setType: set.setType
             )
         }
         return ExerciseItem(
@@ -788,7 +809,8 @@ struct WorkoutLogView: View {
             useIndividualReps: item.useIndividualReps,
             sets: sets,
             baselineId: last?.baselineId ?? item.baselineId,
-            techniqueNote: last?.techniqueNote ?? item.techniqueNote
+            techniqueNote: last?.techniqueNote ?? item.techniqueNote,
+            setupProfile: last?.setupProfile ?? item.setupProfile
         )
     }
 
@@ -1484,6 +1506,7 @@ struct WorkoutLogView: View {
     }
 
     private func resetWorkout() {
+        prescription = nil;
         restAlertTask?.cancel()
         cancelScheduledSave()
         liveActivityUpdateGeneration += 1
@@ -1880,6 +1903,7 @@ private struct WorkoutLiveActivityCard: View {
                         Text("Skipped").tag("skipped")
                     }
                     setTypeMenu(set: set, height: liveSecondaryTileHeight)
+                    EquipmentSetupPicker(item: Binding(get: { items[context.exerciseIndex] }, set: { items[context.exerciseIndex] = $0 }), logs: logs, onChanged: onChanged)
                     TextField("Technique / equipment note", text: Binding(get: {
                         items[context.exerciseIndex].techniqueNote ?? ""
                     }, set: { value in items[context.exerciseIndex].techniqueNote = String(value.prefix(300)); onTextChanged() }))

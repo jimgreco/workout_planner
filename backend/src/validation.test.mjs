@@ -178,3 +178,17 @@ test('preserves evidence fields and rejects invalid set status or excessive note
   assert.throws(() => validateLog({ ...log, exerciseItems: [{ ...item, techniqueNote: 'x'.repeat(301) }] }, log.id), ValidationError);
   assert.throws(() => validateLog({ ...log, exerciseItems: [{ ...item, sets: [{ completion: 'assumed' }] }] }, log.id), ValidationError);
 });
+
+test('validates dated phases and optional schedule without losing evidence fields', () => {
+  const program={id:'program',name:'Build',startDate:'2026-09-21',endDate:'2027-06-11',scheduledActivation:true,schedule:[{id:'day',templateId:'routine',optional:true}],phases:[{id:'intro',name:'Calibration',startDate:'2026-09-21',endDate:'2026-10-04',setsPerExercise:2,targetRir:3,allowOptional:false}]};
+  const clean=validateProgram(program,'program');assert.equal(clean.schedule[0].optional,true);assert.equal(clean.phases[0].targetRir,3);assert.equal(clean.scheduledActivation,true);
+  assert.throws(()=>validateProgram({...program,endDate:'2026-09-20'},'program'));
+  assert.throws(()=>validateProgram({...program,phases:[...program.phases,{...program.phases[0],id:'overlap'}]},'program'));
+  assert.throws(()=>validateProgram({...program,phases:[{...program.phases[0],setsPerExercise:0}]},'program'));
+});
+test('workouts retain prescription and named equipment setup in validated exports', () => {
+  const item={exerciseId:'press',weightType:'weight',sets:[{reps:'8',weight:'60'}],setupProfile:{id:'gym-a',name:'City press',gym:'City',machine:'Hammer',seat:'3',grip:'Neutral',loadConvention:'Per side'}};
+  const original={id:'log',name:'Upper',date:'2026-09-21',exerciseItems:[item],prescription:{templateId:'routine',templateName:'Upper',programId:'build',programName:'Build',phaseName:'Calibration',day:'2026-09-21',optional:false,exerciseItems:[item],targetRir:3}};
+  const clean=validateLog(original,'log');assert.deepEqual(clean.prescription,original.prescription);assert.deepEqual(clean.exerciseItems[0].setupProfile,item.setupProfile);
+  assert.throws(()=>validateLog({...original,prescription:{...original.prescription,templateId:''}},'log'));
+});

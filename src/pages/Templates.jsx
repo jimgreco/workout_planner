@@ -1,3 +1,4 @@
+import { validateProgram } from '../../backend/src/validation.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRightLeft,
@@ -22,6 +23,7 @@ import Exercises, { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
 import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram, saveLog, saveExercise } from '../api.js';
 import {
+  activeProgramForDate,
   createProgramScheduleItem,
   insertProgramRestDay,
   moveProgramScheduleDay,
@@ -146,6 +148,7 @@ function dateLabel(date) {
 }
 
 function programStatusLabel(status) {
+  if (status === 'optional') return 'Optional';
   if (status === 'done') return 'Done';
   if (status === 'skipped') return 'Skipped';
   if (status === 'missed') return 'Missed';
@@ -334,6 +337,7 @@ function cleanProgram(program) {
     progressionRule: program.progressionRule?.trim() || '',
     schedule: (program.schedule ?? []).map((item) => ({
       id: String(item?.id ?? ''),
+      ...(item?.optional ? { optional: true } : {}),
       ...(item?.templateId ? { templateId: String(item.templateId).trim() } : {}),
       ...(item?.notes ? { notes: String(item.notes).trim() } : {}),
     })),
@@ -394,6 +398,7 @@ export default function Templates({
 }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view' | 'settings' | 'program'
   const [form, setForm]                 = useState(emptyTemplate());
+  const [programError, setProgramError] = useState('');
   const [programForm, setProgramForm]   = useState(emptyProgram());
   const [settingsForm, setSettingsForm] = useState({ ...settings });
   const [exerciseForm, setExerciseForm] = useState(null);
@@ -412,7 +417,7 @@ export default function Templates({
   const pageTitle = mode === 'routines' ? 'Routines' : 'Program';
 
   const activeProgram = useMemo(
-    () => programs.find((program) => program.active) ?? null,
+    () => activeProgramForDate(programs),
     [programs],
   );
   const lastWeightTypeByExerciseId = useMemo(() => lastWeightTypesByExerciseId(logs), [logs]);
@@ -507,9 +512,15 @@ export default function Templates({
     if (!programForm.name.trim() || saving) return;
     setSaving(true);
     try {
-      const updated = await saveProgram(cleanProgram(programForm));
+      const cleaned = cleanProgram({...programForm,id:programForm.id || crypto.randomUUID()});
+      setProgramForm(cleaned);
+      validateProgram(cleaned, cleaned.id);
+      const updated = await saveProgram(cleaned);
       onProgramsUpdate(updated);
       setModal(null);
+      setProgramError('');
+    } catch (error) {
+      setProgramError(error.message);
     } finally {
       setSaving(false);
     }
@@ -974,9 +985,11 @@ export default function Templates({
                 </div>
                 <div>
                   <strong>{adherence.completed}</strong>
-                  <span>Completed</span>
+                  <span>Required completed</span>
                 </div>
                 <div>
+                  <strong>{adherence.optionalCompleted}</strong><span>Optional completed</span>
+                </div><div>
                   <strong>{adherence.skipped}</strong>
                   <span>Skipped</span>
                 </div>
@@ -1368,6 +1381,18 @@ export default function Templates({
             />
           </div>
 
+          <div className="form-group"><label>Program end date<input aria-label="Program end date" type="date" value={programForm.endDate || ''} onChange={e => setProgramForm({...programForm,endDate:e.target.value || undefined})} /></label></div>
+          <label className="checkbox-row"><input type="checkbox" checked={Boolean(programForm.scheduledActivation)} onChange={e=>setProgramForm({...programForm,scheduledActivation:e.target.checked})} />Activate automatically on start date</label>
+          <p className="text-muted">The latest eligible start date takes priority. Ending a program does not reactivate an older program.</p>
+          {programError && <p role="alert" className="text-danger">{programError}</p>}
+          <h3>Training phases</h3>
+          {(programForm.phases || []).map((phase,index) => <fieldset key={phase.id} className="phase-card"><legend>Phase {index+1}</legend>
+            {['name','startDate','endDate','notes'].map(field=><label key={field}>{({name:'Name',startDate:'Starts',endDate:'Ends',notes:'Coaching notes'})[field]}<input type={field.endsWith('Date')?'date':'text'} value={phase[field] || ''} onChange={e=>setProgramForm({...programForm,phases:programForm.phases.map(p=>p.id===phase.id?{...p,[field]:e.target.value}:p)})} /></label>)}
+            {['setsPerExercise','targetRir'].map(field=><label key={field}>{field==='setsPerExercise'?'Maximum working sets per exercise (blank keeps routine)':'Target reps left'}<input type="number" min={field==='targetRir'?0:1} max={field==='targetRir'?10:20} value={phase[field] ?? ''} onChange={e=>setProgramForm({...programForm,phases:programForm.phases.map(p=>p.id===phase.id?{...p,[field]:e.target.value===''?undefined:Number(e.target.value)}:p)})} /></label>)}
+            <label><input type="checkbox" checked={phase.allowOptional!==false} onChange={e=>setProgramForm({...programForm,phases:programForm.phases.map(p=>p.id===phase.id?{...p,allowOptional:e.target.checked}:p)})} />Allow optional training</label>
+            <button type="button" className="btn btn-secondary" onClick={()=>setProgramForm({...programForm,phases:programForm.phases.filter(p=>p.id!==phase.id)})}>Remove phase</button>
+          </fieldset>)}
+          <button type="button" className="btn btn-secondary" onClick={()=>setProgramForm({...programForm,phases:[...(programForm.phases||[]),{id:crypto.randomUUID(),name:'',startDate:programForm.startDate,endDate:programForm.endDate||programForm.startDate,allowOptional:true}]})}>Add phase</button>
           <hr className="divider" />
           <div className="program-week-heading">
             <strong>Repeating Cycle</strong>
@@ -1406,6 +1431,7 @@ export default function Templates({
               >
                 <GripVertical className="program-schedule-grip" size={16} aria-hidden="true" />
                 <span className="program-schedule-day">{cycleDayLabel(index)}</span>
+                <label><input type="checkbox" disabled={!day.templateId} checked={Boolean(day.optional)} onChange={e=>handleUpdateProgramFormDay(day.id,{optional:e.target.checked})} />Optional</label>
                 {templates.length === 0 ? (
                   <span className="program-schedule-empty">Create a routine first</span>
                 ) : (

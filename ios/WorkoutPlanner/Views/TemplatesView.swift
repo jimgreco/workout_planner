@@ -973,7 +973,8 @@ private struct ProgramAdherenceRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 metric("\(summary.completionRate)%", "\(summary.weeks)-week")
-                metric("\(summary.completed)", "Done")
+                metric("\(summary.completed)", "Required")
+                metric("\(summary.optionalCompleted)", "Optional")
                 metric("\(summary.skipped)", "Skipped")
                 metric("\(summary.missed)", "Missed")
                 if summary.remainingToday > 0 {
@@ -1506,10 +1507,21 @@ private struct ProgramFormSheet: View {
                         set: { form.active = $0 }
                     ))
                     DatePicker("Cycle Start", selection: programStartDateBinding, displayedComponents: .date)
+                    Toggle("Activate on start date", isOn: Binding(get: { form.scheduledActivation == true }, set: { form.scheduledActivation = $0 }))
+                    Toggle("Has an end date", isOn: Binding(get: { form.endDate != nil }, set: { form.endDate = $0 ? form.startDate : nil }))
+                    if form.endDate != nil { DatePicker("Ends", selection: Binding(get: { DateHelpers.date(from: form.endDate ?? form.startDate) }, set: { form.endDate = DateHelpers.dayString(from: $0) }), displayedComponents: .date) }
+                    Text("The latest eligible start date takes priority. Ending a program does not reactivate an older one.").font(.caption).foregroundStyle(Theme.muted)
                 } header: {
                     Text("Program")
                 }
 
+                Section("Training phases") {
+                    ForEach(Array((form.phases ?? []).enumerated()), id: \.element.id) { index, phase in
+                        TrainingPhaseEditor(phase: Binding(get: { form.phases?[index] ?? phase }, set: { form.phases?[index] = $0 }))
+                        Button("Remove phase", role: .destructive) { form.phases?.removeAll { $0.id == phase.id } }
+                    }
+                    Button("Add phase") { if form.phases == nil { form.phases = [] }; form.phases?.append(TrainingPhase(startDate: form.startDate, endDate: form.endDate ?? form.startDate)) }
+                }
                 Section {
                     HStack(spacing: 12) {
                         Text("Days: \(form.schedule.count)")
@@ -1543,6 +1555,7 @@ private struct ProgramFormSheet: View {
 
                     ForEach(Array(form.schedule.enumerated()), id: \.element.id) { index, day in
                         VStack(alignment: .leading, spacing: 8) {
+                            Toggle("Optional training", isOn: Binding(get: { form.schedule[index].optional == true }, set: { form.schedule[index].optional = $0 })).disabled(day.templateId == nil)
                             Text(ProgramCyclePlanner.cycleDayLabel(index: index))
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.text)
@@ -1983,6 +1996,26 @@ struct FlowLayout: Layout {
             subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(size))
             currentX += size.width + spacing
             rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+
+private struct TrainingPhaseEditor: View {
+    @Binding var phase: TrainingPhase
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Phase name", text: $phase.name)
+            DatePicker("Starts", selection: Binding(get: { DateHelpers.date(from: phase.startDate) }, set: { phase.startDate = DateHelpers.dayString(from: $0) }), displayedComponents: .date)
+            DatePicker("Ends", selection: Binding(get: { DateHelpers.date(from: phase.endDate) }, set: { phase.endDate = DateHelpers.dayString(from: $0) }), displayedComponents: .date)
+            Picker("Maximum working sets per exercise", selection: Binding(get: { phase.setsPerExercise ?? 0 }, set: { phase.setsPerExercise = $0 == 0 ? nil : $0 })) {
+                Text("Use routine").tag(0); ForEach(1...20, id: \.self) { Text("\($0)").tag($0) }
+            }
+            Picker("Target reps left", selection: Binding(get: { phase.targetRir ?? -1 }, set: { phase.targetRir = $0 < 0 ? nil : $0 })) {
+                Text("Unspecified").tag(-1); ForEach(0...10, id: \.self) { Text("\($0)").tag($0) }
+            }
+            Toggle("Allow optional training", isOn: Binding(get: { phase.allowOptional != false }, set: { phase.allowOptional = $0 }))
+            TextField("Notes", text: Binding(get: { phase.notes ?? "" }, set: { phase.notes = $0 }), axis: .vertical)
         }
     }
 }

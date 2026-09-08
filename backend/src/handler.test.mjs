@@ -500,3 +500,16 @@ test('account deletion revokes already-issued app sessions', async () => {
   const afterDelete = await handler(event('GET', '/logs', undefined, headers));
   assert.equal(afterDelete.statusCode, 401);
 });
+
+test('editing a workout cannot replace or remove its original prescription', async () => {
+  const prescription={templateId:'upper',templateName:'Upper original',day:'2026-09-21',optional:false,exerciseItems:[{exerciseId:'bench',weightType:'weight',sets:[{reps:'8-12'}]}]};
+  const db=fakeDb([{PK:'USER#dev-user-local',SK:'LOG#training',id:'training',name:'Upper',date:'2026-09-21',exerciseItems:[],status:'active',prescription,revision:1}]);
+  __setTestDb(db);
+  const headers={Authorization:'Bearer dev-bypass-token'};
+  const update={id:'training',name:'Renamed workout',date:'2026-09-21',status:'finished',exerciseItems:[],expectedRevision:1,prescription:{...prescription,templateName:'Changed',exerciseItems:[]}};
+  const result=await handler(event('PUT','/logs/training',update,headers));
+  assert.equal(result.statusCode,200);assert.deepEqual(JSON.parse(result.body).prescription,prescription);
+  delete update.prescription;update.expectedRevision=2;
+  const oldClient=await handler(event('PUT','/logs/training',update,headers));
+  assert.equal(oldClient.statusCode,200);assert.deepEqual(JSON.parse(oldClient.body).prescription,prescription);
+});
