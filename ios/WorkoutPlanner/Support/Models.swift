@@ -734,6 +734,7 @@ struct ForgeExportPayload: Codable, Equatable {
     var logs: [WorkoutLog]?
     var programs: [TrainingProgram]?
     var gyms: [Gym]?
+    var equipment: [GymEquipment]? = nil
     var settings: WorkoutSettings?
 }
 
@@ -748,6 +749,7 @@ struct ForgeImportCounts: Codable, Equatable {
     var logs: Int
     var programs: Int
     var gyms: Int? = nil
+    var equipment: Int? = nil
     var settings: Bool?
 }
 
@@ -796,6 +798,7 @@ struct ForgeImportPreview: Equatable {
         var logs: Int
         var programs: Int
         var gyms: Int = 0
+        var equipment: Int = 0
         var settings: Int
     }
 
@@ -805,6 +808,7 @@ struct ForgeImportPreview: Equatable {
         var logs: Int
         var programs: Int
         var gyms: Int = 0
+        var equipment: Int = 0
     }
 
     var counts: Counts
@@ -1472,13 +1476,130 @@ struct GymEquipment: Codable, Identifiable, Equatable {
     var details = ""
 
     static let categories = ["Free weights", "Machines", "Cables", "Benches & racks", "Cardio", "Accessories", "Other"]
-    static let quickAdd: [(String, String)] = [
-        ("Dumbbells", "Free weights"), ("Barbells & plates", "Free weights"),
-        ("Adjustable bench", "Benches & racks"), ("Squat rack", "Benches & racks"),
-        ("Cable station", "Cables"), ("Lat pulldown", "Machines"),
-        ("Leg press", "Machines"), ("Smith machine", "Machines"),
-        ("Pull-up bar", "Accessories"), ("Treadmill", "Cardio")
-    ]
+    var equipmentId: String?
+    var revision: Int?
+    var updatedAt: String?
+    var libraryID: String { equipmentId ?? id }
+    static let preloaded: [GymEquipment] = {
+        let data = #"""
+        [
+          {"id": "eq-dumbbells", "name": "Dumbbells", "category": "Free weights", "details": ""},
+          {"id": "eq-adjustable-dumbbells", "name": "Adjustable dumbbells", "category": "Free weights", "details": ""},
+          {"id": "eq-barbell-plates", "name": "Barbell & plates", "category": "Free weights", "details": ""},
+          {"id": "eq-ez-curl-bar", "name": "EZ curl bar", "category": "Free weights", "details": ""},
+          {"id": "eq-trap-bar", "name": "Trap bar", "category": "Free weights", "details": ""},
+          {"id": "eq-safety-squat-bar", "name": "Safety squat bar", "category": "Free weights", "details": ""},
+          {"id": "eq-swiss-bar", "name": "Swiss bar", "category": "Free weights", "details": ""},
+          {"id": "eq-fixed-barbells", "name": "Fixed barbells", "category": "Free weights", "details": ""},
+          {"id": "eq-kettlebells", "name": "Kettlebells", "category": "Free weights", "details": ""},
+          {"id": "eq-weight-plates", "name": "Weight plates", "category": "Free weights", "details": ""},
+          {"id": "eq-bumper-plates", "name": "Bumper plates", "category": "Free weights", "details": ""},
+          {"id": "eq-flat-bench", "name": "Flat bench", "category": "Benches & racks", "details": ""},
+          {"id": "eq-adjustable-bench", "name": "Adjustable bench", "category": "Benches & racks", "details": ""},
+          {"id": "eq-decline-bench", "name": "Decline bench", "category": "Benches & racks", "details": ""},
+          {"id": "eq-preacher-curl-bench", "name": "Preacher curl bench", "category": "Benches & racks", "details": ""},
+          {"id": "eq-squat-rack", "name": "Squat rack", "category": "Benches & racks", "details": ""},
+          {"id": "eq-power-rack", "name": "Power rack", "category": "Benches & racks", "details": ""},
+          {"id": "eq-half-rack", "name": "Half rack", "category": "Benches & racks", "details": ""},
+          {"id": "eq-smith-machine", "name": "Smith machine", "category": "Benches & racks", "details": ""},
+          {"id": "eq-barbell-bench-press-station", "name": "Barbell bench press station", "category": "Benches & racks", "details": ""},
+          {"id": "eq-incline-bench-press-station", "name": "Incline bench press station", "category": "Benches & racks", "details": ""},
+          {"id": "eq-landmine-attachment", "name": "Landmine attachment", "category": "Benches & racks", "details": ""},
+          {"id": "eq-dip-station", "name": "Dip station", "category": "Benches & racks", "details": ""},
+          {"id": "eq-pull-up-bar", "name": "Pull-up bar", "category": "Benches & racks", "details": ""},
+          {"id": "eq-assisted-pull-up-dip-machine", "name": "Assisted pull-up & dip machine", "category": "Benches & racks", "details": ""},
+          {"id": "eq-roman-chair", "name": "Roman chair", "category": "Benches & racks", "details": ""},
+          {"id": "eq-glute-ham-developer", "name": "Glute-ham developer", "category": "Benches & racks", "details": ""},
+          {"id": "eq-chest-press-machine", "name": "Chest press machine", "category": "Machines", "details": ""},
+          {"id": "eq-incline-chest-press-machine", "name": "Incline chest press machine", "category": "Machines", "details": ""},
+          {"id": "eq-chest-fly-pec-deck", "name": "Chest fly / pec deck", "category": "Machines", "details": ""},
+          {"id": "eq-shoulder-press-machine", "name": "Shoulder press machine", "category": "Machines", "details": ""},
+          {"id": "eq-lateral-raise-machine", "name": "Lateral raise machine", "category": "Machines", "details": ""},
+          {"id": "eq-rear-delt-fly-machine", "name": "Rear delt fly machine", "category": "Machines", "details": ""},
+          {"id": "eq-lat-pulldown", "name": "Lat pulldown", "category": "Machines", "details": ""},
+          {"id": "eq-seated-row-machine", "name": "Seated row machine", "category": "Machines", "details": ""},
+          {"id": "eq-chest-supported-row-machine", "name": "Chest-supported row machine", "category": "Machines", "details": ""},
+          {"id": "eq-t-bar-row-machine", "name": "T-bar row machine", "category": "Machines", "details": ""},
+          {"id": "eq-pullover-machine", "name": "Pullover machine", "category": "Machines", "details": ""},
+          {"id": "eq-biceps-curl-machine", "name": "Biceps curl machine", "category": "Machines", "details": ""},
+          {"id": "eq-triceps-extension-machine", "name": "Triceps extension machine", "category": "Machines", "details": ""},
+          {"id": "eq-leg-press", "name": "Leg press", "category": "Machines", "details": ""},
+          {"id": "eq-hack-squat-machine", "name": "Hack squat machine", "category": "Machines", "details": ""},
+          {"id": "eq-pendulum-squat-machine", "name": "Pendulum squat machine", "category": "Machines", "details": ""},
+          {"id": "eq-belt-squat-machine", "name": "Belt squat machine", "category": "Machines", "details": ""},
+          {"id": "eq-leg-extension", "name": "Leg extension", "category": "Machines", "details": ""},
+          {"id": "eq-seated-leg-curl", "name": "Seated leg curl", "category": "Machines", "details": ""},
+          {"id": "eq-lying-leg-curl", "name": "Lying leg curl", "category": "Machines", "details": ""},
+          {"id": "eq-standing-leg-curl", "name": "Standing leg curl", "category": "Machines", "details": ""},
+          {"id": "eq-hip-thrust-machine", "name": "Hip thrust machine", "category": "Machines", "details": ""},
+          {"id": "eq-glute-kickback-machine", "name": "Glute kickback machine", "category": "Machines", "details": ""},
+          {"id": "eq-hip-abductor-machine", "name": "Hip abductor machine", "category": "Machines", "details": ""},
+          {"id": "eq-hip-adductor-machine", "name": "Hip adductor machine", "category": "Machines", "details": ""},
+          {"id": "eq-standing-calf-raise-machine", "name": "Standing calf raise machine", "category": "Machines", "details": ""},
+          {"id": "eq-seated-calf-raise-machine", "name": "Seated calf raise machine", "category": "Machines", "details": ""},
+          {"id": "eq-back-extension-machine", "name": "Back extension machine", "category": "Machines", "details": ""},
+          {"id": "eq-ab-crunch-machine", "name": "Ab crunch machine", "category": "Machines", "details": ""},
+          {"id": "eq-torso-rotation-machine", "name": "Torso rotation machine", "category": "Machines", "details": ""},
+          {"id": "eq-neck-machine", "name": "Neck machine", "category": "Machines", "details": ""},
+          {"id": "eq-cable-station", "name": "Cable station", "category": "Cables", "details": ""},
+          {"id": "eq-dual-adjustable-pulley", "name": "Dual adjustable pulley", "category": "Cables", "details": ""},
+          {"id": "eq-cable-crossover-station", "name": "Cable crossover station", "category": "Cables", "details": ""},
+          {"id": "eq-seated-cable-row", "name": "Seated cable row", "category": "Cables", "details": ""},
+          {"id": "eq-triceps-rope", "name": "Triceps rope", "category": "Cables", "details": ""},
+          {"id": "eq-straight-cable-bar", "name": "Straight cable bar", "category": "Cables", "details": ""},
+          {"id": "eq-ez-cable-bar", "name": "EZ cable bar", "category": "Cables", "details": ""},
+          {"id": "eq-single-cable-handle", "name": "Single cable handle", "category": "Cables", "details": ""},
+          {"id": "eq-lat-pulldown-bar", "name": "Lat pulldown bar", "category": "Cables", "details": ""},
+          {"id": "eq-close-grip-row-handle", "name": "Close-grip row handle", "category": "Cables", "details": ""},
+          {"id": "eq-ankle-strap", "name": "Ankle strap", "category": "Cables", "details": ""},
+          {"id": "eq-treadmill", "name": "Treadmill", "category": "Cardio", "details": ""},
+          {"id": "eq-stationary-bike", "name": "Stationary bike", "category": "Cardio", "details": ""},
+          {"id": "eq-recumbent-bike", "name": "Recumbent bike", "category": "Cardio", "details": ""},
+          {"id": "eq-air-bike", "name": "Air bike", "category": "Cardio", "details": ""},
+          {"id": "eq-spin-bike", "name": "Spin bike", "category": "Cardio", "details": ""},
+          {"id": "eq-rowing-machine", "name": "Rowing machine", "category": "Cardio", "details": ""},
+          {"id": "eq-ski-erg", "name": "Ski erg", "category": "Cardio", "details": ""},
+          {"id": "eq-elliptical", "name": "Elliptical", "category": "Cardio", "details": ""},
+          {"id": "eq-stair-climber", "name": "Stair climber", "category": "Cardio", "details": ""},
+          {"id": "eq-step-mill", "name": "Step mill", "category": "Cardio", "details": ""},
+          {"id": "eq-curve-treadmill", "name": "Curve treadmill", "category": "Cardio", "details": ""},
+          {"id": "eq-versaclimber", "name": "VersaClimber", "category": "Cardio", "details": ""},
+          {"id": "eq-arm-ergometer", "name": "Arm ergometer", "category": "Cardio", "details": ""},
+          {"id": "eq-resistance-bands", "name": "Resistance bands", "category": "Accessories", "details": ""},
+          {"id": "eq-mini-loop-bands", "name": "Mini loop bands", "category": "Accessories", "details": ""},
+          {"id": "eq-suspension-trainer", "name": "Suspension trainer", "category": "Accessories", "details": ""},
+          {"id": "eq-gymnastic-rings", "name": "Gymnastic rings", "category": "Accessories", "details": ""},
+          {"id": "eq-ab-wheel", "name": "Ab wheel", "category": "Accessories", "details": ""},
+          {"id": "eq-exercise-mat", "name": "Exercise mat", "category": "Accessories", "details": ""},
+          {"id": "eq-stability-ball", "name": "Stability ball", "category": "Accessories", "details": ""},
+          {"id": "eq-bosu-ball", "name": "BOSU ball", "category": "Accessories", "details": ""},
+          {"id": "eq-medicine-ball", "name": "Medicine ball", "category": "Accessories", "details": ""},
+          {"id": "eq-slam-ball", "name": "Slam ball", "category": "Accessories", "details": ""},
+          {"id": "eq-wall-ball", "name": "Wall ball", "category": "Accessories", "details": ""},
+          {"id": "eq-sandbag", "name": "Sandbag", "category": "Accessories", "details": ""},
+          {"id": "eq-weight-vest", "name": "Weight vest", "category": "Accessories", "details": ""},
+          {"id": "eq-dip-belt", "name": "Dip belt", "category": "Accessories", "details": ""},
+          {"id": "eq-lifting-chains", "name": "Lifting chains", "category": "Accessories", "details": ""},
+          {"id": "eq-plyometric-box", "name": "Plyometric box", "category": "Accessories", "details": ""},
+          {"id": "eq-aerobic-step", "name": "Aerobic step", "category": "Accessories", "details": ""},
+          {"id": "eq-jump-rope", "name": "Jump rope", "category": "Accessories", "details": ""},
+          {"id": "eq-battle-ropes", "name": "Battle ropes", "category": "Accessories", "details": ""},
+          {"id": "eq-push-up-handles", "name": "Push-up handles", "category": "Accessories", "details": ""},
+          {"id": "eq-parallettes", "name": "Parallettes", "category": "Accessories", "details": ""},
+          {"id": "eq-sliders", "name": "Sliders", "category": "Accessories", "details": ""},
+          {"id": "eq-balance-board", "name": "Balance board", "category": "Accessories", "details": ""},
+          {"id": "eq-foam-roller", "name": "Foam roller", "category": "Accessories", "details": ""},
+          {"id": "eq-sled", "name": "Sled", "category": "Accessories", "details": ""},
+          {"id": "eq-sled-harness", "name": "Sled harness", "category": "Accessories", "details": ""},
+          {"id": "eq-agility-ladder", "name": "Agility ladder", "category": "Accessories", "details": ""},
+          {"id": "eq-farmer-carry-handles", "name": "Farmer carry handles", "category": "Accessories", "details": ""},
+          {"id": "eq-wrist-roller", "name": "Wrist roller", "category": "Accessories", "details": ""},
+          {"id": "eq-grip-trainer", "name": "Grip trainer", "category": "Accessories", "details": ""}
+        ]
+        """#.data(using: .utf8)!
+        return (try? JSONDecoder().decode([GymEquipment].self, from: data)) ?? []
+    }()
+
 }
 
 struct Gym: Codable, Identifiable, Equatable {
@@ -1502,6 +1623,7 @@ struct Gym: Codable, Identifiable, Equatable {
         var lines = [
             "Help me build a workout using this gym inventory.",
             "Use only the listed equipment and bodyweight. Do not assume unlisted machines, attachments, or weight ranges are available. Ask about anything missing.",
+            "Equipment alternatives identify the main implement or station. Check that any supporting bench, rack, plates, or attachments needed for the movement are also available.",
             "Ask me about my goals, experience, weekly schedule, session length, and limitations before suggesting a plan.",
             "", "Gym: \(name)"
         ]
@@ -1535,16 +1657,16 @@ struct Gym: Codable, Identifiable, Equatable {
 }
 
 struct EquipmentAlternative: Codable, Equatable, Identifiable {
-    var gymId: String
+    var gymId: String? = nil
     var equipmentId: String
-    var id: String { "\(gymId)/\(equipmentId)" }
+    var id: String { "\(gymId ?? "library")/\(equipmentId)" }
 }
 
 extension Exercise {
     func equipmentSummary(at gym: Gym) -> String {
         let refs = equipmentAlternatives ?? []
         guard !refs.isEmpty else { return "No equipment requirement recorded" }
-        let available = gym.equipment.filter { item in refs.contains { $0.gymId == gym.id && $0.equipmentId == item.id } }
+        let available = gym.equipment.filter { item in refs.contains { ($0.gymId == nil && $0.equipmentId == item.libraryID) || ($0.gymId == gym.id && $0.equipmentId == item.id) } }
         return available.isEmpty ? "No recorded alternative at this gym" : available.map(\.name).joined(separator: " OR ")
     }
 }

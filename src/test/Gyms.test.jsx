@@ -4,17 +4,19 @@ import Gyms from '../pages/Gyms.jsx';
 import { saveGym, deleteGym } from '../api.js';
 import { gymBrief } from '../gyms.js';
 
-vi.mock('../api.js', () => ({ saveGym: vi.fn(), deleteGym: vi.fn() }));
+vi.mock('../api.js', () => ({ saveGym: vi.fn(), deleteGym: vi.fn(), getEquipment: () => [{ id: 'eq-dumbbells', name: 'Dumbbells', category: 'Free weights', details: '' }], getGyms: () => [] }));
 const gym = { id: 'home', name: 'Home', notes: 'Garage', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '5–50 lb per hand' }] };
 beforeEach(() => vi.clearAllMocks());
 
 describe('gym inventory', () => {
-  it('creates a gym with common equipment and custom details', async () => {
+  it('creates a gym from the shared library with gym-specific details', async () => {
     const onUpdate = vi.fn(); saveGym.mockResolvedValue([gym]);
     render(<Gyms gyms={[]} onUpdate={onUpdate} />);
     fireEvent.click(screen.getByText('Create your first gym'));
     fireEvent.change(screen.getByLabelText('Gym name'), { target: { value: 'Home' } });
-    fireEvent.click(screen.getByText('+ Dumbbells'));
+    fireEvent.click(screen.getByText('Choose equipment'));
+    fireEvent.click(screen.getByLabelText('Dumbbells'));
+    fireEvent.click(screen.getByText('Done'));
     fireEvent.change(screen.getByLabelText('Details'), { target: { value: '5–50 lb per hand' } });
     fireEvent.click(screen.getByText('Save gym'));
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith([gym]));

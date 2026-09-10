@@ -4,6 +4,7 @@ import WorkoutLog from '../pages/WorkoutLog.jsx';
 import { saveLog, saveExercise } from '../api.js';
 
 vi.mock('../api.js', () => ({
+  getEquipment: vi.fn(() => []),
   saveLog: vi.fn(async (log) => [log]),
   deleteLog: vi.fn(async () => []),
   saveExercise: vi.fn(async (exercise) => [exercise]),

@@ -1,7 +1,7 @@
 /**
  * Default exercises seeded for new users on their first GET /exercises.
  */
-export const DEFAULT_EXERCISES = [
+const exercises = [
   // Chest
   { name: 'Bench Press', muscleGroup: 'Chest', notes: 'Barbell flat bench' },
   { name: 'Incline Bench Press', muscleGroup: 'Chest', notes: 'Barbell incline bench' },
@@ -93,3 +93,80 @@ export const DEFAULT_EXERCISES = [
   { name: 'Stair Climber', muscleGroup: 'Cardio', notes: '' },
   { name: 'Elliptical', muscleGroup: 'Cardio', notes: '' },
 ];
+
+const EQUIPMENT_BY_EXERCISE = {
+  "Bench Press": [{"equipmentId": "eq-barbell-plates"}],
+  "Incline Bench Press": [{"equipmentId": "eq-barbell-plates"}],
+  "Dumbbell Bench Press": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Incline Dumbbell Press": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Chest Fly": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}, {"equipmentId": "eq-chest-fly-pec-deck"}],
+  "Cable Crossover": [{"equipmentId": "eq-cable-crossover-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}],
+  "Dips (Chest)": [{"equipmentId": "eq-dip-station"}, {"equipmentId": "eq-assisted-pull-up-dip-machine"}],
+  "Lat Pulldown": [{"equipmentId": "eq-lat-pulldown"}],
+  "Seated Cable Row": [{"equipmentId": "eq-seated-cable-row"}],
+  "Barbell Row": [{"equipmentId": "eq-barbell-plates"}],
+  "Dumbbell Row": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "T-Bar Row": [{"equipmentId": "eq-t-bar-row-machine"}, {"equipmentId": "eq-landmine-attachment"}],
+  "Pull-Up": [{"equipmentId": "eq-pull-up-bar"}, {"equipmentId": "eq-assisted-pull-up-dip-machine"}],
+  "Face Pull": [{"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}],
+  "Overhead Press": [{"equipmentId": "eq-barbell-plates"}],
+  "Dumbbell Shoulder Press": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Lateral Raise": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-lateral-raise-machine"}],
+  "Front Raise": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-weight-plates"}, {"equipmentId": "eq-cable-station"}],
+  "Reverse Fly": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-dual-adjustable-pulley"}, {"equipmentId": "eq-rear-delt-fly-machine"}],
+  "Arnold Press": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Barbell Curl": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-fixed-barbells"}],
+  "Dumbbell Curl": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Hammer Curl": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Preacher Curl": [{"equipmentId": "eq-ez-curl-bar"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-biceps-curl-machine"}],
+  "Cable Curl": [{"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}],
+  "Incline Dumbbell Curl": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Tricep Pushdown": [{"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}],
+  "Overhead Tricep Extension": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-cable-station"}],
+  "Skull Crusher": [{"equipmentId": "eq-ez-curl-bar"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Close-Grip Bench Press": [{"equipmentId": "eq-barbell-plates"}],
+  "Dips (Tricep)": [{"equipmentId": "eq-dip-station"}, {"equipmentId": "eq-assisted-pull-up-dip-machine"}],
+  "Barbell Squat": [{"equipmentId": "eq-barbell-plates"}],
+  "Front Squat": [{"equipmentId": "eq-barbell-plates"}],
+  "Leg Press": [{"equipmentId": "eq-leg-press"}],
+  "Leg Extension": [{"equipmentId": "eq-leg-extension"}],
+  "Goblet Squat": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-kettlebells"}],
+  "Bulgarian Split Squat": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-barbell-plates"}],
+  "Hack Squat": [{"equipmentId": "eq-hack-squat-machine"}],
+  "Walking Lunge": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}, {"equipmentId": "eq-barbell-plates"}],
+  "Romanian Deadlift": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Leg Curl": [{"equipmentId": "eq-seated-leg-curl"}, {"equipmentId": "eq-lying-leg-curl"}, {"equipmentId": "eq-standing-leg-curl"}],
+  "Stiff-Leg Deadlift": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Good Morning": [{"equipmentId": "eq-barbell-plates"}],
+  "Hip Thrust": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-smith-machine"}, {"equipmentId": "eq-hip-thrust-machine"}],
+  "Cable Kickback": [{"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}],
+  "Glute Bridge": [],
+  "Standing Calf Raise": [{"equipmentId": "eq-standing-calf-raise-machine"}, {"equipmentId": "eq-smith-machine"}],
+  "Seated Calf Raise": [{"equipmentId": "eq-seated-calf-raise-machine"}],
+  "Cable Crunch": [{"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dual-adjustable-pulley"}],
+  "Hanging Leg Raise": [{"equipmentId": "eq-pull-up-bar"}, {"equipmentId": "eq-dip-station"}],
+  "Ab Rollout": [{"equipmentId": "eq-ab-wheel"}],
+  "Plank": [],
+  "Russian Twist": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-weight-plates"}, {"equipmentId": "eq-medicine-ball"}],
+  "Woodchop": [{"equipmentId": "eq-cable-station"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Wrist Curl": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Reverse Wrist Curl": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Farmer Walk": [{"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-trap-bar"}, {"equipmentId": "eq-farmer-carry-handles"}],
+  "Deadlift": [{"equipmentId": "eq-barbell-plates"}],
+  "Clean and Press": [{"equipmentId": "eq-barbell-plates"}, {"equipmentId": "eq-dumbbells"}, {"equipmentId": "eq-adjustable-dumbbells"}],
+  "Kettlebell Swing": [{"equipmentId": "eq-kettlebells"}],
+  "Treadmill": [{"equipmentId": "eq-treadmill"}],
+  "Stationary Bike": [{"equipmentId": "eq-stationary-bike"}, {"equipmentId": "eq-recumbent-bike"}, {"equipmentId": "eq-spin-bike"}],
+  "Rowing Machine": [{"equipmentId": "eq-rowing-machine"}],
+  "Stair Climber": [{"equipmentId": "eq-stair-climber"}, {"equipmentId": "eq-step-mill"}],
+  "Elliptical": [{"equipmentId": "eq-elliptical"}]
+};
+
+export const DEFAULT_EXERCISES = exercises.map((exercise) => ({ ...exercise, equipmentAlternatives: EQUIPMENT_BY_EXERCISE[exercise.name] }));
+
+// Enrich legacy preloaded exercises without overwriting any explicit user selection.
+export function withDefaultEquipment(exercise) {
+  if (exercise.equipmentAlternatives !== undefined) return exercise;
+  const preset = DEFAULT_EXERCISES.find((item) => item.name === exercise.name && item.muscleGroup === exercise.muscleGroup);
+  return preset ? { ...exercise, equipmentAlternatives: preset.equipmentAlternatives } : exercise;
+}

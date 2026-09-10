@@ -40,13 +40,13 @@ struct AppShell: View {
     @State private var showingSyncConflicts = false
 
     var body: some View {
-        tabShell
-            .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     Button("Nutrition · Macrovana") { UIApplication.shared.open(URL(string: "dailymacros://companion")!, options: [:]) { opened in if !opened { DispatchQueue.main.async { UIApplication.shared.open(URL(string: "https://macrovana.com")!) } } } }
                     Spacer()
                     Label("Training · Forge", systemImage: "dumbbell.fill").fontWeight(.semibold)
                 }.font(.caption).padding(.horizontal, 16).padding(.vertical, 10).background(Theme.surface)
+                tabShell.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.background)
@@ -173,6 +173,10 @@ private struct SettingsPage: View {
                         AccountSettingsCard {
                             NavigationLink { GymsView() } label: {
                                 Label("Gyms & equipment", systemImage: "building.2")
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+                            }
+                            NavigationLink { EquipmentLibraryView() } label: {
+                                Label("Equipment library", systemImage: "dumbbell")
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
                             }
                         }
@@ -992,6 +996,7 @@ private struct ImportPreviewSheet: View {
                     LabeledContent("Workouts", value: "\(draft.preview.counts.logs)")
                     LabeledContent("Programs", value: "\(draft.preview.counts.programs)")
                     LabeledContent("Gyms", value: "\(draft.preview.counts.gyms)")
+                    LabeledContent("Equipment", value: "\(draft.preview.counts.equipment)")
                     LabeledContent("Settings", value: "\(draft.preview.counts.settings)")
                 } header: {
                     Text("Preview")

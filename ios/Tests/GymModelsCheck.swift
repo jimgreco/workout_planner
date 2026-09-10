@@ -36,6 +36,14 @@ struct GymModelsCheck {
         precondition(gym.isValid)
         precondition(!Gym(name: " ").isValid)
         precondition(!Gym(name: "Home", equipment: [GymEquipment()]).isValid)
+        precondition(GymEquipment.preloaded.count == 112)
+        precondition(Set(GymEquipment.preloaded.map(\.id)).count == 112)
+        let libraryExercise = Exercise(name: "Press", equipmentAlternatives: [EquipmentAlternative(equipmentId: "eq-dumbbells")])
+        let linkedGym = Gym(name: "Hotel", equipment: [GymEquipment(name: "Dumbbells", category: "Free weights", equipmentId: "eq-dumbbells")])
+        precondition(libraryExercise.equipmentSummary(at: linkedGym) == "Dumbbells")
+        let libraryBackup = ForgeExportPayload(exercises: [libraryExercise], gyms: [linkedGym], equipment: GymEquipment.preloaded)
+        let decodedLibraryBackup = try decoder.decode(ForgeExportPayload.self, from: JSONEncoder().encode(libraryBackup))
+        precondition(decodedLibraryBackup == libraryBackup)
         print("Gym model checks passed: legacy decoding, alternatives, gym matching, backup round-trip, brief, and limits.")
     }
 }

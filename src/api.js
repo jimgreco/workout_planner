@@ -10,6 +10,7 @@
 
 import { getStoredCredential, DEV_BYPASS } from './auth.js';
 import { normalizeProgram } from './programs.js';
+import { DEFAULT_EQUIPMENT } from '../backend/src/default-equipment.mjs';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -23,6 +24,7 @@ export class AuthError extends Error {
 
 // ── In-memory cache ────────────────────────────────────────────────────────────
 const cache = {
+  equipment: null,
   gyms: null,
   exercises: /** @type {any[]|null} */ (null),
   templates: /** @type {any[]|null} */ (null),
@@ -311,6 +313,7 @@ export function getPendingConflicts() {
 /** Clear the cache (called on sign-out). */
 export function resetData() {
   cache.gyms = null;
+  cache.equipment = null;
   cache.exercises = null;
   cache.templates = null;
   cache.logs      = null;
@@ -377,6 +380,7 @@ export async function initData() {
   // In dev bypass mode with no real API configured, start with empty collections.
   if (DEV_BYPASS && !BASE_URL) {
     cache.gyms = [];
+    cache.equipment = structuredClone(DEFAULT_EQUIPMENT);
     cache.exercises = [];
     cache.templates = [];
     cache.logs      = [];
@@ -384,15 +388,17 @@ export async function initData() {
     cache.settings  = { ...DEFAULT_SETTINGS };
     return;
   }
-  const [exercises, templates, logs, programs, settings, gyms] = await Promise.all([
+  const [exercises, templates, logs, programs, settings, gyms, equipment] = await Promise.all([
     request('GET', '/exercises'),
     request('GET', '/templates'),
     request('GET', '/logs'),
     request('GET', '/programs'),
     request('GET', '/settings'),
     request('GET', '/gyms'),
+    request('GET', '/equipment'),
   ]);
   cache.gyms = gyms;
+  cache.equipment = equipment;
   cache.exercises = mergePendingCollection('exercises', exercises);
   cache.templates = mergePendingCollection('templates', templates);
   cache.logs      = mergePendingLogs(logs);
@@ -402,6 +408,25 @@ export async function initData() {
   ));
   cache.settings  = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
   dispatchSyncStatus();
+}
+
+function editedEquipmentCount(equipment = []) {
+  return equipment.filter((item) => !DEFAULT_EQUIPMENT.some((entry) => entry.id === item.id && entry.name === item.name && entry.category === item.category && entry.details === item.details)).length;
+}
+export function getEquipment() { return [...(cache.equipment ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
+export async function saveEquipment(item) {
+  const body = { ...item, id: item.id || crypto.randomUUID() };
+  if (getEquipment().some((entry) => entry.id !== body.id && entry.name.trim().toLowerCase() === body.name.trim().toLowerCase())) throw new Error('Equipment with that name already exists in your library.');
+  const saved = (DEV_BYPASS && !BASE_URL) ? body : await request('PUT', `/equipment/${body.id}`, withExpectedRevision(body));
+  cache.equipment = [...getEquipment().filter((entry) => entry.id !== saved.id), saved];
+  cache.gyms = getGyms().map((gym) => ({ ...gym, equipment: gym.equipment.map((entry) => (entry.equipmentId ?? entry.id) === saved.id ? { ...entry, name: saved.name, category: saved.category } : entry) }));
+  return getEquipment();
+}
+export async function deleteEquipment(id) {
+  if (getGyms().some((gym) => gym.equipment.some((item) => (item.equipmentId ?? item.id) === id)) || getExercises().some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.equipmentId === id))) throw new Error('Remove this equipment from gyms and exercises before deleting it.');
+  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/equipment/${id}`);
+  cache.equipment = getEquipment().filter((entry) => entry.id !== id);
+  return getEquipment();
 }
 
 // Gyms save online so a failed request leaves the editor and cached inventory intact.
@@ -779,7 +804,7 @@ export function getLogsByDate(dateStr) {
 
 // ── Account / Support ─────────────────────────────────────────────────────────
 export async function exportData() {
-  if (DEV_BYPASS && !BASE_URL) return { exportedAt: new Date().toISOString(), exercises: getExercises(), templates: getTemplates(), logs: getLogs(), programs: getPrograms(), gyms: getGyms(), settings: getSettings() };
+  if (DEV_BYPASS && !BASE_URL) return { exportedAt: new Date().toISOString(), exercises: getExercises(), templates: getTemplates(), logs: getLogs(), programs: getPrograms(), gyms: getGyms(), equipment: getEquipment(), settings: getSettings() };
   return request('GET', '/export');
 }
 
@@ -789,17 +814,20 @@ export function previewImportData(data, current = {
   logs: getLogs(),
   programs: getPrograms(),
   gyms: getGyms(),
+  equipment: getEquipment(),
 }) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Import file must be a Forge JSON export.');
   }
   const gyms = Array.isArray(data.gyms) ? data.gyms : [];
+  const equipment = Array.isArray(data.equipment) ? data.equipment : [];
   const exercises = Array.isArray(data.exercises) ? data.exercises : [];
   const templates = Array.isArray(data.templates) ? data.templates : [];
   const logs = Array.isArray(data.logs) ? data.logs : [];
   const programs = Array.isArray(data.programs) ? data.programs : [];
   const settings = data.settings && typeof data.settings === 'object';
   const existingIds = {
+    equipment: new Set((current.equipment ?? []).map((item) => item.id)),
     gyms: new Set((current.gyms ?? []).map((item) => item.id)),
     exercises: new Set((current.exercises ?? []).map((item) => item.id)),
     templates: new Set((current.templates ?? []).map((item) => item.id)),
@@ -807,6 +835,7 @@ export function previewImportData(data, current = {
     programs: new Set((current.programs ?? []).map((item) => item.id)),
   };
   const duplicateIds = {
+    equipment: equipment.filter((item) => existingIds.equipment.has(item.id)).length,
     gyms: gyms.filter((item) => existingIds.gyms.has(item.id)).length,
     exercises: exercises.filter((item) => existingIds.exercises.has(item.id)).length,
     templates: templates.filter((item) => existingIds.templates.has(item.id)).length,
@@ -817,6 +846,7 @@ export function previewImportData(data, current = {
     exportedAt: typeof data.exportedAt === 'string' ? data.exportedAt : '',
     counts: {
       gyms: gyms.length,
+      equipment: equipment.length,
       exercises: exercises.length,
       templates: templates.length,
       logs: logs.length,
@@ -824,12 +854,12 @@ export function previewImportData(data, current = {
       settings: settings ? 1 : 0,
     },
     duplicateIds,
-    isEmpty: exercises.length + templates.length + logs.length + programs.length + gyms.length === 0,
+    isEmpty: exercises.length + templates.length + logs.length + programs.length + gyms.length + equipment.length === 0,
     targetIsEmpty: (current.exercises?.length ?? 0)
       + (current.templates?.length ?? 0)
       + (current.logs?.length ?? 0)
       + (current.programs?.length ?? 0)
-      + (current.gyms?.length ?? 0) === 0,
+      + (current.gyms?.length ?? 0) + editedEquipmentCount(current.equipment) === 0,
   };
 }
 
@@ -857,12 +887,13 @@ function uniqueImportedName(name, existingNames, renamed) {
 
 function importDataLocally(data, mode) {
   const gyms = Array.isArray(data.gyms) ? data.gyms : [];
+  const equipment = Array.isArray(data.equipment) ? data.equipment : [];
   const exercises = Array.isArray(data.exercises) ? data.exercises : [];
   const templates = Array.isArray(data.templates) ? data.templates : [];
   const logs = Array.isArray(data.logs) ? data.logs : [];
   const programs = Array.isArray(data.programs) ? data.programs.map((program) => normalizeProgram(program)) : [];
   const settings = data.settings && typeof data.settings === 'object' ? data.settings : undefined;
-  const targetIsEmpty = getExercises().length + getTemplates().length + getLogs().length + getPrograms().length + getGyms().length === 0;
+  const targetIsEmpty = getExercises().length + getTemplates().length + getLogs().length + getPrograms().length + getGyms().length + editedEquipmentCount(getEquipment()) === 0;
   if (mode === 'emptyOnly' && !targetIsEmpty) {
     const error = new Error('Import can only restore into an empty account.');
     error.status = 409;
@@ -871,6 +902,7 @@ function importDataLocally(data, mode) {
 
   if (mode === 'emptyOnly') {
     cache.gyms = gyms;
+    cache.equipment = equipment.length ? equipment : structuredClone(DEFAULT_EQUIPMENT);
     cache.exercises = exercises;
     cache.templates = templates;
     cache.logs = logs;
@@ -880,7 +912,7 @@ function importDataLocally(data, mode) {
     ));
     if (settings) cache.settings = { ...DEFAULT_SETTINGS, ...settings };
     return {
-      imported: { exercises: exercises.length, templates: templates.length, logs: logs.length, programs: programs.length, gyms: gyms.length, settings: Boolean(settings) },
+      imported: { exercises: exercises.length, templates: templates.length, logs: logs.length, programs: programs.length, gyms: gyms.length, equipment: equipment.length, settings: Boolean(settings) },
       renamed: { exercises: [], templates: [], logs: [], programs: [], gyms: [] },
       skipped: { exercises: [], templates: [], logs: [], programs: [], gyms: [] },
     };
@@ -944,6 +976,8 @@ function importDataLocally(data, mode) {
     return [{ ...gym, name: uniqueImportedName(gym.name, gymNames, renamed.gyms) }];
   });
   cache.gyms = [...getGyms(), ...newGyms];
+  const newEquipment = equipment.filter((entry) => !getEquipment().some((item) => item.id === entry.id));
+  cache.equipment = [...getEquipment(), ...newEquipment];
   cache.exercises = [...getExercises(), ...newExercises];
   cache.templates = [...getTemplates(), ...newTemplates];
   cache.logs = [...getLogs(), ...newLogs];
@@ -954,7 +988,7 @@ function importDataLocally(data, mode) {
   if (settings) cache.settings = { ...DEFAULT_SETTINGS, ...settings };
 
   return {
-    imported: { exercises: newExercises.length, templates: newTemplates.length, logs: newLogs.length, programs: newPrograms.length, gyms: newGyms.length, settings: Boolean(settings) },
+    imported: { exercises: newExercises.length, templates: newTemplates.length, logs: newLogs.length, programs: newPrograms.length, gyms: newGyms.length, equipment: newEquipment.length, settings: Boolean(settings) },
     renamed,
     skipped,
   };

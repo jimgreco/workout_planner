@@ -36,7 +36,7 @@ vi.mock('../auth.js', () => ({
 }));
 
 function mockFetch(responseMap) {
-  responseMap = { 'GET /gyms': () => ({ body: [] }), ...responseMap };
+  responseMap = { 'GET /equipment': () => ({ body: [] }), 'GET /gyms': () => ({ body: [] }), ...responseMap };
   globalThis.fetch = vi.fn(async (url, opts) => {
     const method = opts?.method ?? 'GET';
     const path   = url.replace(/(https?:\/\/[^/]*)/, '');
@@ -92,7 +92,7 @@ describe('initData', () => {
     expect(getLogs()).toEqual([LOG]);
     expect(getPrograms()).toEqual([PROGRAM]);
     expect(getSettings()).toEqual({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(6);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(7);
   });
 });
 
@@ -487,8 +487,8 @@ describe('account and support', () => {
     });
 
     expect(preview.exportedAt).toBe('2026-06-08T20:15:00.000Z');
-    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, settings: 1 });
-    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1, programs: 0, gyms: 0 });
+    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, equipment: 0, settings: 1 });
+    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1, programs: 0, gyms: 0, equipment: 0 });
     expect(preview.targetIsEmpty).toBe(false);
   });
 

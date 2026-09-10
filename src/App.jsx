@@ -955,6 +955,7 @@ export default function App() {
                     <span>Programs</span>
                     <strong>{importDraft.preview.counts.programs}</strong>
                   </div>
+                  <div><span>Equipment</span><strong>{importDraft.preview.counts.equipment}</strong></div>
                   <div><span>Gyms</span><strong>{importDraft.preview.counts.gyms}</strong>
                   </div>
                   <div>

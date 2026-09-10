@@ -18,6 +18,7 @@ struct GymsView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink("Equipment library") { EquipmentLibraryView() }
                 Text("Record what’s available. Assign routines to a gym and share its equipment with AI when planning workouts.")
                     .foregroundStyle(Theme.muted)
             }
@@ -38,7 +39,7 @@ struct GymsView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Label(gym.name, systemImage: "building.2")
                                     .font(.headline)
-                                Text("\(gym.equipment.count) equipment entries · \(store.templates.filter { $0.gymId == gym.id }.count) routines")
+                                Text("\(gym.equipment.count) equipment \(gym.equipment.count == 1 ? "entry" : "entries") · \(store.templates.filter { $0.gymId == gym.id }.count) routines")
                                     .font(.caption).foregroundStyle(Theme.muted)
                             }
                         }
@@ -130,23 +131,24 @@ private struct GymEditor: View {
                     TextField("Gym notes", text: $gym.notes, axis: .vertical).lineLimit(2...5)
                 }
                 Section {
-                    Menu("Add common equipment", systemImage: "plus") {
-                        ForEach(GymEquipment.quickAdd, id: \.0) { name, category in
-                            Button(name) { gym.equipment.append(GymEquipment(name: name, category: category)) }
-                                .disabled(gym.equipment.contains { $0.name == name })
+                    NavigationLink("Choose equipment") {
+                        EquipmentLibraryView(selectedIDs: Set(gym.equipment.map(\.libraryID))) { entry in
+                            if gym.equipment.contains(where: { $0.libraryID == entry.id }) {
+                                gym.equipment.removeAll { $0.libraryID == entry.id }
+                            } else if gym.equipment.count < 200 {
+                                var item = GymEquipment(name: entry.name, category: entry.category, details: "")
+                                item.equipmentId = entry.id
+                                gym.equipment.append(item)
+                            }
                         }
                     }.disabled(gym.equipment.count >= 200)
-                    Button("Add custom equipment", systemImage: "plus") { gym.equipment.append(GymEquipment()) }
-                        .disabled(gym.equipment.count >= 200)
                 } header: { Text("Equipment") } footer: {
                     Text("Record confirmed equipment. Include units, weight ranges, machine models, and attachments in the details. Up to 200 entries.")
                 }
                 ForEach($gym.equipment) { $item in
                     Section {
-                        TextField("Equipment name", text: $item.name)
-                        Picker("Category", selection: $item.category) {
-                            ForEach(GymEquipment.categories, id: \.self) { Text($0).tag($0) }
-                        }
+                        Text(item.name).font(.headline)
+                        Text(item.category).font(.caption).foregroundStyle(Theme.muted)
                         TextField("Details, e.g. 5–100 lb, 5 lb increments", text: $item.details, axis: .vertical).lineLimit(2...5)
                         Button("Remove equipment", role: .destructive) { gym.equipment.removeAll { $0.id == item.id } }
                     }
@@ -204,30 +206,126 @@ struct ExerciseEquipmentPicker: View {
     @Binding var exercise: Exercise
 
     private var refs: [EquipmentAlternative] { exercise.equipmentAlternatives ?? [] }
-    private var missing: [EquipmentAlternative] {
-        refs.filter { ref in !store.gyms.contains { gym in gym.id == ref.gymId && gym.equipment.contains { $0.id == ref.equipmentId } } }
-    }
+    private var selectedIDs: Set<String> { Set(refs.filter { $0.gymId == nil }.map(\.equipmentId)) }
 
     var body: some View {
-        if store.gyms.allSatisfy({ $0.equipment.isEmpty }) {
-            Text("Add equipment in Gyms to associate it with this exercise.").foregroundStyle(Theme.muted)
+        NavigationLink("Choose equipment (\(refs.count) selected)") {
+            EquipmentLibraryView(selectedIDs: selectedIDs) { entry in
+                let ref = EquipmentAlternative(equipmentId: entry.id)
+                exercise.equipmentAlternatives = refs.contains(ref) ? refs.filter { $0 != ref } : (refs.count < 100 ? refs + [ref] : refs)
+            }
         }
-        NavigationLink("Manage gyms & equipment") { GymsView() }
-        ForEach(store.gyms) { gym in
-            ForEach(gym.equipment) { item in
-                let ref = EquipmentAlternative(gymId: gym.id, equipmentId: item.id)
-                Toggle("\(gym.name) · \(item.name)", isOn: Binding(
-                    get: { refs.contains(ref) },
-                    set: { selected in
-                        exercise.equipmentAlternatives = selected ? refs + [ref] : refs.filter { $0 != ref }
+        ForEach(refs) { ref in
+            let legacyGym = store.gyms.first { $0.id == ref.gymId }
+            let name = ref.gymId == nil ? store.equipment.first { $0.id == ref.equipmentId }?.name : legacyGym?.equipment.first { $0.id == ref.equipmentId }?.name
+            HStack {
+                Text(name ?? "Unavailable equipment")
+                Spacer()
+                Button("Remove", role: .destructive) { exercise.equipmentAlternatives = refs.filter { $0 != ref } }
+            }
+        }
+    }
+}
+
+struct EquipmentLibraryView: View {
+    @EnvironmentObject private var store: WorkoutStore
+    var selectedIDs: Set<String> = []
+    var onSelect: ((GymEquipment) -> Void)? = nil
+    @State private var search = ""
+    @State private var editing: GymEquipment?
+    @State private var deleting: GymEquipment?
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            if onSelect != nil {
+                Section { Text("Select equipment from your library. Add an entry if you can’t find it.").foregroundStyle(Theme.muted) }
+            }
+            ForEach(GymEquipment.categories, id: \.self) { category in
+                let entries = store.equipment.filter { $0.category == category && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.details.localizedCaseInsensitiveContains(search)) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                if !entries.isEmpty {
+                    Section(category) {
+                        ForEach(entries) { entry in
+                            Button {
+                                if let onSelect { onSelect(entry) } else { editing = entry }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(entry.name).foregroundStyle(Theme.text)
+                                        if !entry.details.isEmpty { Text(entry.details).font(.caption).foregroundStyle(Theme.muted) }
+                                    }
+                                    Spacer()
+                                    if onSelect != nil { Image(systemName: selectedIDs.contains(entry.id) ? "checkmark.circle.fill" : "circle") }
+                                    else { Image(systemName: "chevron.right").foregroundStyle(Theme.muted) }
+                                }
+                            }
+                            .swipeActions {
+                                Button("Edit") { editing = entry }.tint(Theme.accent)
+                                Button("Delete", role: .destructive) { deleting = entry }
+                            }
+                        }
                     }
-                )).disabled(!refs.contains(ref) && refs.count >= 100)
+                }
+            }
+            if !search.isEmpty && !store.equipment.contains(where: { $0.name.localizedCaseInsensitiveContains(search) || $0.details.localizedCaseInsensitiveContains(search) }) {
+                Text("No equipment matches your search. Use + to add it.").foregroundStyle(Theme.muted)
             }
         }
-        ForEach(missing) { ref in
-            Button("Remove unavailable equipment (\(ref.gymId) / \(ref.equipmentId))", role: .destructive) {
-                exercise.equipmentAlternatives = refs.filter { $0 != ref }
+        .navigationTitle("Equipment library")
+        .searchable(text: $search, prompt: "Search equipment")
+        .toolbar { Button("Add equipment", systemImage: "plus") { editing = GymEquipment(name: search) } }
+        .sheet(item: $editing) { EquipmentLibraryEditor(item: $0) }
+        .alert("Delete \(deleting?.name ?? "equipment")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Cancel", role: .cancel) { deleting = nil }
+            Button("Delete", role: .destructive) {
+                guard let item = deleting else { return }
+                Task {
+                    do { try await store.deleteEquipment(item.id); deleting = nil }
+                    catch { deleting = nil; self.error = error.localizedDescription }
+                }
             }
+        } message: { Text("Equipment used by a gym or exercise must be unassigned first.") }
+        .alert("Could not delete equipment", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            Button("OK") { error = nil }
+        } message: { Text(error ?? "") }
+    }
+}
+
+private struct EquipmentLibraryEditor: View {
+    @EnvironmentObject private var store: WorkoutStore
+    @Environment(\.dismiss) private var dismiss
+    @State var item: GymEquipment
+    @State private var busy = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Equipment name", text: $item.name)
+                    Picker("Category", selection: $item.category) {
+                        ForEach(GymEquipment.categories, id: \.self) { Text($0).tag($0) }
+                    }
+                    TextField("Description", text: $item.details, axis: .vertical)
+                } header: { Text("Equipment") } footer: { Text("Available for every gym and exercise. Record gym-specific models and weight ranges in the gym inventory.") }
+                if let error { Text(error).foregroundStyle(Theme.danger) }
+            }
+            .disabled(busy)
+            .navigationTitle(store.equipment.contains { $0.id == item.id } ? "Edit equipment" : "New equipment")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(busy ? "Saving…" : "Save") {
+                        Task {
+                            busy = true; error = nil
+                            defer { busy = false }
+                            do { _ = try await store.saveEquipment(item); dismiss() }
+                            catch { self.error = error.localizedDescription }
+                        }
+                    }.disabled(busy || item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || item.name.utf16.count > 120 || item.details.utf16.count > 500)
+                }
+            }
+            .interactiveDismissDisabled(busy)
         }
     }
 }

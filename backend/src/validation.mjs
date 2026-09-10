@@ -272,6 +272,14 @@ export function validateSettings(body) {
   };
 }
 
+export function validateEquipment(body, pathId) {
+  assertObject(body, 'equipment');
+  assertAllowedKeys(body, new Set(['id', 'name', 'category', 'details', 'revision', 'expectedRevision', 'updatedAt']), 'equipment');
+  requireMatchingId(body, pathId);
+  optionalRevision(body.expectedRevision, 'expectedRevision');
+  return validateGym({ id: 'validation', name: 'Library', equipment: [{ id: pathId, name: body.name, category: body.category, details: body.details }] }, 'validation').equipment[0];
+}
+
 export function validateGym(body, pathId) {
   assertObject(body, 'gym');
   assertAllowedKeys(body, new Set(['id', 'name', 'notes', 'equipment', 'revision', 'expectedRevision', 'updatedAt']), 'gym');
@@ -282,7 +290,7 @@ export function validateGym(body, pathId) {
   const equipment = body.equipment.map((item, index) => {
     const label = `equipment[${index}]`;
     assertObject(item, label);
-    assertAllowedKeys(item, new Set(['id', 'name', 'category', 'details']), label);
+    assertAllowedKeys(item, new Set(['id', 'equipmentId', 'name', 'category', 'details']), label);
     validateId(item.id, `${label}.id`);
     if (ids.has(item.id)) fail('equipment IDs must be unique');
     ids.add(item.id);
@@ -290,6 +298,7 @@ export function validateGym(body, pathId) {
     if (!['Free weights', 'Machines', 'Cables', 'Benches & racks', 'Cardio', 'Accessories', 'Other'].includes(category)) fail(`${label}.category is invalid`);
     return {
       id: item.id,
+      ...(item.equipmentId ? { equipmentId: validateId(item.equipmentId, `${label}.equipmentId`) } : {}),
       name: stringValue(item.name, `${label}.name`, { required: true, max: 120 }).trim(),
       category,
       details: stringValue(item.details, `${label}.details`, { max: 500 }) ?? '',
@@ -334,12 +343,12 @@ export function validateExercise(body, pathId) {
       const label = `equipmentAlternatives[${index}]`;
       assertObject(entry, label);
       assertAllowedKeys(entry, new Set(['gymId', 'equipmentId']), label);
-      const gymId = validateId(entry.gymId, `${label}.gymId`);
+      const gymId = entry.gymId === undefined ? undefined : validateId(entry.gymId, `${label}.gymId`);
       const equipmentId = validateId(entry.equipmentId, `${label}.equipmentId`);
       const key = `${gymId}/${equipmentId}`;
       if (refs.has(key)) fail('equipmentAlternatives must be unique');
       refs.add(key);
-      return { gymId, equipmentId };
+      return { ...(gymId ? { gymId } : {}), equipmentId };
     });
   }
   const best = personalBest(body.personalBest);
@@ -568,7 +577,7 @@ export function validateImport(body) {
   assertObject(data, 'data');
   assertAllowedKeys(
     data,
-    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'programs', 'gyms', 'settings', 'feedback']),
+    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'programs', 'gyms', 'equipment', 'settings', 'feedback']),
     'data',
   );
 
@@ -602,7 +611,9 @@ export function validateImport(body) {
     return validateGym(gym, gym.id);
   });
   if (new Set(gyms.map((gym) => gym.id)).size !== gyms.length) fail('gym IDs must be unique');
-  return { mode, exportedAt, exercises, templates, logs, programs, gyms, settings };
+  const equipment = importArray(data.equipment, 'equipment', 1000).map((item) => validateEquipment(item, item.id));
+  if (new Set(equipment.map((item) => item.id)).size !== equipment.length) fail('equipment IDs must be unique');
+  return { mode, exportedAt, exercises, templates, logs, programs, gyms, equipment, settings };
 }
 
 export function validateAuthBody(body, provider) {

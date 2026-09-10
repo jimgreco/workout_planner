@@ -46,10 +46,13 @@ DynamoDB
 
 ```js
 // Exercise
-{ id, name, muscleGroup, notes, equipmentAlternatives?: [{ gymId, equipmentId }], personalBest: { weight, reps?, date? } }
+{ id, name, muscleGroup, notes, equipmentAlternatives?: [{ equipmentId }], personalBest: { weight, reps?, date? } }
+
+// Equipment library entry (preloaded and user-created share one collection)
+{ id, name, category, details }
 
 // Gym
-{ id, name, notes, equipment: [{ id, name, category, details }] }
+{ id, name, notes, equipment: [{ id, equipmentId, name, category, details }] }
 
 // Template
 { id, name, description, gymId?, exerciseItems }
@@ -65,7 +68,7 @@ DynamoDB keys:
 
 ```text
 PK = USER#<providerSub>
-SK = GYM#<id> | EXERCISE#<id> | TEMPLATE#<id> | LOG#<id> | SETTINGS | FEEDBACK#...
+SK = EQUIPMENT#<id> | GYM#<id> | EXERCISE#<id> | TEMPLATE#<id> | LOG#<id> | SETTINGS | FEEDBACK#...
 ```
 
 ## Common Commands

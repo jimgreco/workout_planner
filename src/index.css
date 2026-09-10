@@ -3623,3 +3623,14 @@ input:focus, select:focus, textarea:focus {
 .gyms-page .page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
 .gyms-page .page-header h1 { margin: 6px 0 10px; }
 .gyms-page .page-header p { max-width: 520px; }
+
+.equipment-library { display: grid; gap: 16px; min-width: 0; }
+.equipment-library-search { display: flex; flex-wrap: wrap; gap: 8px; }
+.equipment-library-search input { flex: 1 1 180px; min-width: 0; }
+.equipment-library-list { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; }
+.equipment-library-list h3 { margin: 20px 0 8px; color: var(--text-secondary); font-size: 0.85rem; }
+.equipment-library-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding: 8px 0; }
+.equipment-library-row > .checkbox-row, .equipment-library-name { flex: 1; min-width: 0; margin: 0; }
+.equipment-library-name { text-align: left; background: none; border: 0; color: var(--text); padding: 8px 0; cursor: pointer; }
+.equipment-library-row small { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+.gyms-page > .btn { margin-bottom: 16px; }

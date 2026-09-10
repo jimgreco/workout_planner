@@ -5,6 +5,7 @@ import { saveExercise } from '../api.js';
 
 // Mock api.js — functions are now async and have no userId param
 vi.mock('../api.js', () => ({
+  getEquipment: vi.fn(() => []),
   saveExercise: vi.fn(async (ex) => {
     const saved = ex.id ? ex : { ...ex, id: 'new-id' };
     return [saved];

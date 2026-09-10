@@ -1,34 +1,39 @@
-# Gyms and routine assignments
+# Gyms, equipment, and routine assignments
 
-Gyms belong to the signed-in account. A gym holds an equipment inventory; a
-routine optionally references one gym by `gymId`. Multiple routines can use the
-same gym. Routines without a gym work as before. Gym inventories are independent
-of exercise setup profiles (machine seat, grip, and load baselines).
+Each account has one equipment library. It starts with 112 editable entries for
+free weights, machines, cables and attachments, benches and racks, cardio, and
+accessories. Equipment you add uses the same list and editor as preloaded entries.
+A gym records which library entries it has, along with local details such as
+machine models, weight ranges, and access restrictions. A routine optionally
+references one gym. No equipment is automatically assumed to exist at a gym.
 
-On web, open **Build → Gyms** (or **More → Gyms** on mobile). On iPhone, use the
-building icon in **Program**, or **Settings → Gyms & equipment**. Add a gym,
-record equipment, then choose **Gym** while editing a routine. Common equipment
-shortcuts only add entries when tapped; no inventory is assumed automatically.
-
-**Build with AI** previews a text brief that can be copied on either client and
-shared on iPhone. From a routine editor it includes that routine's prescription
-and its assigned gym's equipment. The user supplies the brief to their chosen AI
-conversation; Forge does not send it automatically. Weight ranges and units,
-models, and attachments are free text in equipment details. Nothing is inferred
-about equipment that has not been recorded.
+On web, open **Build → Gyms** (or **More → Gyms** on mobile), then **Equipment
+library**. On iPhone, use **Settings → Equipment library**, or open it from Gyms
+or an exercise editor. When editing a gym, use **Choose equipment** and record
+local details below each selection. Add new entries in the library and reuse them
+across gyms and exercises. Changes to a library name or category appear wherever
+that entry is used; gym-specific details remain unchanged.
 
 ## API
 
-Use the existing API base URL and `Authorization: Bearer <app session>` for every
-request. Paths below are relative to `/api`.
+All paths are relative to `/api` and require `Authorization: Bearer <app session>`.
 
-- `GET /gyms`: list your gyms.
-- `GET /gyms/:id`: retrieve one gym; 404 if not in your account.
-- `PUT /gyms/:id`: create or replace an inventory. Use a stable client-generated ID.
-- `DELETE /gyms/:id`: remove a gym. Returns 409 while any routine references it.
-- `PUT /templates/:id`: save a routine with optional `gymId`. It must identify a
-  gym in the same account. Send `null` to unassign the routine. Omitting the
-  field preserves an existing association for compatibility with older clients.
+- `GET /equipment`: load the account’s equipment library, preloading missing entries.
+- `PUT /equipment/:id`: create or edit `{ id, name, category, details }`.
+- `DELETE /equipment/:id`: remove an unused library entry; returns 409 if a gym or
+  exercise uses it. Removed preloaded entries do not reappear on the next load.
+- `GET /gyms` and `GET /gyms/:id`: list gyms or retrieve one owned gym.
+- `PUT /gyms/:id`: create or replace a gym inventory.
+- `DELETE /gyms/:id`: remove a gym; returns 409 while a routine references it.
+- `PUT /templates/:id`: save a routine with optional `gymId`. Send `null` to
+  unassign. Omitting the field preserves the existing association for older clients.
+
+Equipment and gym names are required, up to 120 characters. Equipment descriptions
+and gym inventory details allow 500 characters; gym notes allow 2,000. Categories
+are `Free weights`, `Machines`, `Cables`, `Benches & racks`, `Cardio`, `Accessories`,
+and `Other`. A gym supports up to 200 inventory entries. Responses include
+`revision` and `updatedAt`; send `expectedRevision` when editing. PUT replaces
+other resource fields, so retain the full resource payload when changing a link.
 
 Example `PUT /gyms/home`:
 
@@ -39,84 +44,70 @@ Example `PUT /gyms/home`:
   "notes": "Garage; limited ceiling height",
   "equipment": [
     {
-      "id": "dumbbells",
+      "id": "home-dumbbells",
+      "equipmentId": "eq-adjustable-dumbbells",
       "name": "Adjustable dumbbells",
       "category": "Free weights",
       "details": "5–50 lb per hand, 5 lb increments"
     },
     {
-      "id": "bench",
+      "id": "home-bench",
+      "equipmentId": "eq-adjustable-bench",
       "name": "Adjustable bench",
       "category": "Benches & racks",
-      "details": "Flat and incline; no decline"
+      "details": "Flat and incline"
     }
   ]
 }
 ```
 
-Example `PUT /templates/home-push`:
-
-```json
-{
-  "id": "home-push",
-  "name": "Home push day",
-  "gymId": "home",
-  "exerciseItems": []
-}
-```
-
-For an existing routine, retain its full `exerciseItems` and other fields when
-setting `gymId`; PUT replaces the routine. Gym responses include `revision` and
-`updatedAt`; send the last received revision as `expectedRevision` when editing.
-A stale revision returns 409. Gym writes use the existing resource revision
-mechanism; its concurrency limitations are the same as other Forge resources.
-
-Categories: `Free weights`, `Machines`, `Cables`, `Benches & racks`, `Cardio`,
-`Accessories`, `Other`. Names are required and limited to 120 characters. Gym
-notes allow 2,000 characters. Each of up to 200 equipment entries has a unique
-ID, required name, optional category (defaults to `Other`), and up to 500
-characters of details. An empty inventory is allowed while recording a gym.
-
-Gyms use `PK = USER#<accountSub>`, `SK = GYM#<id>`. Export includes `gyms` and
-routine `gymId` values. Import accepts up to 100 gyms, preserves associations,
-skips existing gym IDs in merge mode, and renames colliding gym names. A routine
-whose gym is absent from both the import and the account rejects the import
-before writes. Old backups without gyms remain supported. Account deletion
-removes gym records too.
-
-Gym saves require a successful online request before either client updates its
-inventory. Errors retain the editor for retry. iPhone caches inventories in its
-account-owned offline snapshot for reading; gym edits are not queued offline.
-Local demo data follows the app's existing demo lifecycle.
+The inventory `id` identifies that gym’s entry; `equipmentId` identifies the
+library entry. The API resolves library names and categories from that ID.
+Gym inventory is independent of exercise setup profiles and load baselines.
 
 ## Exercise equipment alternatives
 
-Exercises optionally carry `equipmentAlternatives`, an array of zero to 100
-unique `{ "gymId": "home", "equipmentId": "dumbbells" }` references. The gym
-and equipment IDs together identify a specific inventory entry, so different
-gyms may safely use the same equipment ID. Each reference must exist in the
-same account. Multiple entries mean **OR**: any one is an acceptable alternative.
-Empty or omitted means no requirement has been recorded, and does not assert
-that the exercise is bodyweight-only.
-
-Select these in the exercise editor on web or iPhone. A routine's assigned gym
-shows the alternatives available there; the AI brief includes those matches.
-If none match, the brief explicitly says no alternative is recorded at that gym.
-Alternatives from other gyms do not imply availability at the selected gym.
-
-Example fields to include in an existing exercise's full PUT payload:
+Exercises have zero to 100 `equipmentAlternatives` referencing the equipment
+library, independently of any gym. Multiple selections mean **OR**, identifying
+alternative main implements or stations. A bench, rack, plates, or attachment
+needed to perform the movement must still be confirmed in the inventory.
 
 ```json
 {
   "equipmentAlternatives": [
-    { "gymId": "home", "equipmentId": "dumbbells" },
-    { "gymId": "downtown", "equipmentId": "chest-press" }
+    { "equipmentId": "eq-dumbbells" },
+    { "equipmentId": "eq-adjustable-dumbbells" }
   ]
 }
 ```
 
-Send `[]` to remove all associations. Omitting the field preserves existing
-associations when older clients save an exercise. Gym deletion and inventory entry removal
-are blocked while exercises reference the equipment; remove those associations
-first. Export/import preserves the references and requires the referenced gym
-inventories to be included or already present in the target account.
+All 65 preloaded exercises have mappings, with empty selections for bodyweight
+movements such as Plank. Existing exercises with a preloaded name and muscle group receive the same
+mappings when loaded; their notes and other fields remain intact. Explicit user selections, including `[]`, take precedence.
+An empty selection by itself does not prove a movement is bodyweight-only.
+Send `[]` to clear associations. Omitting the field preserves stored associations.
+
+Older `{ gymId, equipmentId }` references remain accepted. On library load,
+legacy inventories receive stable library links and old exercise references are
+converted with conditional updates. Matching equipment names reuse the preloaded
+entry; other equipment becomes a library entry. Gym details, exercise history,
+personal bests, and other user fields are preserved. A concurrent edit wins over
+a migration update, which can retry on the next load.
+
+## AI briefs and backups
+
+**Build with AI** previews a brief to copy or share into the user’s chosen AI
+conversation. Forge does not send it automatically. A routine brief includes its
+prescription and equipment alternatives available at the selected gym. Unmatched
+alternatives are reported explicitly, and supporting equipment must be checked.
+
+Export includes `equipment`, `gyms`, exercise equipment references, and routine
+`gymId`. Import accepts up to 1,000 library entries and 100 gyms. It validates
+references before writing and skips existing IDs in merge mode. Old backups
+without an equipment library remain supported. Account deletion removes library
+records and deletion markers along with the rest of the account.
+
+Equipment and gym writes require a successful online response; editors retain
+changes when a request fails. iPhone caches both in the account-owned offline
+snapshot. These edits are not queued offline. Local demo data follows the existing
+demo lifecycle.

@@ -4,6 +4,7 @@ import Templates from '../pages/Templates.jsx';
 import { saveExercise, saveLog, saveProgram, saveTemplate } from '../api.js';
 
 vi.mock('../api.js', () => ({
+  getEquipment: vi.fn(() => []),
   saveTemplate: vi.fn(async (template) => [template]),
   deleteTemplate: vi.fn(async () => []),
   saveProgram: vi.fn(async (program) => [program]),

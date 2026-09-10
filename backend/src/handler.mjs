@@ -18,12 +18,13 @@
  *   DELETE /account
  */
 
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   QueryCommand,
   PutCommand,
+  UpdateCommand,
   DeleteCommand,
   GetCommand,
   BatchWriteCommand,
@@ -32,7 +33,8 @@ import {
 import { OAuth2Client } from 'google-auth-library';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { emailAliasPk, normalizeEmail, isVerifiedEmail, resolveAccountUser } from './account-linking.mjs';
-import { DEFAULT_EXERCISES } from './default-exercises.mjs';
+import { DEFAULT_EQUIPMENT, equipmentLibraryId } from './default-equipment.mjs';
+import { DEFAULT_EXERCISES, withDefaultEquipment } from './default-exercises.mjs';
 import { createAppSession, hashUserId, verifyAppSession } from './session.mjs';
 import {
   MAX_BODY_BYTES,
@@ -40,6 +42,7 @@ import {
   validateAuthBody,
   validateExercise,
   validateGym,
+  validateEquipment,
   validateFeedback,
   validateImport,
   validateId,
@@ -71,6 +74,7 @@ const SK_PREFIX = {
   logs: 'LOG',
   programs: 'PROGRAM',
   gyms: 'GYM',
+  equipment: 'EQUIPMENT',
 };
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false };
@@ -383,10 +387,80 @@ function deletionItems(items) {
   return [...items, ...aliasTargets];
 }
 
-async function seedDefaultExercises(PK) {
+// Conditional inserts make preloading safe across simultaneous client requests.
+// Tombstones keep a deliberately deleted library entry from being preloaded again.
+async function equipmentLibrary(PK) {
+  const [stored, gyms] = await Promise.all([queryCollection(PK, 'EQUIPMENT'), queryCollection(PK, 'GYM')]);
+  const all = new Map(stored.map((item) => [item.id, item]));
+  const candidates = [...DEFAULT_EQUIPMENT];
+  for (const gym of gyms) for (const item of gym.equipment ?? []) {
+    let id = equipmentLibraryId(item, [...all.values(), ...candidates]);
+    const collision = all.get(id) ?? candidates.find((entry) => entry.id === id);
+    if (!item.equipmentId && id === item.id && collision?.name && nameKey(collision.name) !== nameKey(item.name) && ![...all.values(), ...candidates].some((entry) => entry.name && nameKey(entry.name) === nameKey(item.name))) {
+      id = `eq-legacy-${createHash('sha256').update(nameKey(item.name)).digest('hex').slice(0,32)}`;
+    }
+    if (!all.has(id) && !candidates.some((entry) => entry.id === id)) {
+      candidates.push({ id, name: item.name, category: item.category, details: '' });
+    }
+  }
+  for (const entry of candidates) {
+    if (all.has(entry.id)) continue;
+    const item = { PK, SK: `EQUIPMENT#${entry.id}`, ...entry };
+    try {
+      await db.send(new PutCommand({ TableName: TABLE, Item: item, ConditionExpression: 'attribute_not_exists(PK)' }));
+      all.set(item.id, item);
+    } catch (error) {
+      if (error.name !== 'ConditionalCheckFailedException') throw error;
+      const current = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: item.SK } }));
+      if (current.Item) all.set(item.id, current.Item);
+    }
+  }
+  const library = [...all.values()].filter((item) => !item.deleted).map(strip);
+  // Add stable catalog links without overwriting any gym fields or newer inventory.
+  for (const gym of gyms) for (const [index, item] of (gym.equipment ?? []).entries()) {
+    if (item.equipmentId) continue;
+    try {
+      await db.send(new UpdateCommand({
+        TableName: TABLE, Key: { PK, SK: gym.SK },
+        UpdateExpression: `SET equipment[${index}].equipmentId = :libraryId`,
+        ConditionExpression: `equipment[${index}].id = :oldId AND equipment[${index}].#name = :name AND attribute_not_exists(equipment[${index}].equipmentId)`,
+        ExpressionAttributeNames: { '#name': 'name' },
+        ExpressionAttributeValues: { ':libraryId': equipmentLibraryId(item, library), ':oldId': item.id, ':name': item.name },
+      }));
+    } catch (error) { if (error.name !== 'ConditionalCheckFailedException') throw error; }
+  }
+  const exercises = await queryCollection(PK, 'EXERCISE');
+  for (const exercise of exercises) {
+    if (!exercise.equipmentAlternatives?.some((ref) => ref.gymId)) continue;
+    const refs = exercise.equipmentAlternatives.map((ref) => {
+      const item = gyms.find((gym) => gym.id === ref.gymId)?.equipment.find((item) => item.id === ref.equipmentId);
+      return item ? { equipmentId: equipmentLibraryId(item, library) } : ref;
+    }).filter((ref, index, list) => list.findIndex((entry) => entry.equipmentId === ref.equipmentId && entry.gymId === ref.gymId) === index);
+    if (JSON.stringify(refs) === JSON.stringify(exercise.equipmentAlternatives)) continue;
+    try {
+      await db.send(new UpdateCommand({
+        TableName: TABLE, Key: { PK, SK: exercise.SK },
+        UpdateExpression: 'SET equipmentAlternatives = :next ADD revision :one',
+        ConditionExpression: 'equipmentAlternatives = :previous',
+        ExpressionAttributeValues: { ':next': refs, ':previous': exercise.equipmentAlternatives, ':one': 1 },
+      }));
+    } catch (error) { if (error.name !== 'ConditionalCheckFailedException') throw error; }
+  }
+  return library;
+}
+
+function gymWithLibrary(gym, library) {
+  return { ...gym, equipment: gym.equipment.map((item) => {
+    const equipmentId = equipmentLibraryId(item, library);
+    const entry = library.find((entry) => entry.id === equipmentId);
+    return { ...item, equipmentId, ...(entry ? { name: entry.name, category: entry.category } : {}) };
+  }) };
+}
+
+async function seedDefaultExercises(PK, library) {
   const items = DEFAULT_EXERCISES.map((ex) => {
     const id = randomUUID();
-    return { PK, SK: `EXERCISE#${id}`, id, ...ex };
+    return { PK, SK: `EXERCISE#${id}`, id, ...ex, equipmentAlternatives: ex.equipmentAlternatives.filter((ref) => library.some((item) => item.id === ref.equipmentId)) };
   });
   for (let i = 0; i < items.length; i += 25) {
     await db.send(new BatchWriteCommand({
@@ -406,6 +480,7 @@ function validateResourceBody(resource, body, id) {
   if (resource === 'logs') return validateLog(body, id);
   if (resource === 'programs') return validateProgram(body, id);
   if (resource === 'gyms') return validateGym(body, id);
+  if (resource === 'equipment') return validateEquipment(body, id);
   throw new ValidationError('Unknown resource');
 }
 
@@ -417,18 +492,21 @@ function exportPayload(items) {
     logs: [],
     programs: [],
     gyms: [],
+    equipment: [],
     settings: DEFAULT_SETTINGS,
     feedback: [],
   };
   for (const item of items) {
     if (item.SK === 'SETTINGS') data.settings = normalizeSettings(strip(item));
-    else if (item.SK.startsWith('EXERCISE#')) data.exercises.push(strip(item));
+    else if (item.SK.startsWith('EXERCISE#')) data.exercises.push(withDefaultEquipment(strip(item)));
     else if (item.SK.startsWith('TEMPLATE#')) data.templates.push(strip(item));
     else if (item.SK.startsWith('LOG#')) data.logs.push(strip(item));
     else if (item.SK.startsWith('GYM#')) data.gyms.push(strip(item));
+    else if (item.SK.startsWith('EQUIPMENT#') && !item.deleted) data.equipment.push(strip(item));
     else if (item.SK.startsWith('PROGRAM#')) data.programs.push(strip(item));
     else if (item.SK.startsWith('FEEDBACK#')) data.feedback.push(strip(item));
   }
+  data.gyms = data.gyms.map((gym) => gymWithLibrary(gym, data.equipment));
   return data;
 }
 
@@ -464,7 +542,8 @@ function userDataItemCount(items) {
     + collectionItems(items, 'TEMPLATE').length
     + collectionItems(items, 'LOG').length
     + collectionItems(items, 'PROGRAM').length
-    + collectionItems(items, 'GYM').length;
+    + collectionItems(items, 'GYM').length
+    + collectionItems(items, 'EQUIPMENT').filter((item) => item.deleted || item.revision || !DEFAULT_EQUIPMENT.some((entry) => entry.id === item.id)).length;
 }
 
 function nameKey(value) {
@@ -555,7 +634,8 @@ function duplicateSafeItems(existingItems, imported) {
     }
     return [{ ...gym, name: uniqueImportedName(gym.name, gymNames, renamed.gyms) }];
   });
-  return { exercises, templates, logs, programs, gyms, settings: imported.settings, renamed, skipped };
+  const equipment = imported.equipment.filter((entry) => !existingItems.some((item) => item.SK === `EQUIPMENT#${entry.id}`));
+  return { exercises, templates, logs, programs, gyms, equipment, settings: imported.settings, renamed, skipped };
 }
 
 async function writeImportedCollection(PK, prefix, items) {
@@ -626,8 +706,10 @@ async function importPayload(PK, body, requestId) {
   }
 
   const availableGyms = [...collectionItems(existingItems, 'GYM'), ...safe.gyms];
+  const availableEquipment = [...new Map([...DEFAULT_EQUIPMENT, ...collectionItems(existingItems, 'EQUIPMENT'), ...safe.equipment].map((item) => [item.id, item])).values()].filter((item) => !item.deleted);
+  if (safe.gyms.some((gym) => gym.equipment.some((item) => item.equipmentId && !availableEquipment.some((entry) => entry.id === item.equipmentId)))) throw new ValidationError('Include the equipment library in the backup.');
   if (safe.exercises.some((exercise) => exercise.equipmentAlternatives?.some((ref) =>
-    !availableGyms.some((gym) => gym.id === ref.gymId && gym.equipment.some((item) => item.id === ref.equipmentId))))) {
+    ref.gymId ? !availableGyms.some((gym) => gym.id === ref.gymId && gym.equipment.some((item) => item.id === ref.equipmentId)) : !availableEquipment.some((item) => item.id === ref.equipmentId)))) {
     throw new ValidationError('Import includes exercise equipment that is missing. Include the gym inventory in the backup.');
   }
 
@@ -637,6 +719,7 @@ async function importPayload(PK, body, requestId) {
       Item: { PK, SK: 'SETTINGS', ...safe.settings },
     }));
   }
+  await writeImportedCollection(PK, 'EQUIPMENT', safe.equipment);
   await writeImportedCollection(PK, 'GYM', safe.gyms);
   await writeImportedCollection(PK, 'EXERCISE', safe.exercises);
   await writeImportedCollection(PK, 'TEMPLATE', safe.templates);
@@ -650,6 +733,7 @@ async function importPayload(PK, body, requestId) {
       logs: safe.logs.length,
       programs: safe.programs.length,
       gyms: safe.gyms.length,
+      equipment: safe.equipment.length,
       settings: Boolean(safe.settings),
     },
     renamed: safe.renamed,
@@ -1022,6 +1106,7 @@ async function handleAdminRoute(method, resource, event, params) {
 
 async function handleAuthenticatedRoute(method, resource, id, event, PK, params, requestId) {
   if (resource === 'export' && method === 'GET' && !id) {
+    await equipmentLibrary(PK);
     return ok(exportPayload(await queryAllUserItems(PK)));
   }
 
@@ -1071,9 +1156,15 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
   if (!prefix) return err(404, 'Not found');
 
   if (method === 'GET' && !id) {
+    if (resource === 'equipment') return ok(await equipmentLibrary(PK));
+    const library = resource === 'exercises' ? await equipmentLibrary(PK) : null;
     let items = await queryCollection(PK, prefix);
+    if (resource === 'gyms') {
+      const library = await equipmentLibrary(PK);
+      items = items.map((gym) => gymWithLibrary(gym, library));
+    }
     if (resource === 'exercises' && items.length === 0) {
-      items = await seedDefaultExercises(PK);
+      items = await seedDefaultExercises(PK, library);
     }
     if (resource === 'logs') {
       const logQuery = parseOptionalLogQuery(params);
@@ -1082,13 +1173,13 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
         return ok(page, nextCursor ? { 'X-Next-Cursor': nextCursor } : {});
       }
     }
-    return ok(items.map(strip));
+    return ok(items.map(strip).map((item) => resource === 'exercises' ? withDefaultEquipment(item) : item));
   }
 
   if (resource === 'gyms' && method === 'GET' && id) {
     validateId(id);
     const result = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: `GYM#${id}` } }));
-    return result.Item ? ok(strip(result.Item)) : err(404, 'Gym not found');
+    return result.Item ? ok(gymWithLibrary(strip(result.Item), await equipmentLibrary(PK))) : err(404, 'Gym not found');
   }
 
   if (method === 'PUT' && id) {
@@ -1096,16 +1187,35 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
     const rawBody = parseJsonBody(event);
     const body = validateResourceBody(resource, rawBody, id);
     if (resource === 'exercises' && body.equipmentAlternatives?.length) {
-      const gyms = await queryCollection(PK, 'GYM');
-      if (body.equipmentAlternatives.some((ref) => !gyms.some((gym) => gym.id === ref.gymId && gym.equipment.some((item) => item.id === ref.equipmentId)))) {
-        throw new ValidationError('Choose equipment saved in your account’s gyms.');
+      const [gyms, library] = await Promise.all([queryCollection(PK, 'GYM'), equipmentLibrary(PK)]);
+      if (body.equipmentAlternatives.some((ref) => ref.gymId
+        ? !gyms.some((gym) => gym.id === ref.gymId && gym.equipment.some((item) => item.id === ref.equipmentId))
+        : !library.some((item) => item.id === ref.equipmentId))) {
+        throw new ValidationError('Choose equipment saved in your equipment library.');
       }
+      body.equipmentAlternatives = body.equipmentAlternatives.map((ref) => ref.gymId
+        ? { equipmentId: equipmentLibraryId(gyms.find((gym) => gym.id === ref.gymId).equipment.find((item) => item.id === ref.equipmentId), library) }
+        : ref).filter((ref, index, refs) => refs.findIndex((entry) => entry.equipmentId === ref.equipmentId) === index);
+    }
+    if (resource === 'equipment') {
+      const library = await equipmentLibrary(PK);
+      if (library.some((item) => item.id !== id && nameKey(item.name) === nameKey(body.name))) throw new ValidationError('Equipment with that name already exists in your library.');
     }
     if (resource === 'gyms') {
       const exercises = await queryCollection(PK, 'EXERCISE');
       if (exercises.some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.gymId === id && !body.equipment.some((item) => item.id === ref.equipmentId)))) {
         throw new ValidationError('Remove exercise associations before removing equipment from this gym.', { cause: 'conflict' });
       }
+    }
+    if (resource === 'gyms') {
+      const library = await equipmentLibrary(PK);
+      const existingGym = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: `GYM#${id}` } }));
+      body.equipment = body.equipment.map((item) => {
+        const previous = existingGym.Item?.equipment.find((entry) => entry.id === item.id);
+        return !item.equipmentId && previous?.equipmentId ? { ...item, equipmentId: previous.equipmentId } : item;
+      });
+      if (body.equipment.some((item) => item.equipmentId && !library.some((entry) => entry.id === item.equipmentId))) throw new ValidationError('Choose equipment from your library.');
+      body.equipment = gymWithLibrary(body, library).equipment;
     }
     if (resource === 'templates' && body.gymId) {
       const gym = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: `GYM#${body.gymId}` } }));
@@ -1120,6 +1230,14 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
 
   if (method === 'DELETE' && id) {
     validateId(id);
+    if (resource === 'equipment') {
+      const [library, gyms, exercises] = await Promise.all([equipmentLibrary(PK), queryCollection(PK, 'GYM'), queryCollection(PK, 'EXERCISE')]);
+      if (gyms.some((gym) => gym.equipment.some((item) => equipmentLibraryId(item, library) === id)) || exercises.some((exercise) => withDefaultEquipment(exercise).equipmentAlternatives?.some((ref) => ref.equipmentId === id))) {
+        throw new ValidationError('Remove this equipment from gyms and exercises before deleting it.', { cause: 'conflict' });
+      }
+      await db.send(new PutCommand({ TableName: TABLE, Item: { PK, SK: `EQUIPMENT#${id}`, id, deleted: true } }));
+      return noContent();
+    }
     if (resource === 'gyms') {
       const exercises = await queryCollection(PK, 'EXERCISE');
       if (exercises.some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.gymId === id))) {

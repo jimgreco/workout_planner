@@ -5,6 +5,7 @@ import {
   DeleteCommand,
   GetCommand,
   PutCommand,
+  UpdateCommand,
   QueryCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -42,7 +43,27 @@ function fakeDb(seed = []) {
       }
       if (command instanceof PutCommand) {
         const item = command.input.Item;
+        if (command.input.ConditionExpression && items.has(`${item.PK}|${item.SK}`)) throw Object.assign(new Error('Condition failed'), { name: 'ConditionalCheckFailedException' });
         items.set(`${item.PK}|${item.SK}`, item);
+        return {};
+      }
+      if (command instanceof UpdateCommand) {
+        const input = command.input;
+        const key = `${input.Key.PK}|${input.Key.SK}`;
+        const item = structuredClone(items.get(key));
+        const values = input.ExpressionAttributeValues;
+        const fail = () => { throw Object.assign(new Error('Condition failed'), { name: 'ConditionalCheckFailedException' }); };
+        if (input.UpdateExpression.startsWith('SET equipment[')) {
+          const index = Number(input.UpdateExpression.match(/equipment\[(\d+)\]/)[1]);
+          const entry = item?.equipment?.[index];
+          if (!entry || entry.id !== values[':oldId'] || entry.name !== values[':name'] || entry.equipmentId) fail();
+          entry.equipmentId = values[':libraryId'];
+        } else {
+          if (JSON.stringify(item?.equipmentAlternatives) !== JSON.stringify(values[':previous'])) fail();
+          item.equipmentAlternatives = values[':next'];
+          item.revision = (item.revision ?? 0) + 1;
+        }
+        items.set(key, item);
         return {};
       }
       if (command instanceof DeleteCommand) {
@@ -53,6 +74,7 @@ function fakeDb(seed = []) {
       if (command instanceof BatchWriteCommand) {
         for (const requests of Object.values(command.input.RequestItems)) {
           for (const request of requests) {
+            if (request.PutRequest) { const item = request.PutRequest.Item; items.set(`${item.PK}|${item.SK}`, item); }
             const key = request.DeleteRequest?.Key;
             if (key) items.delete(`${key.PK}|${key.SK}`);
           }
@@ -391,7 +413,7 @@ test('import restores Forge export data into an empty account', async () => {
   const body = JSON.parse(result.body);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, settings: true });
+  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, equipment: 0, settings: true });
   assert.equal(typeof body.audit.id, 'string');
   assert.equal(typeof body.audit.createdAt, 'string');
   assert.equal(db.items.get('USER#dev-user-local|SETTINGS').defaultSets, 5);
@@ -475,7 +497,7 @@ test('merge import skips existing IDs instead of overwriting account data', asyn
   const body = JSON.parse(result.body);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, programs: 0, gyms: 0, settings: false });
+  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, programs: 0, gyms: 0, equipment: 0, settings: false });
   assert.deepEqual(body.skipped.exercises, [{ id: 'bench', name: 'Imported Bench' }]);
   assert.deepEqual(body.skipped.logs, [{ id: 'done', name: 'Imported Log', date: '2026-01-02' }]);
   assert.deepEqual(body.skipped.programs, [{ id: 'program', name: 'Imported Plan' }]);
@@ -523,7 +545,7 @@ test('gym API isolates accounts, persists inventories and protects routine assoc
   assert.equal(saved.statusCode, 200);
   assert.equal(JSON.parse(saved.body).revision, 1);
   const fetched = await handler(event('GET', '/gyms/gym-home', undefined, headers));
-  assert.deepEqual(JSON.parse(fetched.body).equipment, gym.equipment);
+  assert.deepEqual(JSON.parse(fetched.body).equipment, gym.equipment.map((item) => ({ ...item, equipmentId: 'eq-dumbbells' })));
   const otherToken = (await createAppSession({ sub: 'other-user', name: 'Other', email: 'other@example.com' })).token;
   const otherHeaders = { authorization: `Bearer ${otherToken}` };
   assert.deepEqual(JSON.parse((await handler(event('GET', '/gyms', undefined, otherHeaders))).body), []);
@@ -559,7 +581,7 @@ test('gym backups restore associations, skip duplicate IDs, and reject missing g
   assert.equal([...db.items.values()].some((item) => item.SK.startsWith('GYM#')), false);
 });
 
-test('exercise alternatives require owned equipment and prevent removal of referenced inventory', async () => {
+test('exercise alternatives require owned equipment and survive removal from a gym', async () => {
   const db = fakeDb(); __setTestDb(db);
   const headers = { authorization: 'Bearer dev-bypass-token' };
   const gym = { id: 'g1', name: 'Gym', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '' }, { id: 'press', name: 'Chest press', category: 'Machines', details: '' }] };
@@ -569,10 +591,10 @@ test('exercise alternatives require owned equipment and prevent removal of refer
   assert.equal((await handler(event('PUT', '/exercises/e1', { ...exercise, equipmentAlternatives: [{ gymId: 'g1', equipmentId: 'missing' }] }, headers))).statusCode, 400);
   const otherHeaders = { authorization: `Bearer ${(await createAppSession({ sub: 'other' })).token}` };
   assert.equal((await handler(event('PUT', '/exercises/e1', exercise, otherHeaders))).statusCode, 400);
-  assert.equal((await handler(event('PUT', '/gyms/g1', { ...gym, equipment: [] }, headers))).statusCode, 409);
-  assert.equal((await handler(event('DELETE', '/gyms/g1', undefined, headers))).statusCode, 409);
+  assert.equal((await handler(event('PUT', '/gyms/g1', { ...gym, equipment: [] }, headers))).statusCode, 200);
+  assert.equal((await handler(event('DELETE', '/gyms/g1', undefined, headers))).statusCode, 204);
   const backup = JSON.parse((await handler(event('GET', '/export', undefined, headers))).body);
-  assert.deepEqual(backup.exercises[0].equipmentAlternatives, exercise.equipmentAlternatives);
+  assert.deepEqual(backup.exercises[0].equipmentAlternatives, [{ equipmentId: 'eq-dumbbells' }, { equipmentId: 'press' }]);
   const restored = await handler(event('POST', '/import', { data: backup, mode: 'emptyOnly' }, otherHeaders));
   assert.equal(restored.statusCode, 200);
   assert.equal((await handler(event('POST', '/import', { data: { exercises: [{ id: 'missing', name: 'Missing', equipmentAlternatives: [{ gymId: 'g1', equipmentId: 'none' }] }] } }, headers))).statusCode, 400);
@@ -596,7 +618,120 @@ test('older clients preserve gym and equipment links, while explicit clears remo
   const refs = [{ gymId: 'g', equipmentId: 'db' }];
   await handler(event('PUT', '/exercises/e', { ...exercise, equipmentAlternatives: refs }, headers));
   const legacyExerciseSave = JSON.parse((await handler(event('PUT', '/exercises/e', exercise, headers))).body);
-  assert.deepEqual(legacyExerciseSave.equipmentAlternatives, refs);
+  assert.deepEqual(legacyExerciseSave.equipmentAlternatives, [{ equipmentId: 'eq-dumbbells' }]);
   const clearedExercise = JSON.parse((await handler(event('PUT', '/exercises/e', { ...exercise, equipmentAlternatives: [] }, headers))).body);
   assert.deepEqual(clearedExercise.equipmentAlternatives, []);
+});
+
+test('equipment library preloads once, keeps edits and deletions, and isolates personal entries', async () => {
+  const db = fakeDb(); __setTestDb(db);
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const get = async () => JSON.parse((await handler(event('GET', '/equipment', undefined, headers))).body);
+  const initial = await get();
+  assert.equal(initial.length, 112);
+  assert.equal(new Set(initial.map((item) => item.id)).size, initial.length);
+  const roller = initial.find((item) => item.id === 'eq-foam-roller');
+  assert.equal((await handler(event('PUT', `/equipment/${roller.id}`, { ...roller, name: 'Recovery roller' }, headers))).statusCode, 200);
+  assert.equal((await get()).find((item) => item.id === roller.id).name, 'Recovery roller');
+  assert.equal((await handler(event('DELETE', `/equipment/${roller.id}`, undefined, headers))).statusCode, 204);
+  assert.equal((await get()).some((item) => item.id === roller.id), false);
+  assert.equal((await handler(event('PUT', '/equipment/my-machine', { name: 'My machine', category: 'Machines' }, headers))).statusCode, 200);
+  assert.equal((await handler(event('PUT', '/equipment/duplicate', { name: 'dumbbells' }, headers))).statusCode, 400);
+  const other = { authorization: `Bearer ${(await createAppSession({ sub: 'library-other' })).token}` };
+  assert.equal((await handler(event('PUT', '/exercises/private', { name: 'Private', equipmentAlternatives: [{ equipmentId: 'my-machine' }] }, other))).statusCode, 400);
+  assert.equal((await handler(event('PUT', '/exercises/mine', { name: 'Mine', equipmentAlternatives: [{ equipmentId: 'my-machine' }] }, headers))).statusCode, 200);
+  assert.equal((await handler(event('DELETE', '/equipment/my-machine', undefined, headers))).statusCode, 409);
+});
+
+test('legacy gym inventories migrate to stable library links without losing details or user selections', async () => {
+  const PK = 'USER#dev-user-local';
+  const db = fakeDb([
+    { PK, SK: 'GYM#home', id: 'home', name: 'Home', notes: 'Garage', revision: 4, equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '5–50 lb' }, { id: 'special', name: 'My special machine', category: 'Machines', details: 'Model 123' }] },
+    { PK, SK: 'EXERCISE#press', id: 'press', name: 'My press', revision: 2, equipmentAlternatives: [{ gymId: 'home', equipmentId: 'db' }], personalBest: { weight: '55' } },
+    { PK, SK: 'EXERCISE#plank', id: 'plank', name: 'Plank', muscleGroup: 'Core', notes: '', equipmentAlternatives: [] },
+  ]);
+  __setTestDb(db);
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const library = JSON.parse((await handler(event('GET', '/equipment', undefined, headers))).body);
+  assert.equal(library.filter((item) => item.name === 'Dumbbells').length, 1);
+  assert.equal(library.some((item) => item.id === 'special'), true);
+  const gym = db.items.get(`${PK}|GYM#home`);
+  assert.equal(gym.equipment[0].equipmentId, 'eq-dumbbells');
+  assert.equal(gym.equipment[0].details, '5–50 lb');
+  assert.equal(gym.revision, 4);
+  const exercise = db.items.get(`${PK}|EXERCISE#press`);
+  assert.deepEqual(exercise.equipmentAlternatives, [{ equipmentId: 'eq-dumbbells' }]);
+  assert.deepEqual(exercise.personalBest, { weight: '55' });
+  assert.equal(exercise.revision, 3);
+  await handler(event('GET', '/equipment', undefined, headers));
+  assert.equal(db.items.get(`${PK}|EXERCISE#press`).revision, 3);
+  const dumbbells = library.find((item) => item.id === 'eq-dumbbells');
+  await handler(event('PUT', '/equipment/eq-dumbbells', { ...dumbbells, name: 'Hand weights' }, headers));
+  const loadedGym = JSON.parse((await handler(event('GET', '/gyms/home', undefined, headers))).body);
+  assert.equal(loadedGym.equipment[0].name, 'Hand weights');
+  assert.equal(loadedGym.equipment[0].equipmentId, 'eq-dumbbells');
+  assert.equal((await handler(event('DELETE', '/gyms/home', undefined, headers))).statusCode, 204);
+  assert.equal(JSON.parse((await handler(event('GET', '/equipment', undefined, headers))).body).some((item) => item.id === 'special'), true);
+});
+
+test('preloaded exercise mappings are valid, enrich old presets, and respect explicit clears', async () => {
+  const { DEFAULT_EXERCISES, withDefaultEquipment } = await import('./default-exercises.mjs');
+  const { DEFAULT_EQUIPMENT } = await import('./default-equipment.mjs');
+  const ids = new Set(DEFAULT_EQUIPMENT.map((item) => item.id));
+  assert.equal(DEFAULT_EXERCISES.length, 65);
+  for (const exercise of DEFAULT_EXERCISES) {
+    assert.ok(Array.isArray(exercise.equipmentAlternatives), exercise.name);
+    assert.ok(exercise.equipmentAlternatives.every((ref) => ids.has(ref.equipmentId)), exercise.name);
+  }
+  const bench = { id: 'old', name: 'Bench Press', muscleGroup: 'Chest', notes: 'Barbell flat bench', personalBest: { weight: '225' } };
+  assert.deepEqual(withDefaultEquipment(bench).equipmentAlternatives, [{ equipmentId: 'eq-barbell-plates' }]);
+  assert.deepEqual(withDefaultEquipment({ ...bench, equipmentAlternatives: [] }).equipmentAlternatives, []);
+  assert.deepEqual(withDefaultEquipment({ ...bench, notes: 'My changed setup' }).equipmentAlternatives, [{ equipmentId: 'eq-barbell-plates' }]);
+  assert.equal(withDefaultEquipment({ ...bench, name: 'My custom press' }).equipmentAlternatives, undefined);
+  __setTestDb(fakeDb([{ PK: 'USER#dev-user-local', SK: 'EXERCISE#old', ...bench }]));
+  const result = JSON.parse((await handler(event('GET', '/exercises', undefined, { authorization: 'Bearer dev-bypass-token' }))).body)[0];
+  assert.deepEqual(result.personalBest, bench.personalBest);
+  assert.deepEqual(result.equipmentAlternatives, [{ equipmentId: 'eq-barbell-plates' }]);
+});
+
+test('equipment exports restore library references and reject incomplete backups before writes', async () => {
+  const db = fakeDb(); __setTestDb(db);
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const data = {
+    equipment: [{ id: 'private-cable', name: 'Cable tower', category: 'Cables', details: 'Personal entry' }],
+    gyms: [{ id: 'g', name: 'Gym', equipment: [{ id: 'inventory-1', equipmentId: 'private-cable', name: 'Cable tower', category: 'Cables', details: '100 kg stack' }] }],
+    exercises: [{ id: 'pull', name: 'Pull', equipmentAlternatives: [{ equipmentId: 'private-cable' }] }],
+  };
+  assert.equal((await handler(event('POST', '/import', { data: { ...data, equipment: [] } }, headers))).statusCode, 400);
+  assert.equal(db.items.has('USER#dev-user-local|GYM#g'), false);
+  assert.equal((await handler(event('POST', '/import', { data }, headers))).statusCode, 200);
+  const backup = JSON.parse((await handler(event('GET', '/export', undefined, headers))).body);
+  assert.equal(backup.equipment.find((item) => item.id === 'private-cable').details, 'Personal entry');
+  assert.deepEqual(backup.exercises[0].equipmentAlternatives, data.exercises[0].equipmentAlternatives);
+  assert.equal(backup.gyms[0].equipment[0].details, '100 kg stack');
+});
+
+test('migration keeps different legacy equipment with the same inventory ID distinct', async () => {
+  const PK = 'USER#dev-user-local';
+  __setTestDb(fakeDb([
+    { PK, SK: 'GYM#a', id: 'a', name: 'A', equipment: [{ id: 'machine', name: 'First machine', category: 'Machines', details: '' }] },
+    { PK, SK: 'GYM#b', id: 'b', name: 'B', equipment: [{ id: 'machine', name: 'Second machine', category: 'Machines', details: '' }] },
+    { PK, SK: 'EXERCISE#e', id: 'e', name: 'E', equipmentAlternatives: [{ gymId: 'a', equipmentId: 'machine' }, { gymId: 'b', equipmentId: 'machine' }] },
+  ]));
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const library = JSON.parse((await handler(event('GET', '/equipment', undefined, headers))).body);
+  const first = library.find((item) => item.name === 'First machine');
+  const second = library.find((item) => item.name === 'Second machine');
+  assert.notEqual(first.id, second.id);
+  const exercises = JSON.parse((await handler(event('GET', '/exercises', undefined, headers))).body);
+  assert.deepEqual(exercises[0].equipmentAlternatives, [{ equipmentId: first.id }, { equipmentId: second.id }]);
+});
+
+test('new preloaded exercises do not reference equipment removed before exercise initialization', async () => {
+  __setTestDb(fakeDb());
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  await handler(event('GET', '/equipment', undefined, headers));
+  assert.equal((await handler(event('DELETE', '/equipment/eq-barbell-plates', undefined, headers))).statusCode, 204);
+  const exercises = JSON.parse((await handler(event('GET', '/exercises', undefined, headers))).body);
+  assert.equal(exercises.some((exercise) => exercise.equipmentAlternatives.some((ref) => ref.equipmentId === 'eq-barbell-plates')), false);
 });

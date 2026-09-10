@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import EquipmentAlternatives from '../components/EquipmentAlternatives.jsx';
 import { equipmentAtGym, gymBrief } from '../gyms.js';
+
+vi.mock('../api.js', () => ({ getEquipment: () => [{ id: 'eq-dumbbells', name: 'Dumbbells', category: 'Free weights', details: '' }, { id: 'eq-press', name: 'Chest press', category: 'Machines', details: '' }] }));
 
 const gyms = [
   { id: 'home', name: 'Home', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '' }, { id: 'press', name: 'Chest press', category: 'Machines', details: '' }] },
@@ -14,14 +16,14 @@ function Editor() {
 }
 
 describe('exercise equipment alternatives', () => {
-  it('selects and removes alternatives without confusing the same equipment ID across gyms', () => {
+  it('selects equipment once for use across gyms', () => {
     render(<Editor />);
-    fireEvent.click(screen.getByLabelText('Home · Dumbbells'));
-    fireEvent.click(screen.getByLabelText('Hotel · Dumbbells'));
-    expect(screen.getByRole('status').textContent).toBe(JSON.stringify([{ gymId: 'home', equipmentId: 'db' }, { gymId: 'hotel', equipmentId: 'db' }]));
-    fireEvent.click(screen.getByLabelText('Home · Dumbbells'));
-    expect(screen.getByLabelText('Hotel · Dumbbells')).toBeChecked();
-    fireEvent.click(screen.getByLabelText('Hotel · Dumbbells'));
+    fireEvent.click(screen.getByLabelText('Dumbbells'));
+    fireEvent.click(screen.getByLabelText('Chest press'));
+    expect(screen.getByRole('status').textContent).toBe(JSON.stringify([{ equipmentId: 'eq-dumbbells' }, { equipmentId: 'eq-press' }]));
+    fireEvent.click(screen.getByLabelText('Dumbbells'));
+    expect(screen.getByLabelText('Chest press')).toBeChecked();
+    fireEvent.click(screen.getByLabelText('Chest press'));
     expect(screen.getByRole('status')).toHaveTextContent('[]');
   });
   it('matches any available alternative only within the routine gym', () => {
@@ -33,4 +35,13 @@ describe('exercise equipment alternatives', () => {
     expect(brief).toContain('Equipment: No recorded alternative at this gym');
     expect(brief).not.toContain('Chest press');
   });
+});
+
+it('matches library references at every gym that records the equipment', () => {
+  const exercise = { equipmentAlternatives: [{ equipmentId: 'eq-dumbbells' }] };
+  const home = { id: 'home', equipment: [{ id: 'home-db', equipmentId: 'eq-dumbbells', name: 'Dumbbells' }] };
+  const hotel = { id: 'hotel', equipment: [{ id: 'hotel-db', equipmentId: 'eq-dumbbells', name: 'Dumbbells' }] };
+  expect(equipmentAtGym(exercise, home)).toBe('Dumbbells');
+  expect(equipmentAtGym(exercise, hotel)).toBe('Dumbbells');
+  expect(equipmentAtGym(exercise, { id: 'empty', equipment: [] })).toBe('No recorded alternative at this gym');
 });
