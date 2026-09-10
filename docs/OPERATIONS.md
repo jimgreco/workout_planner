@@ -175,3 +175,18 @@ curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
 
 Do not ask testers for provider tokens, app session tokens, or screenshots that
 show private workout notes unless they volunteer them.
+
+## Production build resources
+
+The production deployment builds web assets on the GitHub runner with the
+existing Google web client ID from the server configuration. It transfers
+`dist/` and selects the `frontend-prebuilt` Docker stage on EC2. The standard
+`frontend` stage remains available for local builds. Deployments are serialized
+and reuse Docker layers; they do not globally prune the shared host's images or
+build cache on each release.
+
+If a deployment loses SSH connectivity, confirm the remote build has stopped
+before retrying. A disconnected client can leave a build consuming memory and
+disk. Inspect memory, disk, and only the affected release's build processes;
+avoid restarting unrelated apps or deleting database volumes. The September
+2026 gym rollout exposed memory and disk pressure on the shared 2 GB / 8 GB host.
