@@ -212,6 +212,7 @@ function readinessValue(value) {
 }
 
 export default function WorkoutLog({
+  gyms = [],
   exercises,
   templates,
   logs,
@@ -1064,7 +1065,7 @@ export default function WorkoutLog({
             </>
           }
         >
-          <ExerciseFormFields form={exerciseForm} setForm={setExerciseForm} autoFocus />
+          <ExerciseFormFields gyms={gyms} form={exerciseForm} setForm={setExerciseForm} autoFocus />
         </Modal>
       )}
 

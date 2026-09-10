@@ -391,7 +391,7 @@ test('import restores Forge export data into an empty account', async () => {
   const body = JSON.parse(result.body);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, programs: 1, settings: true });
+  assert.deepEqual(body.imported, { exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, settings: true });
   assert.equal(typeof body.audit.id, 'string');
   assert.equal(typeof body.audit.createdAt, 'string');
   assert.equal(db.items.get('USER#dev-user-local|SETTINGS').defaultSets, 5);
@@ -402,8 +402,8 @@ test('import restores Forge export data into an empty account', async () => {
   const audit = [...db.items.values()].find((item) => item.PK === 'USER#dev-user-local' && item.SK.startsWith('IMPORT#'));
   assert.equal(audit.mode, 'emptyOnly');
   assert.equal(audit.sourceExportedAt, '2026-01-01T00:00:00.000Z');
-  assert.deepEqual(audit.source, { exercises: 1, templates: 1, logs: 1, programs: 1, settings: true });
-  assert.deepEqual(audit.before, { exercises: 0, templates: 0, logs: 0, programs: 0, feedback: 0, imports: 0 });
+  assert.deepEqual(audit.source, { exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, settings: true });
+  assert.deepEqual(audit.before, { exercises: 0, templates: 0, logs: 0, programs: 0, gyms: 0, feedback: 0, imports: 0 });
   assert.deepEqual(audit.imported, body.imported);
 });
 
@@ -475,7 +475,7 @@ test('merge import skips existing IDs instead of overwriting account data', asyn
   const body = JSON.parse(result.body);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, programs: 0, settings: false });
+  assert.deepEqual(body.imported, { exercises: 0, templates: 0, logs: 0, programs: 0, gyms: 0, settings: false });
   assert.deepEqual(body.skipped.exercises, [{ id: 'bench', name: 'Imported Bench' }]);
   assert.deepEqual(body.skipped.logs, [{ id: 'done', name: 'Imported Log', date: '2026-01-02' }]);
   assert.deepEqual(body.skipped.programs, [{ id: 'program', name: 'Imported Plan' }]);
@@ -512,4 +512,91 @@ test('editing a workout cannot replace or remove its original prescription', asy
   delete update.prescription;update.expectedRevision=2;
   const oldClient=await handler(event('PUT','/logs/training',update,headers));
   assert.equal(oldClient.statusCode,200);assert.deepEqual(JSON.parse(oldClient.body).prescription,prescription);
+});
+
+test('gym API isolates accounts, persists inventories and protects routine associations', async () => {
+  const db = fakeDb(); __setTestDb(db);
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const gym = { id: 'gym-home', name: 'Home', notes: 'Garage', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '5–50 lb per hand' }] };
+  assert.equal((await handler(event('PUT', '/gyms/gym-home', gym))).statusCode, 401);
+  const saved = await handler(event('PUT', '/gyms/gym-home', gym, headers));
+  assert.equal(saved.statusCode, 200);
+  assert.equal(JSON.parse(saved.body).revision, 1);
+  const fetched = await handler(event('GET', '/gyms/gym-home', undefined, headers));
+  assert.deepEqual(JSON.parse(fetched.body).equipment, gym.equipment);
+  const otherToken = (await createAppSession({ sub: 'other-user', name: 'Other', email: 'other@example.com' })).token;
+  const otherHeaders = { authorization: `Bearer ${otherToken}` };
+  assert.deepEqual(JSON.parse((await handler(event('GET', '/gyms', undefined, otherHeaders))).body), []);
+  assert.equal((await handler(event('GET', '/gyms/gym-home', undefined, otherHeaders))).statusCode, 404);
+  const routine = { id: 'routine', name: 'Push', exerciseItems: [], gymId: gym.id };
+  assert.equal((await handler(event('PUT', '/templates/routine', routine, otherHeaders))).statusCode, 400);
+  assert.equal((await handler(event('PUT', '/templates/routine', routine, headers))).statusCode, 200);
+  assert.equal((await handler(event('DELETE', '/gyms/gym-home', undefined, headers))).statusCode, 409);
+  const backup = JSON.parse((await handler(event('GET', '/export', undefined, headers))).body);
+  assert.equal(backup.templates[0].gymId, backup.gyms[0].id);
+  const stale = await handler(event('PUT', '/gyms/gym-home', { ...gym, expectedRevision: 0 }, headers));
+  assert.equal(stale.statusCode, 409);
+  assert.equal((await handler(event('PUT', '/templates/routine', { ...routine, gymId: null }, headers))).statusCode, 200);
+  assert.equal((await handler(event('DELETE', '/gyms/gym-home', undefined, headers))).statusCode, 204);
+  assert.equal((await handler(event('GET', '/gyms/gym-home', undefined, headers))).statusCode, 404);
+});
+
+test('gym backups restore associations, skip duplicate IDs, and reject missing gyms before writing', async () => {
+  const db = fakeDb(); __setTestDb(db);
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const data = { gyms: [{ id: 'g1', name: 'Home', equipment: [] }], templates: [{ id: 'r1', name: 'Push', gymId: 'g1', exerciseItems: [] }] };
+  const imported = await handler(event('POST', '/import', { mode: 'emptyOnly', data }, headers));
+  assert.equal(imported.statusCode, 200);
+  assert.equal(JSON.parse(imported.body).imported.gyms, 1);
+  const repeated = JSON.parse((await handler(event('POST', '/import', { mode: 'merge', data }, headers))).body);
+  assert.equal(repeated.imported.gyms, 0);
+  assert.equal(repeated.skipped.gyms[0].id, 'g1');
+  const renamed = JSON.parse((await handler(event('POST', '/import', { data: { gyms: [{ id: 'g2', name: 'Home', equipment: [] }] } }, headers))).body);
+  assert.equal(renamed.renamed.gyms[0].to, 'Home (imported)');
+  assert.equal((await handler(event('POST', '/import', { data: { templates: [{ id: 'bad', name: 'Missing', gymId: 'missing', exerciseItems: [] }] } }, headers))).statusCode, 400);
+  assert.equal(db.items.has('USER#dev-user-local|TEMPLATE#bad'), false);
+  assert.equal((await handler(event('DELETE', '/account', undefined, headers))).statusCode, 200);
+  assert.equal([...db.items.values()].some((item) => item.SK.startsWith('GYM#')), false);
+});
+
+test('exercise alternatives require owned equipment and prevent removal of referenced inventory', async () => {
+  const db = fakeDb(); __setTestDb(db);
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const gym = { id: 'g1', name: 'Gym', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '' }, { id: 'press', name: 'Chest press', category: 'Machines', details: '' }] };
+  await handler(event('PUT', '/gyms/g1', gym, headers));
+  const exercise = { id: 'e1', name: 'Press', equipmentAlternatives: [{ gymId: 'g1', equipmentId: 'db' }, { gymId: 'g1', equipmentId: 'press' }] };
+  assert.equal((await handler(event('PUT', '/exercises/e1', exercise, headers))).statusCode, 200);
+  assert.equal((await handler(event('PUT', '/exercises/e1', { ...exercise, equipmentAlternatives: [{ gymId: 'g1', equipmentId: 'missing' }] }, headers))).statusCode, 400);
+  const otherHeaders = { authorization: `Bearer ${(await createAppSession({ sub: 'other' })).token}` };
+  assert.equal((await handler(event('PUT', '/exercises/e1', exercise, otherHeaders))).statusCode, 400);
+  assert.equal((await handler(event('PUT', '/gyms/g1', { ...gym, equipment: [] }, headers))).statusCode, 409);
+  assert.equal((await handler(event('DELETE', '/gyms/g1', undefined, headers))).statusCode, 409);
+  const backup = JSON.parse((await handler(event('GET', '/export', undefined, headers))).body);
+  assert.deepEqual(backup.exercises[0].equipmentAlternatives, exercise.equipmentAlternatives);
+  const restored = await handler(event('POST', '/import', { data: backup, mode: 'emptyOnly' }, otherHeaders));
+  assert.equal(restored.statusCode, 200);
+  assert.equal((await handler(event('POST', '/import', { data: { exercises: [{ id: 'missing', name: 'Missing', equipmentAlternatives: [{ gymId: 'g1', equipmentId: 'none' }] }] } }, headers))).statusCode, 400);
+  assert.equal(db.items.has('USER#dev-user-local|EXERCISE#missing'), false);
+  assert.equal((await handler(event('PUT', '/exercises/e1', { ...exercise, equipmentAlternatives: [] }, headers))).statusCode, 200);
+  assert.equal((await handler(event('DELETE', '/gyms/g1', undefined, headers))).statusCode, 204);
+});
+
+
+test('older clients preserve gym and equipment links, while explicit clears remove them', async () => {
+  __setTestDb(fakeDb());
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  await handler(event('PUT', '/gyms/g', { id: 'g', name: 'Home', equipment: [{ id: 'db', name: 'Dumbbells' }] }, headers));
+  const routine = { id: 'r', name: 'Push', exerciseItems: [] };
+  await handler(event('PUT', '/templates/r', { ...routine, gymId: 'g' }, headers));
+  const legacyRoutineSave = JSON.parse((await handler(event('PUT', '/templates/r', routine, headers))).body);
+  assert.equal(legacyRoutineSave.gymId, 'g');
+  const clearedRoutine = JSON.parse((await handler(event('PUT', '/templates/r', { ...routine, gymId: null }, headers))).body);
+  assert.equal(clearedRoutine.gymId, null);
+  const exercise = { id: 'e', name: 'Press' };
+  const refs = [{ gymId: 'g', equipmentId: 'db' }];
+  await handler(event('PUT', '/exercises/e', { ...exercise, equipmentAlternatives: refs }, headers));
+  const legacyExerciseSave = JSON.parse((await handler(event('PUT', '/exercises/e', exercise, headers))).body);
+  assert.deepEqual(legacyExerciseSave.equipmentAlternatives, refs);
+  const clearedExercise = JSON.parse((await handler(event('PUT', '/exercises/e', { ...exercise, equipmentAlternatives: [] }, headers))).body);
+  assert.deepEqual(clearedExercise.equipmentAlternatives, []);
 });

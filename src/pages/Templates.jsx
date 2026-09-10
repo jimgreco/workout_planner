@@ -18,6 +18,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
+import GymBrief from '../components/GymBrief.jsx';
+import { equipmentAtGym } from '../gyms.js';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Exercises, { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
@@ -384,6 +386,7 @@ function resizeProgramSchedule(schedule, dayCount) {
 
 export default function Templates({
   mode = 'all',
+  gyms = [],
   templates,
   exercises,
   logs = [],
@@ -397,6 +400,8 @@ export default function Templates({
   onStartWorkout,
 }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view' | 'settings' | 'program'
+  const [routineError, setRoutineError] = useState('');
+  const [brief, setBrief] = useState(null);
   const [form, setForm]                 = useState(emptyTemplate());
   const [programError, setProgramError] = useState('');
   const [programForm, setProgramForm]   = useState(emptyProgram());
@@ -455,8 +460,8 @@ export default function Templates({
     [activeProgram],
   );
 
-  function openAdd()      { setShowAddMenu(false); setForm(emptyTemplate()); setModal('add'); }
-  function openEdit(t)    { setForm({ ...t }); setModal('edit'); }
+  function openAdd()      { setRoutineError(''); setShowAddMenu(false); setForm(emptyTemplate()); setModal('add'); }
+  function openEdit(t)    { setRoutineError(''); setForm({ ...t }); setModal('edit'); }
   function openView(t)    { setForm({ ...t }); setModal('view'); }
   function openSettings() { setSettingsForm({ ...settings }); setModal('settings'); setSaved(false); }
   function openProgram(program = emptyProgram()) {
@@ -500,9 +505,12 @@ export default function Templates({
     if (!form.name.trim() || saving) return;
     setSaving(true);
     try {
+      setRoutineError('');
       const updated = await saveTemplate({ ...form, name: form.name.trim() });
       onUpdate(updated);
       setModal(null);
+    } catch (error) {
+      setRoutineError(error.message);
     } finally {
       setSaving(false);
     }
@@ -1197,6 +1205,7 @@ export default function Templates({
             <div className="card-header">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h3>{t.name}</h3>
+                {t.gymId && <p className="text-muted">Gym: {gyms.find((gym) => gym.id === t.gymId)?.name ?? 'Unavailable gym'}</p>}
                 {t.description && <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>{t.description}</p>}
               </div>
               <div className="flex gap-8 items-center card-actions">
@@ -1247,6 +1256,7 @@ export default function Templates({
       {showExerciseLibrary && (
       <section className="exercise-library-section">
         <Exercises
+          gyms={gyms}
           exercises={exercises}
           logs={logs}
           onUpdate={onExercisesUpdate}
@@ -1288,8 +1298,23 @@ export default function Templates({
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </div>
+          <div className="form-group">
+            {routineError && <p className="inline-error" role="alert">{routineError}</p>}
+            <label htmlFor="routine-gym">Gym</label>
+            <select id="routine-gym" value={form.gymId || ''} onChange={(event) => setForm({ ...form, gymId: event.target.value || null })}>
+              <option value="">No gym assigned</option>
+              {form.gymId && !gyms.some((gym) => gym.id === form.gymId) && <option value={form.gymId}>Unavailable gym — choose another</option>}
+              {gyms.map((gym) => <option key={gym.id} value={gym.id}>{gym.name}</option>)}
+            </select>
+            <p className="text-muted">Manage equipment in Gyms. Assign a gym to plan this routine around its inventory.</p>
+            {gyms.some((gym) => gym.id === form.gymId) && <button className="btn btn-secondary" onClick={() => setBrief({ gym: gyms.find((gym) => gym.id === form.gymId), routine: form })}>Build with AI using this gym</button>}
+          </div>
           <hr className="divider" />
           <h3>Exercises</h3>
+          {gyms.some((gym) => gym.id === form.gymId) && <ul className="gym-inventory" aria-label="Routine equipment availability">{(form.exerciseItems ?? []).map((item, index) => {
+            const exercise = exercises.find((entry) => entry.id === item.exerciseId);
+            return <li key={`${item.exerciseId}-${index}`}><strong>{exercise?.name ?? 'Unknown exercise'}</strong><span>{equipmentAtGym(exercise, gyms.find((gym) => gym.id === form.gymId))}</span></li>;
+          })}</ul>}
           <WorkoutBuilder
             exercises={exercises}
             items={form.exerciseItems || []}
@@ -1306,6 +1331,7 @@ export default function Templates({
         </Modal>
       )}
 
+      {brief && <GymBrief gym={brief.gym} routine={brief.routine} exercises={exercises} onClose={() => setBrief(null)} />}
       {modal === 'view' && (
         <Modal
           title={form.name}
@@ -1731,7 +1757,7 @@ export default function Templates({
             </>
           }
         >
-          <ExerciseFormFields form={exerciseForm} setForm={setExerciseForm} autoFocus />
+          <ExerciseFormFields gyms={gyms} form={exerciseForm} setForm={setExerciseForm} autoFocus />
         </Modal>
       )}
     </div>

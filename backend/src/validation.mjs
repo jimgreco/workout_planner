@@ -272,9 +272,40 @@ export function validateSettings(body) {
   };
 }
 
+export function validateGym(body, pathId) {
+  assertObject(body, 'gym');
+  assertAllowedKeys(body, new Set(['id', 'name', 'notes', 'equipment', 'revision', 'expectedRevision', 'updatedAt']), 'gym');
+  requireMatchingId(body, pathId);
+  optionalRevision(body.expectedRevision, 'expectedRevision');
+  if (!Array.isArray(body.equipment) || body.equipment.length > 200) fail('equipment must be an array of at most 200 items');
+  const ids = new Set();
+  const equipment = body.equipment.map((item, index) => {
+    const label = `equipment[${index}]`;
+    assertObject(item, label);
+    assertAllowedKeys(item, new Set(['id', 'name', 'category', 'details']), label);
+    validateId(item.id, `${label}.id`);
+    if (ids.has(item.id)) fail('equipment IDs must be unique');
+    ids.add(item.id);
+    const category = stringValue(item.category, `${label}.category`, { max: 40 }) ?? 'Other';
+    if (!['Free weights', 'Machines', 'Cables', 'Benches & racks', 'Cardio', 'Accessories', 'Other'].includes(category)) fail(`${label}.category is invalid`);
+    return {
+      id: item.id,
+      name: stringValue(item.name, `${label}.name`, { required: true, max: 120 }).trim(),
+      category,
+      details: stringValue(item.details, `${label}.details`, { max: 500 }) ?? '',
+    };
+  });
+  return {
+    id: pathId,
+    name: stringValue(body.name, 'name', { required: true, max: 120 }).trim(),
+    notes: stringValue(body.notes, 'notes', { max: 2000 }) ?? '',
+    equipment,
+  };
+}
+
 export function validateExercise(body, pathId) {
   assertObject(body, 'exercise');
-  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
+  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'equipmentAlternatives', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
   requireMatchingId(body, pathId);
   optionalRevision(body.expectedRevision, 'expectedRevision');
   const muscleGroup = stringValue(body.muscleGroup, 'muscleGroup', { max: 60 }) ?? 'Other';
@@ -296,6 +327,21 @@ export function validateExercise(body, pathId) {
   if (defaultSets !== undefined) exercise.defaultSets = defaultSets;
   const defaultReps = optionalIntValue(body.defaultReps, 'defaultReps', 1, 100);
   if (defaultReps !== undefined) exercise.defaultReps = defaultReps;
+  if (body.equipmentAlternatives !== undefined) {
+    if (!Array.isArray(body.equipmentAlternatives) || body.equipmentAlternatives.length > 100) fail('equipmentAlternatives must be an array of at most 100 entries');
+    const refs = new Set();
+    exercise.equipmentAlternatives = body.equipmentAlternatives.map((entry, index) => {
+      const label = `equipmentAlternatives[${index}]`;
+      assertObject(entry, label);
+      assertAllowedKeys(entry, new Set(['gymId', 'equipmentId']), label);
+      const gymId = validateId(entry.gymId, `${label}.gymId`);
+      const equipmentId = validateId(entry.equipmentId, `${label}.equipmentId`);
+      const key = `${gymId}/${equipmentId}`;
+      if (refs.has(key)) fail('equipmentAlternatives must be unique');
+      refs.add(key);
+      return { gymId, equipmentId };
+    });
+  }
   const best = personalBest(body.personalBest);
   if (best !== undefined) exercise.personalBest = best;
   return exercise;
@@ -303,7 +349,7 @@ export function validateExercise(body, pathId) {
 
 export function validateTemplate(body, pathId) {
   assertObject(body, 'template');
-  assertAllowedKeys(body, new Set(['id', 'name', 'description', 'exerciseItems', 'updatedAt', 'revision', 'expectedRevision']), 'template');
+  assertAllowedKeys(body, new Set(['id', 'name', 'description', 'gymId', 'exerciseItems', 'updatedAt', 'revision', 'expectedRevision']), 'template');
   requireMatchingId(body, pathId);
   optionalRevision(body.expectedRevision, 'expectedRevision');
   const template = {
@@ -313,6 +359,8 @@ export function validateTemplate(body, pathId) {
   };
   const description = stringValue(body.description, 'description', { max: 1000 });
   if (description !== undefined) template.description = description;
+  if (body.gymId === null) template.gymId = null;
+  else if (body.gymId !== undefined) template.gymId = validateId(body.gymId, 'gymId');
   return template;
 }
 
@@ -520,7 +568,7 @@ export function validateImport(body) {
   assertObject(data, 'data');
   assertAllowedKeys(
     data,
-    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'programs', 'settings', 'feedback']),
+    new Set(['exportedAt', 'exercises', 'templates', 'logs', 'programs', 'gyms', 'settings', 'feedback']),
     'data',
   );
 
@@ -549,7 +597,12 @@ export function validateImport(body) {
       return validateProgram(program, program.id);
     });
 
-  return { mode, exportedAt, exercises, templates, logs, programs, settings };
+  const gyms = importArray(data.gyms, 'gyms', 100).map((gym, index) => {
+    assertObject(gym, `gyms[${index}]`);
+    return validateGym(gym, gym.id);
+  });
+  if (new Set(gyms.map((gym) => gym.id)).size !== gyms.length) fail('gym IDs must be unique');
+  return { mode, exportedAt, exercises, templates, logs, programs, gyms, settings };
 }
 
 export function validateAuthBody(body, provider) {

@@ -452,3 +452,23 @@ describe('Routines page', () => {
     expect(onExercisesUpdate).toHaveBeenCalled();
   });
 });
+
+describe('routine gym association', () => {
+  it('assigns a gym, builds an inventory brief, and can unassign it', async () => {
+    const gym = { id: 'gym', name: 'Home gym', notes: '', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '5–50 lb' }] };
+    const routine = { id: 'push', name: 'Push', exerciseItems: [] };
+    render(<Templates mode="routines" templates={[routine]} gyms={[gym]} exercises={[]} settings={{ defaultSets: 4, defaultReps: 8 }} onUpdate={vi.fn()} />);
+    fireEvent.click(screen.getByTitle('Edit'));
+    fireEvent.change(screen.getByLabelText('Gym'), { target: { value: 'gym' } });
+    fireEvent.click(screen.getByText('Build with AI using this gym'));
+    expect(screen.getByLabelText('AI workout brief').value).toContain('5–50 lb');
+    fireEvent.click(screen.getAllByText('✕').at(-1));
+    fireEvent.click(screen.getByText('Save Changes'));
+    await waitFor(() => expect(saveTemplate).toHaveBeenCalledWith(expect.objectContaining({ gymId: 'gym' })));
+    fireEvent.click(screen.getByTitle('Edit'));
+    fireEvent.change(screen.getByLabelText('Gym'), { target: { value: 'gym' } });
+    fireEvent.change(screen.getByLabelText('Gym'), { target: { value: '' } });
+    fireEvent.click(screen.getByText('Save Changes'));
+    await waitFor(() => expect(saveTemplate).toHaveBeenLastCalledWith(expect.objectContaining({ gymId: null })));
+  });
+});

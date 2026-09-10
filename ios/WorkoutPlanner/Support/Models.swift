@@ -37,6 +37,7 @@ struct Exercise: Codable, Identifiable, Equatable {
     var defaultReps: Int?
     var personalBest: PersonalBest?
     var updatedAt: String?
+    var equipmentAlternatives: [EquipmentAlternative]?
     var revision: Int?
 
     init(
@@ -51,8 +52,10 @@ struct Exercise: Codable, Identifiable, Equatable {
         defaultReps: Int? = nil,
         personalBest: PersonalBest? = nil,
         updatedAt: String? = nil,
-        revision: Int? = nil
+        revision: Int? = nil,
+        equipmentAlternatives: [EquipmentAlternative]? = nil
     ) {
+        self.equipmentAlternatives = equipmentAlternatives
         self.id = id
         self.name = name
         self.muscleGroup = muscleGroup
@@ -199,6 +202,7 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
     var description: String?
     var exerciseItems: [ExerciseItem]
     var updatedAt: String?
+    var gymId: String?
     var revision: Int?
 
     init(
@@ -207,8 +211,10 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
         description: String? = "",
         exerciseItems: [ExerciseItem] = [],
         updatedAt: String? = nil,
-        revision: Int? = nil
+        revision: Int? = nil,
+        gymId: String? = nil
     ) {
+        self.gymId = gymId
         self.id = id
         self.name = name
         self.description = description
@@ -216,6 +222,23 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
         self.updatedAt = updatedAt
         self.revision = revision
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, exerciseItems, updatedAt, gymId, revision
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encode(exerciseItems, forKey: .exerciseItems)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(revision, forKey: .revision)
+        // Explicit null clears the association; omitted fields from older clients preserve it.
+        try container.encode(gymId, forKey: .gymId)
+    }
+
 }
 
 struct ProgramScheduleItem: Codable, Identifiable, Equatable {
@@ -710,6 +733,7 @@ struct ForgeExportPayload: Codable, Equatable {
     var templates: [WorkoutTemplate]?
     var logs: [WorkoutLog]?
     var programs: [TrainingProgram]?
+    var gyms: [Gym]?
     var settings: WorkoutSettings?
 }
 
@@ -723,6 +747,7 @@ struct ForgeImportCounts: Codable, Equatable {
     var templates: Int
     var logs: Int
     var programs: Int
+    var gyms: Int? = nil
     var settings: Bool?
 }
 
@@ -742,6 +767,7 @@ struct ForgeImportSkipped: Codable, Equatable {
     var templates: [ForgeSkippedExercise]?
     var logs: [ForgeSkippedLog]?
     var programs: [ForgeSkippedExercise]?
+    var gyms: [ForgeSkippedExercise]? = nil
 }
 
 struct ForgeImportRename: Codable, Equatable {
@@ -754,6 +780,7 @@ struct ForgeImportRenamed: Codable, Equatable {
     var templates: [ForgeImportRename]?
     var logs: [ForgeImportRename]?
     var programs: [ForgeImportRename]?
+    var gyms: [ForgeImportRename]? = nil
 }
 
 struct ForgeImportResult: Codable, Equatable {
@@ -768,6 +795,7 @@ struct ForgeImportPreview: Equatable {
         var templates: Int
         var logs: Int
         var programs: Int
+        var gyms: Int = 0
         var settings: Int
     }
 
@@ -776,6 +804,7 @@ struct ForgeImportPreview: Equatable {
         var templates: Int
         var logs: Int
         var programs: Int
+        var gyms: Int = 0
     }
 
     var counts: Counts
@@ -1434,4 +1463,88 @@ func hasRecordedWorkoutReps(_ set: WorkoutSet) -> Bool {
 }
 func isRecordedWorkingSet(_ set: WorkoutSet) -> Bool {
     hasRecordedWorkoutReps(set) && set.setType != "warmup"
+}
+
+struct GymEquipment: Codable, Identifiable, Equatable {
+    var id = UUID().uuidString
+    var name = ""
+    var category = "Other"
+    var details = ""
+
+    static let categories = ["Free weights", "Machines", "Cables", "Benches & racks", "Cardio", "Accessories", "Other"]
+    static let quickAdd: [(String, String)] = [
+        ("Dumbbells", "Free weights"), ("Barbells & plates", "Free weights"),
+        ("Adjustable bench", "Benches & racks"), ("Squat rack", "Benches & racks"),
+        ("Cable station", "Cables"), ("Lat pulldown", "Machines"),
+        ("Leg press", "Machines"), ("Smith machine", "Machines"),
+        ("Pull-up bar", "Accessories"), ("Treadmill", "Cardio")
+    ]
+}
+
+struct Gym: Codable, Identifiable, Equatable {
+    var id = UUID().uuidString
+    var name = ""
+    var notes = ""
+    var equipment: [GymEquipment] = []
+    var updatedAt: String?
+    var revision: Int?
+
+    var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.utf16.count <= 120
+        && notes.utf16.count <= 2000 && equipment.count <= 200
+        && equipment.allSatisfy {
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && $0.name.utf16.count <= 120 && $0.details.utf16.count <= 500
+        }
+    }
+
+    func aiBrief(routine: WorkoutTemplate? = nil, exercises: [Exercise] = []) -> String {
+        var lines = [
+            "Help me build a workout using this gym inventory.",
+            "Use only the listed equipment and bodyweight. Do not assume unlisted machines, attachments, or weight ranges are available. Ask about anything missing.",
+            "Ask me about my goals, experience, weekly schedule, session length, and limitations before suggesting a plan.",
+            "", "Gym: \(name)"
+        ]
+        if !notes.isEmpty { lines.append("Gym notes: \(notes)") }
+        lines += ["", "Equipment:"]
+        if equipment.isEmpty { lines.append("No equipment recorded yet. Ask me to complete the inventory before planning.") }
+        for category in GymEquipment.categories {
+            let items = equipment.filter { $0.category == category }
+            if items.isEmpty { continue }
+            lines.append(category + ":")
+            for item in items {
+                lines.append("- \(item.name)" + (item.details.isEmpty ? "" : " — \(item.details)"))
+            }
+        }
+        if let routine {
+            lines += ["", "Routine to adapt: \(routine.name)"]
+            if let description = routine.description, !description.isEmpty { lines.append(description) }
+            for item in routine.exerciseItems {
+                let name = exercises.first { $0.id == item.exerciseId }?.name ?? item.exerciseId
+                let data = try? JSONEncoder().encode(item)
+                let details = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                lines.append("- \(name): \(details)")
+                let summary = exercises.first { $0.id == item.exerciseId }?.equipmentSummary(at: self) ?? "No equipment requirement recorded"
+                lines.append("  Equipment: \(summary)")
+            }
+            lines.append("Equipment entries are alternatives: any one listed option can be used. If no requirement is recorded, ask rather than assuming the exercise needs no equipment.")
+            lines.append("Suggest changes before replacing any exercise. Preserve the intent of the routine.")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+struct EquipmentAlternative: Codable, Equatable, Identifiable {
+    var gymId: String
+    var equipmentId: String
+    var id: String { "\(gymId)/\(equipmentId)" }
+}
+
+extension Exercise {
+    func equipmentSummary(at gym: Gym) -> String {
+        let refs = equipmentAlternatives ?? []
+        guard !refs.isEmpty else { return "No equipment requirement recorded" }
+        let available = gym.equipment.filter { item in refs.contains { $0.gymId == gym.id && $0.equipmentId == item.id } }
+        return available.isEmpty ? "No recorded alternative at this gym" : available.map(\.name).joined(separator: " OR ")
+    }
 }

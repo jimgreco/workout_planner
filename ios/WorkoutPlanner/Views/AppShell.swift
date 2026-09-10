@@ -169,6 +169,15 @@ private struct SettingsPage: View {
                 VStack(alignment: .leading, spacing: 16) {
                     AccountProfileCard(user: auth.user, isDemoMode: auth.isDemoMode)
 
+                    AccountSettingsSection(title: "Training spaces") {
+                        AccountSettingsCard {
+                            NavigationLink { GymsView() } label: {
+                                Label("Gyms & equipment", systemImage: "building.2")
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+                            }
+                        }
+                    }
+
                     AccountSettingsSection(title: "Workout") {
                         AccountSettingsCard {
                             Toggle(isOn: Binding(
@@ -982,6 +991,7 @@ private struct ImportPreviewSheet: View {
                     LabeledContent("Routines", value: "\(draft.preview.counts.templates)")
                     LabeledContent("Workouts", value: "\(draft.preview.counts.logs)")
                     LabeledContent("Programs", value: "\(draft.preview.counts.programs)")
+                    LabeledContent("Gyms", value: "\(draft.preview.counts.gyms)")
                     LabeledContent("Settings", value: "\(draft.preview.counts.settings)")
                 } header: {
                     Text("Preview")

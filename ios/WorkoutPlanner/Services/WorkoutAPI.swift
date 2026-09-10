@@ -76,6 +76,18 @@ struct WorkoutAPI {
         try await request("GET", path: "/programs")
     }
 
+    func fetchGyms() async throws -> [Gym] {
+        try await request("GET", path: "/gyms")
+    }
+
+    func saveGym(_ gym: Gym) async throws -> Gym {
+        try await requestVersioned("PUT", path: "/gyms/\(gym.id)", body: gym)
+    }
+
+    func deleteGym(_ id: String) async throws {
+        try await requestNoBody("DELETE", path: "/gyms/\(id)")
+    }
+
     func fetchSettings() async throws -> WorkoutSettings {
         try await request("GET", path: "/settings")
     }
@@ -208,6 +220,7 @@ private protocol VersionedRequestBody: Encodable {
     var revision: Int? { get }
 }
 
+extension Gym: VersionedRequestBody {}
 extension Exercise: VersionedRequestBody {}
 extension WorkoutTemplate: VersionedRequestBody {}
 extension TrainingProgram: VersionedRequestBody {}

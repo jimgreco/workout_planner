@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
+import EquipmentAlternatives from '../components/EquipmentAlternatives.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
 import { cleanExerciseForm, emptyExercise } from '../exerciseForm.js';
 import { formatVolume, getExerciseHistory, personalBestLabel, setLabel, summarizeExercise } from '../progress.js';
@@ -114,7 +115,7 @@ function ExerciseDetail({ exercise, logs }) {
   );
 }
 
-export function ExerciseFormFields({ form, setForm, autoFocus = false }) {
+export function ExerciseFormFields({ form, setForm, gyms = [], autoFocus = false }) {
   return (
     <>
       <div className="form-group">
@@ -183,6 +184,7 @@ export function ExerciseFormFields({ form, setForm, autoFocus = false }) {
         </div>
       </div>
       <div className="form-group">
+        <EquipmentAlternatives form={form} setForm={setForm} gyms={gyms} />
         <label>Notes (optional)</label>
         <textarea
           rows={2}
@@ -195,7 +197,7 @@ export function ExerciseFormFields({ form, setForm, autoFocus = false }) {
   );
 }
 
-export default function Exercises({ exercises, logs = [], onUpdate, actionRequest = null, embedded = false }) {
+export default function Exercises({ gyms = [], exercises, logs = [], onUpdate, actionRequest = null, embedded = false }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'pb'
   const [form, setForm]                 = useState(emptyExercise());
   const [search, setSearch]             = useState('');
@@ -363,7 +365,7 @@ export default function Exercises({ exercises, logs = [], onUpdate, actionReques
             </>
           }
         >
-          <ExerciseFormFields form={form} setForm={setForm} autoFocus />
+          <ExerciseFormFields gyms={gyms} form={form} setForm={setForm} autoFocus />
         </Modal>
       )}
 

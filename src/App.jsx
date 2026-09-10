@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import './index.css';
 import { 
-  Dumbbell, 
+  Dumbbell,
+  Building2,
   Calendar as CalendarIcon, 
   ClipboardList,
   LayoutGrid,
@@ -25,6 +26,7 @@ import {
   getTemplates,
   getLogs,
   getPrograms,
+  getGyms,
   getSettings,
   exportData,
   importData,
@@ -41,6 +43,7 @@ import { buildLabel } from './buildInfo.js';
 import Login from './pages/Login.jsx';
 import Templates from './pages/Templates.jsx';
 import Exercises from './pages/Exercises.jsx';
+import Gyms from './pages/Gyms.jsx';
 import WorkoutLog from './pages/WorkoutLog.jsx';
 import Calendar from './pages/Calendar.jsx';
 import Progress from './pages/Progress.jsx';
@@ -52,17 +55,18 @@ const PAGES = [
   { id: 'log',       label: 'Train',            icon: Dumbbell },
   { id: 'programs',  label: 'Program',          icon: ClipboardList },
   { id: 'routines',  label: 'Routines',         icon: LayoutGrid },
+  { id: 'gyms', label: 'Gyms', icon: Building2 },
   { id: 'exercises', label: 'Exercises', icon: Library },
   { id: 'progress',  label: 'Progress',         icon: TrendingUp },
   { id: 'history',   label: 'History',          icon: CalendarIcon },
 ];
 const NAV_GROUPS = [
   { label: 'Train', pages: ['log', 'programs'] },
-  { label: 'Build', pages: ['routines', 'exercises'] },
+  { label: 'Build', pages: ['routines', 'exercises', 'gyms'] },
   { label: 'Review', pages: ['progress', 'history'] },
 ];
 const MOBILE_PAGES = ['log', 'programs', 'progress', 'history'];
-const MOBILE_MORE_PAGES = ['routines', 'exercises'];
+const MOBILE_MORE_PAGES = ['routines', 'exercises', 'gyms'];
 const ONBOARDING_KEY = 'forge.onboarding.dismissed.v1';
 const CRASH_REPORT_KEY = 'forge.lastCrashReportAt.v1';
 const CRASH_REPORT_COOLDOWN_MS = 30 * 60 * 1000;
@@ -202,6 +206,7 @@ export default function App() {
   const [resolvingConflictId, setResolvingConflictId] = useState(null);
   const [syncingPending, setSyncingPending] = useState(false);
 
+  const [gyms, setGyms] = useState([]);
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [logs, setLogs]           = useState([]);
@@ -223,6 +228,7 @@ export default function App() {
         setTemplates(getTemplates());
         setLogs(getLogs());
         setPrograms(getPrograms());
+        setGyms(getGyms());
         setSettings(getSettings());
       })
       .catch((err) => {
@@ -246,6 +252,7 @@ export default function App() {
     setTemplates([]);
     setLogs([]);
     setPrograms([]);
+    setGyms([]);
     setSettings({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
     setPendingTemplate(null);
     setEditingLog(null);
@@ -457,6 +464,7 @@ export default function App() {
       setTemplates(getTemplates());
       setLogs(getLogs());
       setPrograms(getPrograms());
+      setGyms(getGyms());
       setSettings(getSettings());
       setAccountModal(null);
       setImportDraft(emptyImportDraft());
@@ -646,7 +654,7 @@ export default function App() {
                   <span className="mobile-more-icon"><item.icon size={20} /></span>
                   <span>
                     <strong>{item.label}</strong>
-                    <small>{id === 'routines' ? 'Reusable workout blueprints' : 'Movements, notes, and personal bests'}</small>
+                    <small>{id === 'routines' ? 'Reusable workout blueprints' : id === 'gyms' ? 'Equipment and training spaces' : 'Movements, notes, and personal bests'}</small>
                   </span>
                   <ChevronRight size={17} />
                 </button>
@@ -739,6 +747,7 @@ export default function App() {
         )}
         {page === 'programs' && (
           <Templates
+            gyms={gyms}
             mode="programs"
             templates={templates}
             exercises={exercises}
@@ -755,6 +764,7 @@ export default function App() {
         )}
         {page === 'routines' && (
           <Templates
+            gyms={gyms}
             mode="routines"
             templates={templates}
             exercises={exercises}
@@ -771,6 +781,7 @@ export default function App() {
         )}
         {page === 'exercises' && (
           <Exercises
+            gyms={gyms}
             exercises={exercises}
             logs={logs}
             onUpdate={setExercises}
@@ -778,6 +789,7 @@ export default function App() {
         )}
         {page === 'log' && (
           <WorkoutLog
+            gyms={gyms}
             exercises={exercises}
             templates={templates}
             logs={logs}
@@ -795,6 +807,7 @@ export default function App() {
             onClearEditing={() => setEditingLog(null)}
           />
         )}
+        {page === 'gyms' && <Gyms gyms={gyms} templates={templates} onUpdate={setGyms} />}
         {page === 'history' && (
           <Calendar
             logs={logs}
@@ -942,6 +955,8 @@ export default function App() {
                     <span>Programs</span>
                     <strong>{importDraft.preview.counts.programs}</strong>
                   </div>
+                  <div><span>Gyms</span><strong>{importDraft.preview.counts.gyms}</strong>
+                  </div>
                   <div>
                     <span>Settings</span>
                     <strong>{importDraft.preview.counts.settings}</strong>
@@ -987,7 +1002,7 @@ export default function App() {
                 )}
 
                 {importDraft.preview.isEmpty && (
-                  <p className="text-muted import-note">This file does not contain exercises, routines, or workouts.</p>
+                  <p className="text-muted import-note">This file does not contain exercises, routines, workouts, or gyms.</p>
                 )}
               </>
             )}

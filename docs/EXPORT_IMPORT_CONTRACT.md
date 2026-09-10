@@ -26,6 +26,7 @@ The exported JSON object may contain:
   "templates": [],
   "logs": [],
   "programs": [],
+  "gyms": [],
   "settings": { "defaultSets": 4, "defaultReps": 8 },
   "feedback": []
 }
@@ -122,3 +123,9 @@ account. Audit rows are not included in exports. They store the import mode,
 Request ID, source export timestamp, source counts, pre-import account counts,
 imported counts, and capped skipped/renamed samples so support can investigate
 restores without replaying the original file.
+
+## Gym inventories
+
+Exports include `gyms` and optional routine `gymId` associations. See
+[Gyms and routine assignments](GYMS.md) for the schema, limits, API examples,
+and merge behavior. A gym-only account is not empty for restore purposes.

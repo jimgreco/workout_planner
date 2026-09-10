@@ -430,6 +430,11 @@ struct ExerciseFormSheet: View {
                     .lineLimit(2...4)
                 }
                 Section {
+                    ExerciseEquipmentPicker(exercise: $form)
+                } header: { Text("Equipment alternatives") } footer: {
+                    Text("Each selection is an alternative, not a requirement to use everything together. Leave empty if no requirement is recorded.")
+                }
+                Section {
                     TextField("Setup, cues, or range of motion...", text: Binding(
                         get: { form.description ?? "" },
                         set: { form.description = $0 }

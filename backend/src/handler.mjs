@@ -39,6 +39,7 @@ import {
   ValidationError,
   validateAuthBody,
   validateExercise,
+  validateGym,
   validateFeedback,
   validateImport,
   validateId,
@@ -69,6 +70,7 @@ const SK_PREFIX = {
   templates: 'TEMPLATE',
   logs: 'LOG',
   programs: 'PROGRAM',
+  gyms: 'GYM',
 };
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false };
@@ -403,6 +405,7 @@ function validateResourceBody(resource, body, id) {
   if (resource === 'templates') return validateTemplate(body, id);
   if (resource === 'logs') return validateLog(body, id);
   if (resource === 'programs') return validateProgram(body, id);
+  if (resource === 'gyms') return validateGym(body, id);
   throw new ValidationError('Unknown resource');
 }
 
@@ -413,6 +416,7 @@ function exportPayload(items) {
     templates: [],
     logs: [],
     programs: [],
+    gyms: [],
     settings: DEFAULT_SETTINGS,
     feedback: [],
   };
@@ -421,6 +425,7 @@ function exportPayload(items) {
     else if (item.SK.startsWith('EXERCISE#')) data.exercises.push(strip(item));
     else if (item.SK.startsWith('TEMPLATE#')) data.templates.push(strip(item));
     else if (item.SK.startsWith('LOG#')) data.logs.push(strip(item));
+    else if (item.SK.startsWith('GYM#')) data.gyms.push(strip(item));
     else if (item.SK.startsWith('PROGRAM#')) data.programs.push(strip(item));
     else if (item.SK.startsWith('FEEDBACK#')) data.feedback.push(strip(item));
   }
@@ -437,6 +442,7 @@ function accountResourceCounts(items) {
     templates: collectionItems(items, 'TEMPLATE').length,
     logs: collectionItems(items, 'LOG').length,
     programs: collectionItems(items, 'PROGRAM').length,
+    gyms: collectionItems(items, 'GYM').length,
     feedback: collectionItems(items, 'FEEDBACK').length,
     imports: collectionItems(items, 'IMPORT').length,
   };
@@ -448,6 +454,7 @@ function importSourceCounts(imported) {
     templates: imported.templates.length,
     logs: imported.logs.length,
     programs: imported.programs.length,
+    gyms: imported.gyms.length,
     settings: Boolean(imported.settings),
   };
 }
@@ -456,7 +463,8 @@ function userDataItemCount(items) {
   return collectionItems(items, 'EXERCISE').length
     + collectionItems(items, 'TEMPLATE').length
     + collectionItems(items, 'LOG').length
-    + collectionItems(items, 'PROGRAM').length;
+    + collectionItems(items, 'PROGRAM').length
+    + collectionItems(items, 'GYM').length;
 }
 
 function nameKey(value) {
@@ -481,8 +489,8 @@ function uniqueImportedName(name, existingNames, renamed, suffix = 'imported') {
 }
 
 function duplicateSafeItems(existingItems, imported) {
-  const renamed = { exercises: [], templates: [], logs: [], programs: [] };
-  const skipped = { exercises: [], templates: [], logs: [], programs: [] };
+  const renamed = { exercises: [], templates: [], logs: [], programs: [], gyms: [] };
+  const skipped = { exercises: [], templates: [], logs: [], programs: [], gyms: [] };
   const existingExerciseIds = new Set(collectionItems(existingItems, 'EXERCISE').map((item) => item.id));
   const existingTemplateIds = new Set(collectionItems(existingItems, 'TEMPLATE').map((item) => item.id));
   const existingLogIds = new Set(collectionItems(existingItems, 'LOG').map((item) => item.id));
@@ -538,7 +546,16 @@ function duplicateSafeItems(existingItems, imported) {
       name: uniqueImportedName(program.name, programNames, renamed.programs),
     }];
   });
-  return { exercises, templates, logs, programs, settings: imported.settings, renamed, skipped };
+  const existingGymIds = new Set(collectionItems(existingItems, 'GYM').map((item) => item.id));
+  const gymNames = new Set(collectionItems(existingItems, 'GYM').map((item) => nameKey(item.name)));
+  const gyms = imported.gyms.flatMap((gym) => {
+    if (existingGymIds.has(gym.id)) {
+      skipped.gyms.push({ id: gym.id, name: gym.name });
+      return [];
+    }
+    return [{ ...gym, name: uniqueImportedName(gym.name, gymNames, renamed.gyms) }];
+  });
+  return { exercises, templates, logs, programs, gyms, settings: imported.settings, renamed, skipped };
 }
 
 async function writeImportedCollection(PK, prefix, items) {
@@ -596,9 +613,23 @@ async function importPayload(PK, body, requestId) {
     ? duplicateSafeItems(existingItems, imported)
     : {
         ...imported,
-        renamed: { exercises: [], templates: [], logs: [], programs: [] },
-        skipped: { exercises: [], templates: [], logs: [], programs: [] },
+        renamed: { exercises: [], templates: [], logs: [], programs: [], gyms: [] },
+        skipped: { exercises: [], templates: [], logs: [], programs: [], gyms: [] },
       };
+
+  const availableGymIds = new Set([
+    ...collectionItems(existingItems, 'GYM').map((gym) => gym.id),
+    ...safe.gyms.map((gym) => gym.id),
+  ]);
+  if (safe.templates.some((routine) => routine.gymId && !availableGymIds.has(routine.gymId))) {
+    throw new ValidationError('Import includes a routine whose gym is missing. Include that gym in the backup.');
+  }
+
+  const availableGyms = [...collectionItems(existingItems, 'GYM'), ...safe.gyms];
+  if (safe.exercises.some((exercise) => exercise.equipmentAlternatives?.some((ref) =>
+    !availableGyms.some((gym) => gym.id === ref.gymId && gym.equipment.some((item) => item.id === ref.equipmentId))))) {
+    throw new ValidationError('Import includes exercise equipment that is missing. Include the gym inventory in the backup.');
+  }
 
   if (safe.settings) {
     await db.send(new PutCommand({
@@ -606,6 +637,7 @@ async function importPayload(PK, body, requestId) {
       Item: { PK, SK: 'SETTINGS', ...safe.settings },
     }));
   }
+  await writeImportedCollection(PK, 'GYM', safe.gyms);
   await writeImportedCollection(PK, 'EXERCISE', safe.exercises);
   await writeImportedCollection(PK, 'TEMPLATE', safe.templates);
   await writeImportedCollection(PK, 'LOG', safe.logs);
@@ -617,6 +649,7 @@ async function importPayload(PK, body, requestId) {
       templates: safe.templates.length,
       logs: safe.logs.length,
       programs: safe.programs.length,
+      gyms: safe.gyms.length,
       settings: Boolean(safe.settings),
     },
     renamed: safe.renamed,
@@ -729,6 +762,8 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
   return {
     ...body,
     ...(SK.startsWith('LOG#') && existing?.prescription ? { prescription: existing.prescription } : {}),
+    ...(SK.startsWith('TEMPLATE#') && body.gymId === undefined && existing?.gymId ? { gymId: existing.gymId } : {}),
+    ...(SK.startsWith('EXERCISE#') && body.equipmentAlternatives === undefined && existing?.equipmentAlternatives ? { equipmentAlternatives: existing.equipmentAlternatives } : {}),
     updatedAt: now,
     revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,
   };
@@ -1050,10 +1085,32 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
     return ok(items.map(strip));
   }
 
+  if (resource === 'gyms' && method === 'GET' && id) {
+    validateId(id);
+    const result = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: `GYM#${id}` } }));
+    return result.Item ? ok(strip(result.Item)) : err(404, 'Gym not found');
+  }
+
   if (method === 'PUT' && id) {
     validateId(id);
     const rawBody = parseJsonBody(event);
     const body = validateResourceBody(resource, rawBody, id);
+    if (resource === 'exercises' && body.equipmentAlternatives?.length) {
+      const gyms = await queryCollection(PK, 'GYM');
+      if (body.equipmentAlternatives.some((ref) => !gyms.some((gym) => gym.id === ref.gymId && gym.equipment.some((item) => item.id === ref.equipmentId)))) {
+        throw new ValidationError('Choose equipment saved in your account’s gyms.');
+      }
+    }
+    if (resource === 'gyms') {
+      const exercises = await queryCollection(PK, 'EXERCISE');
+      if (exercises.some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.gymId === id && !body.equipment.some((item) => item.id === ref.equipmentId)))) {
+        throw new ValidationError('Remove exercise associations before removing equipment from this gym.', { cause: 'conflict' });
+      }
+    }
+    if (resource === 'templates' && body.gymId) {
+      const gym = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: `GYM#${body.gymId}` } }));
+      if (!gym.Item) throw new ValidationError('Choose a gym saved in your account.');
+    }
     const SK = `${prefix}#${id}`;
     const versioned = await itemWithRevision(PK, SK, body, rawBody.expectedRevision);
     const item = { PK, SK, ...versioned };
@@ -1063,6 +1120,16 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
 
   if (method === 'DELETE' && id) {
     validateId(id);
+    if (resource === 'gyms') {
+      const exercises = await queryCollection(PK, 'EXERCISE');
+      if (exercises.some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.gymId === id))) {
+        throw new ValidationError('Remove exercise equipment associations before deleting this gym.', { cause: 'conflict' });
+      }
+      const routines = await queryCollection(PK, 'TEMPLATE');
+      if (routines.some((routine) => routine.gymId === id)) {
+        throw new ValidationError('Reassign or unassign routines using this gym before deleting it.', { cause: 'conflict' });
+      }
+    }
     await db.send(new DeleteCommand({
       TableName: TABLE,
       Key: { PK, SK: `${prefix}#${id}` },

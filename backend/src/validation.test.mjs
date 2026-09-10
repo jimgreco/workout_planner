@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   ValidationError,
   validateExercise,
+  validateGym,
+  validateImport,
   validateLog,
   validateProgram,
   validateSettings,
@@ -191,4 +193,44 @@ test('workouts retain prescription and named equipment setup in validated export
   const original={id:'log',name:'Upper',date:'2026-09-21',exerciseItems:[item],prescription:{templateId:'routine',templateName:'Upper',programId:'build',programName:'Build',phaseName:'Calibration',day:'2026-09-21',optional:false,exerciseItems:[item],targetRir:3}};
   const clean=validateLog(original,'log');assert.deepEqual(clean.prescription,original.prescription);assert.deepEqual(clean.exerciseItems[0].setupProfile,item.setupProfile);
   assert.throws(()=>validateLog({...original,prescription:{...original.prescription,templateId:''}},'log'));
+});
+
+test('gym validation preserves custom inventory and limits payloads', () => {
+  const gym = { id: 'gym-1', name: ' Home ', notes: 'Garage', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '5–100 lb per hand' }] };
+  assert.equal(validateGym(gym, gym.id).name, 'Home');
+  assert.deepEqual(validateGym(gym, gym.id).equipment, gym.equipment);
+  for (const patch of [
+    { name: ' ' }, { equipment: null }, { equipment: Array(201).fill(gym.equipment[0]) },
+    { equipment: [gym.equipment[0], gym.equipment[0]] },
+    { equipment: [{ ...gym.equipment[0], name: '' }] },
+    { equipment: [{ ...gym.equipment[0], category: 'Unknown' }] },
+    { equipment: [{ ...gym.equipment[0], details: 'x'.repeat(501) }] },
+    { PK: 'USER#someone-else' },
+  ]) assert.throws(() => validateGym({ ...gym, ...patch }, gym.id), ValidationError);
+  assert.throws(() => validateGym(gym, 'different-id'), ValidationError);
+});
+
+test('routine gym association and gym backups round-trip without affecting legacy routines', () => {
+  const routine = { id: 'r1', name: 'Push', exerciseItems: [], gymId: 'g1' };
+  assert.equal(validateTemplate(routine, 'r1').gymId, 'g1');
+  assert.equal(validateTemplate({ ...routine, gymId: null }, 'r1').gymId, null);
+  assert.throws(() => validateTemplate({ ...routine, gymId: '../bad' }, 'r1'), ValidationError);
+  const data = { gyms: [{ id: 'g1', name: 'Home', equipment: [] }], templates: [routine] };
+  const imported = validateImport({ data });
+  assert.equal(imported.gyms[0].id, imported.templates[0].gymId);
+  assert.deepEqual(validateImport({ data: { templates: [{ id: 'old', name: 'Old', exerciseItems: [] }] } }).gyms, []);
+  assert.throws(() => validateImport({ data: { gyms: [data.gyms[0], data.gyms[0]] } }), ValidationError);
+});
+
+test('exercises support zero, one, or multiple equipment alternatives', () => {
+  const exercise = { id: 'press', name: 'Press', muscleGroup: 'Chest' };
+  const alternatives = [{ gymId: 'home', equipmentId: 'db' }, { gymId: 'commercial', equipmentId: 'press' }];
+  for (const refs of [[], alternatives.slice(0, 1), alternatives]) {
+    assert.deepEqual(validateExercise({ ...exercise, equipmentAlternatives: refs }, 'press').equipmentAlternatives, refs);
+  }
+  for (const refs of [null, alternatives.concat(alternatives), [{ gymId: 'home' }], [{ gymId: '../bad', equipmentId: 'db' }], [{ ...alternatives[0], name: 'unexpected' }], Array.from({ length: 101 }, (_, i) => ({ gymId: 'home', equipmentId: `e${i}` }))]) {
+    assert.throws(() => validateExercise({ ...exercise, equipmentAlternatives: refs }, 'press'), ValidationError);
+  }
+  const restored = validateImport({ data: { exercises: [{ ...exercise, equipmentAlternatives: alternatives }] } });
+  assert.deepEqual(restored.exercises[0].equipmentAlternatives, alternatives);
 });

@@ -10,6 +10,7 @@ final class WorkoutStore: ObservableObject {
     @Published var exercises: [Exercise] = []
     @Published var templates: [WorkoutTemplate] = []
     @Published var logs: [WorkoutLog] = []
+    @Published var gyms: [Gym] = []
     @Published var programs: [TrainingProgram] = []
     @Published var settings = WorkoutSettings.defaults
     @Published var isLoading = false
@@ -79,6 +80,7 @@ final class WorkoutStore: ObservableObject {
         exercises = []
         templates = []
         logs = []
+        gyms = []
         programs = []
         settings = .defaults
         pendingTemplate = nil
@@ -129,6 +131,37 @@ final class WorkoutStore: ObservableObject {
             }
             errorMessage = error.localizedDescription
         }
+    }
+
+    func saveGym(_ gym: Gym) async throws {
+        guard !exercises.contains(where: { exercise in
+            exercise.equipmentAlternatives?.contains { ref in ref.gymId == gym.id && !gym.equipment.contains { $0.id == ref.equipmentId } } == true
+        }) else {
+            throw WorkoutAPIError.server(409, "Remove exercise associations before removing equipment from this gym.", requestID: nil, conflict: nil)
+        }
+        let saved: Gym
+        if usesLocalData { saved = gym }
+        else {
+            guard let api else { throw WorkoutAPIError.missingConfiguration }
+            saved = try await api.saveGym(gym)
+        }
+        gyms = (gyms.filter { $0.id != saved.id } + [saved]).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        persistOfflineSnapshot()
+    }
+
+    func deleteGym(_ id: String) async throws {
+        guard !exercises.contains(where: { $0.equipmentAlternatives?.contains { $0.gymId == id } == true }) else {
+            throw WorkoutAPIError.server(409, "Remove exercise equipment associations before deleting this gym.", requestID: nil, conflict: nil)
+        }
+        guard !templates.contains(where: { $0.gymId == id }) else {
+            throw WorkoutAPIError.server(409, "Reassign or unassign routines using this gym before deleting it.", requestID: nil, conflict: nil)
+        }
+        if !usesLocalData {
+            guard let api else { throw WorkoutAPIError.missingConfiguration }
+            try await api.deleteGym(id)
+        }
+        gyms.removeAll { $0.id == id }
+        persistOfflineSnapshot()
     }
 
     func saveSettings(_ value: WorkoutSettings) async throws {
@@ -412,6 +445,7 @@ final class WorkoutStore: ObservableObject {
                 templates: templates,
                 logs: logs,
                 programs: programs,
+                gyms: gyms,
                 settings: settings
             ))
         }
@@ -424,6 +458,7 @@ final class WorkoutStore: ObservableObject {
         let importedTemplates = payload.templates ?? []
         let importedLogs = payload.logs ?? []
         let importedPrograms = payload.programs ?? []
+        let importedGyms = payload.gyms ?? []
         let existingExerciseIds = Set(exercises.map(\.id))
         let existingTemplateIds = Set(templates.map(\.id))
         let existingLogIds = Set(logs.map(\.id))
@@ -434,16 +469,18 @@ final class WorkoutStore: ObservableObject {
                 templates: importedTemplates.count,
                 logs: importedLogs.count,
                 programs: importedPrograms.count,
+                gyms: importedGyms.count,
                 settings: payload.settings == nil ? 0 : 1
             ),
             duplicateIds: .init(
                 exercises: importedExercises.filter { existingExerciseIds.contains($0.id) }.count,
                 templates: importedTemplates.filter { existingTemplateIds.contains($0.id) }.count,
                 logs: importedLogs.filter { existingLogIds.contains($0.id) }.count,
-                programs: importedPrograms.filter { existingProgramIds.contains($0.id) }.count
+                programs: importedPrograms.filter { existingProgramIds.contains($0.id) }.count,
+                gyms: importedGyms.filter { gym in gyms.contains { $0.id == gym.id } }.count
             ),
-            isEmpty: importedExercises.isEmpty && importedTemplates.isEmpty && importedLogs.isEmpty && importedPrograms.isEmpty,
-            targetIsEmpty: exercises.isEmpty && templates.isEmpty && logs.isEmpty && programs.isEmpty
+            isEmpty: importedExercises.isEmpty && importedTemplates.isEmpty && importedLogs.isEmpty && importedPrograms.isEmpty && importedGyms.isEmpty,
+            targetIsEmpty: exercises.isEmpty && templates.isEmpty && logs.isEmpty && programs.isEmpty && gyms.isEmpty
         )
     }
 
@@ -462,7 +499,8 @@ final class WorkoutStore: ObservableObject {
         let incomingTemplates = payload.templates ?? []
         let incomingLogs = payload.logs ?? []
         let incomingPrograms = payload.programs ?? []
-        if mode == .emptyOnly && (!exercises.isEmpty || !templates.isEmpty || !logs.isEmpty || !programs.isEmpty) {
+        let incomingGyms = payload.gyms ?? []
+        if mode == .emptyOnly && (!exercises.isEmpty || !templates.isEmpty || !logs.isEmpty || !programs.isEmpty || !gyms.isEmpty) {
             throw WorkoutAPIError.server(409, "Import can only restore into an empty account.", requestID: nil, conflict: nil)
         }
 
@@ -471,6 +509,7 @@ final class WorkoutStore: ObservableObject {
             templates = incomingTemplates.sortedByName()
             logs = incomingLogs
             programs = incomingPrograms.sortedForDisplay()
+            gyms = incomingGyms
             if let importedSettings = payload.settings { settings = importedSettings }
             return ForgeImportResult(
                 imported: .init(
@@ -478,6 +517,7 @@ final class WorkoutStore: ObservableObject {
                     templates: incomingTemplates.count,
                     logs: incomingLogs.count,
                     programs: incomingPrograms.count,
+                    gyms: incomingGyms.count,
                     settings: payload.settings != nil
                 ),
                 renamed: .init(exercises: [], templates: [], logs: [], programs: []),
@@ -551,6 +591,20 @@ final class WorkoutStore: ObservableObject {
             return next
         }
 
+        var gymIds = Set(gyms.map(\.id))
+        var gymNames = Set(gyms.map { nameKey($0.name) })
+        var renamedGyms: [ForgeImportRename] = []
+        var skippedGyms: [ForgeSkippedExercise] = []
+        let newGyms: [Gym] = incomingGyms.compactMap { gym in
+            guard gymIds.insert(gym.id).inserted else {
+                skippedGyms.append(.init(id: gym.id, name: gym.name))
+                return nil
+            }
+            var next = gym
+            next.name = uniqueImportedName(next.name, existingNames: &gymNames, renamed: &renamedGyms)
+            return next
+        }
+        gyms += newGyms
         exercises = (exercises + newExercises).sortedByName()
         templates = (templates + newTemplates).sortedByName()
         logs += newLogs
@@ -563,10 +617,11 @@ final class WorkoutStore: ObservableObject {
                 templates: newTemplates.count,
                 logs: newLogs.count,
                 programs: newPrograms.count,
+                gyms: newGyms.count,
                 settings: payload.settings != nil
             ),
-            renamed: .init(exercises: renamedExercises, templates: renamedTemplates, logs: renamedLogs, programs: renamedPrograms),
-            skipped: .init(exercises: skippedExercises, templates: skippedTemplates, logs: skippedLogs, programs: skippedPrograms)
+            renamed: .init(exercises: renamedExercises, templates: renamedTemplates, logs: renamedLogs, programs: renamedPrograms, gyms: renamedGyms),
+            skipped: .init(exercises: skippedExercises, templates: skippedTemplates, logs: skippedLogs, programs: skippedPrograms, gyms: skippedGyms)
         )
     }
 
@@ -718,6 +773,13 @@ final class WorkoutStore: ObservableObject {
         }
 
         do {
+            gyms = try await api.fetchGyms().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            loadedSections += 1
+        } catch {
+            try recordLoadFailure(error, label: "gyms", failures: &failures, firstError: &firstError)
+        }
+
+        do {
             settings = try await api.fetchSettings()
             loadedSections += 1
         } catch {
@@ -746,6 +808,7 @@ final class WorkoutStore: ObservableObject {
         templates = mergePendingTemplates(snapshot.templates).sortedByName()
         logs = mergePendingLogs(snapshot.logs)
         programs = mergePendingPrograms(snapshot.programs).sortedForDisplay()
+        gyms = snapshot.gyms ?? []
         settings = snapshot.settings
         isUsingOfflineSnapshot = markOffline
         refreshPendingSyncCount()
@@ -761,6 +824,7 @@ final class WorkoutStore: ObservableObject {
             templates: templates,
             logs: logs,
             programs: programs,
+            gyms: gyms,
             settings: settings
         ))
     }
@@ -1085,6 +1149,7 @@ private struct OfflineDataSnapshot: Codable {
     var templates: [WorkoutTemplate]
     var logs: [WorkoutLog]
     var programs: [TrainingProgram]
+    var gyms: [Gym]?
     var settings: WorkoutSettings
 }
 

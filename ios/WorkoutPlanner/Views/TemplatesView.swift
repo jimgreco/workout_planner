@@ -45,6 +45,8 @@ struct TemplatesView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
+                    NavigationLink { GymsView() } label: { Image(systemName: "building.2") }
+                        .accessibilityLabel("Gyms & equipment")
                     ToolbarCircleActionButton(
                         systemName: "gearshape",
                         accessibilityLabel: "Workout Defaults",
@@ -1275,6 +1277,7 @@ private struct ProgramDayPlannerSheet: View {
 }
 
 private struct TemplateCard: View {
+    @EnvironmentObject private var store: WorkoutStore
     let template: WorkoutTemplate
     let exercises: [Exercise]
     let logs: [WorkoutLog]
@@ -1293,6 +1296,10 @@ private struct TemplateCard: View {
                             .foregroundStyle(Theme.text)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let gymId = template.gymId {
+                            Label(store.gyms.first { $0.id == gymId }?.name ?? "Unavailable gym", systemImage: "building.2")
+                                .font(.caption).foregroundStyle(Theme.muted)
+                        }
                         if let description = template.description, !description.isEmpty {
                             Text(description)
                                 .font(.system(size: 14))
@@ -1368,6 +1375,7 @@ private struct TemplateFormSheet: View {
 
     @State private var form: WorkoutTemplate
     @Binding var isSaving: Bool
+    @State private var showingGymBrief = false
     @State private var editingExercise: Exercise?
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
@@ -1398,11 +1406,36 @@ private struct TemplateFormSheet: View {
                         .fieldStyle()
                     }
 
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("Gym", selection: Binding(get: { form.gymId ?? "" }, set: { form.gymId = $0.isEmpty ? nil : $0 })) {
+                            Text("No gym assigned").tag("")
+                            if let id = form.gymId, !store.gyms.contains(where: { $0.id == id }) {
+                                Text("Unavailable gym — choose another").tag(id)
+                            }
+                            ForEach(store.gyms) { Text($0.name).tag($0.id) }
+                        }
+                        NavigationLink("Manage gyms & equipment") { GymsView() }
+                        if store.gyms.contains(where: { $0.id == form.gymId }) {
+                            Button("Build with AI using this gym", systemImage: "sparkles") { showingGymBrief = true }
+                        }
+                    }
+
                     Divider()
 
                     Text("Exercises")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Theme.text)
+
+                    if let gym = store.gyms.first(where: { $0.id == form.gymId }) {
+                        ForEach(Array(form.exerciseItems.enumerated()), id: \.offset) { _, item in
+                            if let exercise = store.exercises.first(where: { $0.id == item.exerciseId }) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(exercise.name).font(.subheadline.bold())
+                                    Text(exercise.equipmentSummary(at: gym)).font(.caption).foregroundStyle(Theme.muted)
+                                }
+                            }
+                        }
+                    }
 
                     WorkoutBuilderView(
                         exercises: store.exercises,
@@ -1439,6 +1472,11 @@ private struct TemplateFormSheet: View {
                         focusedBuilderField = nil
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $showingGymBrief) {
+            if let gym = store.gyms.first(where: { $0.id == form.gymId }) {
+                GymBriefSheet(text: gym.aiBrief(routine: form, exercises: store.exercises))
             }
         }
         .sheet(item: $editingExercise) { exercise in

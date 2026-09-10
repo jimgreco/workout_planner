@@ -13,6 +13,7 @@ import {
   getExercises, saveExercise, deleteExercise,
   getTemplates, saveTemplate, deleteTemplate,
   getPrograms, saveProgram, deleteProgram,
+  getGyms, saveGym, deleteGym,
   getLogs, saveLog, deleteLog, getLogsByDate, flushPendingLogSaves, flushPendingResourceChanges, pendingLogSaveCount, pendingChangeCount,
   getPendingConflicts, pendingConflictCount, resolvePendingConflict,
   getSettings,
@@ -35,6 +36,7 @@ vi.mock('../auth.js', () => ({
 }));
 
 function mockFetch(responseMap) {
+  responseMap = { 'GET /gyms': () => ({ body: [] }), ...responseMap };
   globalThis.fetch = vi.fn(async (url, opts) => {
     const method = opts?.method ?? 'GET';
     const path   = url.replace(/(https?:\/\/[^/]*)/, '');
@@ -90,7 +92,7 @@ describe('initData', () => {
     expect(getLogs()).toEqual([LOG]);
     expect(getPrograms()).toEqual([PROGRAM]);
     expect(getSettings()).toEqual({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(5);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -485,8 +487,8 @@ describe('account and support', () => {
     });
 
     expect(preview.exportedAt).toBe('2026-06-08T20:15:00.000Z');
-    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, programs: 1, settings: 1 });
-    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1, programs: 0 });
+    expect(preview.counts).toEqual({ exercises: 1, templates: 1, logs: 1, programs: 1, gyms: 0, settings: 1 });
+    expect(preview.duplicateIds).toEqual({ exercises: 1, templates: 0, logs: 1, programs: 0, gyms: 0 });
     expect(preview.targetIsEmpty).toBe(false);
   });
 
@@ -540,5 +542,32 @@ describe('account and support', () => {
     expect(getTemplates()).toEqual([]);
     expect(getLogs()).toEqual([]);
     expect(getPrograms()).toEqual([]);
+  });
+});
+
+describe('gyms', () => {
+  const gym = { id: 'home', name: 'Home', equipment: [], revision: 2 };
+  it('saves with revision checks, retains cached data after failure, and deletes', async () => {
+    mockFetch({ 'PUT /gyms/home': () => ({ body: gym }) });
+    await saveGym(gym);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).expectedRevision).toBe(2);
+    expect(getGyms()).toEqual([gym]);
+    mockFetch({ 'PUT /gyms/home': () => ({ status: 500, headers: { 'X-Request-Id': 'gym-save' }, body: { error: 'Try again', requestId: 'gym-save' } }) });
+    await expect(saveGym({ ...gym, name: 'Changed' })).rejects.toThrow('gym-save');
+    expect(getGyms()[0].name).toBe('Home');
+    mockFetch({ 'DELETE /gyms/home': () => ({ status: 204 }) });
+    await deleteGym('home');
+    expect(getGyms()).toEqual([]);
+  });
+  it('includes gyms in import preview and clears them on sign-out', async () => {
+    mockFetch({ 'PUT /gyms/home': () => ({ body: gym }) });
+    await saveGym(gym);
+    const preview = previewImportData({ gyms: [gym] });
+    expect(preview.counts.gyms).toBe(1);
+    expect(preview.duplicateIds.gyms).toBe(1);
+    expect(preview.isEmpty).toBe(false);
+    expect(preview.targetIsEmpty).toBe(false);
+    resetData();
+    expect(getGyms()).toEqual([]);
   });
 });
