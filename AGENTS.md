@@ -1,5 +1,31 @@
 # Workout Planner — Codex Guide
 
+## Efficient Start
+
+- Use this guide and supplied session context before exploring. Check
+  `git status --short --branch`, `git diff --stat`, and `git diff --cached --stat`,
+  then inspect relevant hunks. Keep unrelated edits and artifacts out of scope.
+- Start with the paths below and narrow `rg` searches; expand only when the
+  current evidence leaves a concrete question unanswered.
+
+| Work | Start here |
+|---|---|
+| Web behavior and API calls | `src/`, `src/api.js`, `src/index.css` |
+| iPhone UI and shared models | `ios/WorkoutPlanner/Views/`, `ios/WorkoutPlanner/Support/Models.swift` |
+| API and request validation | `backend/src/handler.mjs`, `backend/src/validation.mjs` |
+| Training evidence | `src/setEvidence.js`, native `isRecordedWorkingSet`, Training evidence below |
+| Release or operations | `docs/OPERATIONS.md`, `.github/workflows/deploy.yml`, `.github/workflows/testflight.yml` |
+
+- Pick validation for the affected surface: web tests/lint/build for web work,
+  backend tests for API work, and a relevant native build plus screen inspection
+  for iOS UI changes. Contract changes require coverage across clients and API.
+  Documentation-only edits need diff, path/link, and whitespace review.
+- Run checks once after related edits settle. Do not reinstall dependencies,
+  repeat passing builds, or run release/backup workflows without a concrete need.
+- For requested releases, follow `docs/OPERATIONS.md` and inspect CI for the
+  final pushed SHA. Verify live `/api/healthz`, `/api/version`, and applicable
+  TestFlight results separately; distinguish upload from tester availability.
+
 ## What This Project Is
 
 Forge is a React web app plus native SwiftUI iPhone app for tracking workouts.
