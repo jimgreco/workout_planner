@@ -19,6 +19,10 @@ dist-ssr
 *.local
 .claude/
 
+# Local browser automation state and generated artifacts
+/.playwright-cli/
+/output/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

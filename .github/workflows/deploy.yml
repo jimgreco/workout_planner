@@ -330,8 +330,17 @@ jobs:
           REMOTE_DEPLOY
 
       - name: Smoke test live app
+        timeout-minutes: 8
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error "$WEB_BASE_URL/api/healthz"
-          curl --fail --silent --show-error "$WEB_BASE_URL/api/version"
-          curl --fail --silent --show-error "$WEB_BASE_URL" >/dev/null
+          # Container recreation can briefly return 502 before the API is ready.
+          # Retry transient HTTP errors and connection refusals, but still fail
+          # the deployment when an endpoint does not recover within the budget.
+          smoke_curl() {
+            curl --fail --silent --show-error \
+              --retry 12 --retry-delay 5 --retry-max-time 120 \
+              --retry-connrefused --connect-timeout 5 --max-time 10 "$1"
+          }
+          smoke_curl "$WEB_BASE_URL/api/healthz"
+          smoke_curl "$WEB_BASE_URL/api/version"
+          smoke_curl "$WEB_BASE_URL" >/dev/null
