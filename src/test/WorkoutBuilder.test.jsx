@@ -558,3 +558,40 @@ describe('WorkoutBuilder', () => {
     });
   });
 });
+
+describe('equipment setup editing', () => {
+  const profile = { id: 'setup-1', name: 'Home bench', seat: '3' };
+  const item = { ...oneItem[0], setupProfile: profile, baselineId: 'baseline-1' };
+
+  it('edits details without changing identity, baseline, sets, or history', () => {
+    const onChange = vi.fn();
+    const logs = [{ exerciseItems: [item] }];
+    render(<WorkoutBuilder exercises={exercises} items={[item]} logs={logs} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    fireEvent.change(screen.getByLabelText('Setup name'), { target: { value: '  Home bench corrected  ' } });
+    fireEvent.change(screen.getByLabelText('Seat / bench setting'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    const updated = onChange.mock.calls.at(-1)[0][0];
+    expect(updated.setupProfile).toMatchObject({ id: profile.id, name: 'Home bench corrected', seat: '4' });
+    expect(updated.baselineId).toBe(item.baselineId);
+    expect(updated.sets).toEqual(item.sets);
+    expect(logs[0].exerciseItems[0].setupProfile).toEqual(profile);
+  });
+
+  it('discards cancelled edits and disallows blank names', () => {
+    const onChange = vi.fn();
+    render(<WorkoutBuilder exercises={exercises} items={[item]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    fireEvent.change(screen.getByLabelText('Setup name'), { target: { value: ' ' } });
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    expect(screen.getByLabelText('Setup name')).toHaveValue(profile.name);
+  });
+
+  it('hides setup editing in read-only workouts', () => {
+    render(<WorkoutBuilder exercises={exercises} items={[item]} onChange={() => {}} readOnly />);
+    expect(screen.queryByRole('button', { name: 'Edit setup' })).not.toBeInTheDocument();
+  });
+});

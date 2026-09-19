@@ -2064,6 +2064,7 @@ struct EquipmentSetupPicker: View {
     var onChanged: () -> Void
     @State private var editing = false
     @State private var draft = EquipmentSetup()
+    @State private var editingExisting = false
     private var profiles: [EquipmentSetup] {
         var result: [String: EquipmentSetup] = [:]
         for log in logs { for entry in log.exerciseItems where entry.exerciseId == item.exerciseId { if let p = entry.setupProfile { result[p.id] = p } } }
@@ -2081,7 +2082,12 @@ struct EquipmentSetupPicker: View {
                 useProfile(profiles.first { $0.id == id })
             })) { Text("Unspecified").tag(""); ForEach(profiles) { Text($0.name).tag($0.id) } }.disabled(readOnly)
             if let p = item.setupProfile { Text([p.gym,p.machine,p.seat,p.grip,p.loadConvention].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(Theme.muted) }
-            if !readOnly { Button("Save a new setup") { draft = EquipmentSetup(); editing = true } }
+            if !readOnly {
+                if let profile = item.setupProfile {
+                    Button("Edit setup") { draft = profile; editingExisting = true; editing = true }
+                }
+                Button("Save a new setup") { draft = EquipmentSetup(); editingExisting = false; editing = true }
+            }
         }
         .sheet(isPresented: $editing) {
             NavigationStack {
@@ -2093,10 +2099,17 @@ struct EquipmentSetupPicker: View {
                     TextField("Grip / attachment", text: $draft.grip)
                     TextField("Load convention: per hand, total, stack", text: $draft.loadConvention)
                     Text("Each setup has its own comparison baseline. Previous workouts keep their original settings.").font(.caption)
-                }.navigationTitle("Equipment setup").toolbar {
+                }.navigationTitle(editingExisting ? "Edit equipment setup" : "Equipment setup").toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editing = false } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Use setup") {
-                        useProfile(draft); editing = false
+                    ToolbarItem(placement: .confirmationAction) { Button(editingExisting ? "Save changes" : "Use setup") {
+                        draft.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if editingExisting {
+                            item.setupProfile = draft
+                            onChanged()
+                        } else {
+                            useProfile(draft)
+                        }
+                        editing = false
                     }.disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || [draft.name,draft.gym,draft.machine,draft.seat,draft.grip,draft.loadConvention].contains { $0.count > 120 }) }
                 }
             }
