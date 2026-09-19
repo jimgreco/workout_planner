@@ -2078,9 +2078,14 @@ struct EquipmentSetupPicker: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("Equipment setup")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.muted)
             Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
                 useProfile(profiles.first { $0.id == id })
-            })) { Text("Unspecified").tag(""); ForEach(profiles) { Text($0.name).tag($0.id) } }.disabled(readOnly)
+            })) { Text("Unspecified").tag(""); ForEach(profiles) { Text($0.name).tag($0.id) } }
+            .pickerStyle(.menu)
+            .disabled(readOnly)
             if let p = item.setupProfile { Text([p.gym,p.machine,p.seat,p.grip,p.loadConvention].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(Theme.muted) }
             if !readOnly {
                 if let profile = item.setupProfile {

@@ -1891,16 +1891,31 @@ private struct WorkoutLiveActivityCard: View {
                 quickEntryPanel(context, set: set, repMode: repMode, showsWeight: showsWeight)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Picker("Reps left with the same form", selection: stringBinding(set, \.rir)) {
-                        Text("Not sure").tag("")
-                        ForEach(0...10, id: \.self) { Text(String($0)).tag(String($0)) }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reps left")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.muted)
+                        Picker("Reps left with the same form", selection: stringBinding(set, \.rir)) {
+                            Text("Not sure").tag("")
+                            ForEach(0...10, id: \.self) { Text(String($0)).tag(String($0)) }
+                        }
+                        .pickerStyle(.menu)
+                        Text("How many more reps could you do with the same form?")
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
                     }
-                    Picker("Set status", selection: Binding(get: {
-                        set.wrappedValue.completion ?? (hasRecordedWorkoutReps(set.wrappedValue) ? "recorded" : "unrecorded")
-                    }, set: { value in set.wrappedValue.completion = value; onChanged() })) {
-                        Text("Not recorded").tag("unrecorded")
-                        Text("Recorded").tag("recorded")
-                        Text("Skipped").tag("skipped")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Set status")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.muted)
+                        Picker("Set status", selection: Binding(get: {
+                            set.wrappedValue.completion ?? (hasRecordedWorkoutReps(set.wrappedValue) ? "recorded" : "unrecorded")
+                        }, set: { value in set.wrappedValue.completion = value; onChanged() })) {
+                            Text("Not recorded").tag("unrecorded")
+                            Text("Recorded").tag("recorded")
+                            Text("Skipped").tag("skipped")
+                        }
+                        .pickerStyle(.menu)
                     }
                     setTypeMenu(set: set, height: liveSecondaryTileHeight)
                     EquipmentSetupPicker(item: Binding(get: { items[context.exerciseIndex] }, set: { items[context.exerciseIndex] = $0 }), logs: logs, onChanged: onChanged)
