@@ -843,12 +843,20 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
     });
   }
   const now = new Date().toISOString();
+  const deletedEquipmentSetupIds = SK.startsWith('EXERCISE#')
+    ? [...new Set([...(existing?.deletedEquipmentSetupIds || []), ...(body.deletedEquipmentSetupIds || [])])]
+    : [];
   return {
     ...body,
+    ...(SK.startsWith('PROGRAM#') && body.scheduleEdits === undefined && existing?.scheduleEdits ? { scheduleEdits: existing.scheduleEdits } : {}),
     ...(SK.startsWith('LOG#') && existing?.prescription ? { prescription: existing.prescription } : {}),
     ...(SK.startsWith('TEMPLATE#') && body.gymId === undefined && existing?.gymId ? { gymId: existing.gymId } : {}),
     ...(SK.startsWith('EXERCISE#') && body.equipmentSetups === undefined && existing?.equipmentSetups ? { equipmentSetups: existing.equipmentSetups } : {}),
     ...(SK.startsWith('EXERCISE#') && body.equipmentAlternatives === undefined && existing?.equipmentAlternatives ? { equipmentAlternatives: existing.equipmentAlternatives } : {}),
+    ...(deletedEquipmentSetupIds.length ? {
+      deletedEquipmentSetupIds,
+      equipmentSetups: (body.equipmentSetups ?? existing?.equipmentSetups ?? []).filter(profile => !deletedEquipmentSetupIds.includes(profile.id)),
+    } : {}),
     updatedAt: now,
     revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,
   };

@@ -1,3 +1,4 @@
+import UpcomingDayActions from '../components/UpcomingDayActions.jsx';
 import { validateProgram } from '../../backend/src/validation.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -27,13 +28,11 @@ import { saveTemplate, deleteTemplate, saveSettings, saveProgram, deleteProgram,
 import {
   activeProgramForDate,
   createProgramScheduleItem,
-  insertProgramRestDay,
   moveProgramScheduleDay,
   nextProgramWorkout as getNextProgramWorkout,
   normalizeProgram,
   programAdherence as summarizeProgramAdherence,
   programSlotForDate,
-  removeProgramRestDay,
   replaceProgramScheduleItem,
   scheduleItemTitle,
   swapProgramScheduleDays,
@@ -692,40 +691,6 @@ export default function Templates({
     }
   }
 
-  async function handleInsertProgramRestDay(day) {
-    if (!activeProgram || saving || !day?.dayKey || day.isInsertedRest) return;
-    setSaving(true);
-    try {
-      const updatedProgram = withProgramActivity(
-        insertProgramRestDay(activeProgram, day.dayKey),
-        'rest_insert',
-        'Inserted rest day',
-        dateLabel(day.date),
-      );
-      const updated = await saveProgram(cleanProgram(updatedProgram));
-      onProgramsUpdate(updated);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRemoveProgramRestDay(day) {
-    if (!activeProgram || saving || !day?.dayKey || !day.isInsertedRest) return;
-    setSaving(true);
-    try {
-      const updatedProgram = withProgramActivity(
-        removeProgramRestDay(activeProgram, day.dayKey),
-        'rest_remove',
-        'Removed inserted rest day',
-        dateLabel(day.date),
-      );
-      const updated = await saveProgram(cleanProgram(updatedProgram));
-      onProgramsUpdate(updated);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   function handleSetProgramFormDayCount(dayCount) {
     setProgramForm((draft) => ({
       ...draft,
@@ -867,7 +832,7 @@ export default function Templates({
                   <span>Next</span>
                   <strong>
                     {nextWorkout
-                      ? `${dateLabel(nextWorkout.date)} - ${nextWorkout.template.name}${nextWorkout.total > 1 ? ` (${nextWorkout.position} of ${nextWorkout.total})` : ''}`
+                      ? `${dateLabel(nextWorkout.date)} - ${nextWorkout.template.name}${nextWorkout.position > 0 && nextWorkout.total > 1 ? ` (${nextWorkout.position} of ${nextWorkout.total})` : ''}`
                       : 'No scheduled workout'}
                   </strong>
                   <small className="text-muted">
@@ -934,7 +899,7 @@ export default function Templates({
                   <span>Next 3 weeks</span>
                 </div>
                 <div className="program-upcoming-list" role="list">
-                  {upcomingSchedule.map((day) => (
+                  {upcomingSchedule.map((day, index) => (
                     <div
                       key={day.id}
                       className={`program-upcoming-day ${day.status}`}
@@ -950,33 +915,13 @@ export default function Templates({
                               : day.isInsertedRest
                                 ? 'Inserted rest day'
                                 : day.scheduleItem
-                                  ? `${cycleDayLabel(day.scheduleIndex ?? 0)} · ${day.template?.name || 'Rest'}`
+                                  ? `${(day.scheduleIndex == null ? 'Added' : cycleDayLabel(day.scheduleIndex))} · ${day.template?.name || 'Rest'}`
                                   : 'Rest'}
                           </span>
                         </div>
                       </div>
                       <div className="program-upcoming-actions">
-                        {day.isInsertedRest ? (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm program-remove-rest"
-                            onClick={() => handleRemoveProgramRestDay(day)}
-                            disabled={saving}
-                            aria-label={`Remove inserted rest day on ${dateLabel(day.date)}`}
-                          >
-                            <Minus size={12} /> Remove
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleInsertProgramRestDay(day)}
-                            disabled={saving}
-                            aria-label={`Insert rest day on ${dateLabel(day.date)}`}
-                          >
-                            <Plus size={12} /> Rest
-                          </button>
-                        )}
+                        <UpcomingDayActions program={activeProgram} day={day} previous={upcomingSchedule[index - 1]} next={upcomingSchedule[index + 1]} templates={templates} logs={logs} onUpdate={onProgramsUpdate} />
                         <em>{upcomingDayStatusLabel(day)}</em>
                       </div>
                     </div>

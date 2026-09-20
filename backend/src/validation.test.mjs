@@ -245,3 +245,21 @@ test('exercise setup library supports derived labels and preserves explicit IDs'
   const log = validateLog({ name: 'Workout', date: '2026-09-19', exerciseItems: [{ exerciseId: 'press', setupProfile: setup, sets: [] }] }, 'log');
   assert.equal(log.exerciseItems[0].setupProfile.name, 'Home · Dumbbells');
 });
+
+test('exercise setup deletion IDs validate and round-trip through exports/imports', () => {
+  const exercise = validateExercise({ name: 'Press', deletedEquipmentSetupIds: ['home', 'home'] }, 'press');
+  assert.deepEqual(exercise.deletedEquipmentSetupIds, ['home']);
+  assert.throws(() => validateExercise({ name: 'Press', deletedEquipmentSetupIds: ['bad/id'] }, 'press'), ValidationError);
+  assert.throws(() => validateExercise({ name: 'Press', deletedEquipmentSetupIds: 'home' }, 'press'), ValidationError);
+  const imported = validateImport({ data: { exercises: [exercise] } });
+  assert.deepEqual(imported.exercises[0].deletedEquipmentSetupIds, ['home']);
+});
+
+test('program occurrence edits round-trip and reject malformed operations', () => {
+  const p = {id:'p',name:'Program',startDate:'2026-09-20',schedule:[],scheduleEdits:[{id:'e',date:'2026-09-21',type:'insert',templateId:'routine'}]};
+  assert.deepEqual(validateProgram(p,'p').scheduleEdits,p.scheduleEdits);
+  assert.deepEqual(validateImport({data:{programs:[p]}}).programs[0].scheduleEdits,p.scheduleEdits);
+  for (const edits of [[{...p.scheduleEdits[0],type:'swap'}],[{...p.scheduleEdits[0],type:'invalid'}],[{...p.scheduleEdits[0],date:'invalid'}],[...p.scheduleEdits,...p.scheduleEdits],Array(501).fill(p.scheduleEdits[0])]) {
+    assert.throws(()=>validateProgram({...p,scheduleEdits:edits},'p'),ValidationError);
+  }
+});

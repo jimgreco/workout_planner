@@ -12,6 +12,16 @@ resolve that ID to the current library details. Past workout snapshots remain
 unchanged. Creating a different equipment/load setup generates a new ID.
 Exercise writes from older clients that omit the library preserve it.
 
+## Deleting a setup
+
+The editor offers Delete setup with confirmation. Deletion removes the saved
+profile and records its ID in the exercise's `deletedEquipmentSetupIds`.
+History/routine discovery excludes those IDs, so old snapshots cannot recreate
+a deleted choice. Existing workouts keep their snapshots (shown as deleted in
+the picker); new workouts do not resolve deleted setups. Both fields travel
+with exercise exports and offline saves. The API preserves deletion IDs across
+older-client writes, including stale copies of a deleted profile.
+
 ## Reviewed equipment-only consolidation
 
 The default library contains 59 movements instead of 65. Reviewed families:

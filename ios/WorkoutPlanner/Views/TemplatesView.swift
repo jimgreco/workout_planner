@@ -609,6 +609,7 @@ private struct ProgramSummaryCard: View {
                     ProgramWeekGrid(days: cycle, onSelectDay: onSelectDay)
 
                     ProgramUpcomingList(
+                        program: program,
                         days: upcoming,
                         onInsertRest: onInsertRest,
                         onRemoveRest: onRemoveRest
@@ -663,7 +664,7 @@ private struct ProgramNextWorkoutPanel: View {
 
     private var title: String {
         guard let nextWorkout else { return "No scheduled workout" }
-        let progress = nextWorkout.total > 1 ? " (\(nextWorkout.position) of \(nextWorkout.total))" : ""
+        let progress = nextWorkout.position > 0 && nextWorkout.total > 1 ? " (\(nextWorkout.position) of \(nextWorkout.total))" : ""
         return "\(ProgramCyclePlanner.displayDate(nextWorkout.date)) - \(nextWorkout.template.name)\(progress)"
     }
 
@@ -759,6 +760,7 @@ private struct ProgramWeekGrid: View {
 }
 
 private struct ProgramUpcomingList: View {
+    let program: TrainingProgram
     let days: [ProgramUpcomingDay]
     let onInsertRest: (ProgramUpcomingDay) -> Void
     let onRemoveRest: (ProgramUpcomingDay) -> Void
@@ -778,8 +780,11 @@ private struct ProgramUpcomingList: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(days) { day in
+                    ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                         ProgramUpcomingRow(
+                            program: program,
+                            previous: index > 0 ? days[index - 1] : nil,
+                            next: index + 1 < days.count ? days[index + 1] : nil,
                             day: day,
                             onInsertRest: onInsertRest,
                             onRemoveRest: onRemoveRest
@@ -795,6 +800,9 @@ private struct ProgramUpcomingList: View {
 }
 
 private struct ProgramUpcomingRow: View {
+    let program: TrainingProgram
+    let previous: ProgramUpcomingDay?
+    let next: ProgramUpcomingDay?
     let day: ProgramUpcomingDay
     let onInsertRest: (ProgramUpcomingDay) -> Void
     let onRemoveRest: (ProgramUpcomingDay) -> Void
@@ -813,27 +821,7 @@ private struct ProgramUpcomingRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 6) {
-                if day.isInsertedRest {
-                    Button(role: .destructive) {
-                        onRemoveRest(day)
-                    } label: {
-                        Label("Remove", systemImage: "minus")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Remove inserted rest day on \(ProgramCyclePlanner.displayDate(day.date))")
-                } else {
-                    Button {
-                        onInsertRest(day)
-                    } label: {
-                        Label("Rest", systemImage: "plus")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Insert rest day on \(ProgramCyclePlanner.displayDate(day.date))")
-                }
+                ProgramUpcomingActions(program: program, day: day, previous: previous, next: next)
 
                 Text(statusLabel)
                     .font(.system(size: 10, weight: .heavy))
@@ -862,7 +850,7 @@ private struct ProgramUpcomingRow: View {
             let title = day.template?.name ?? "Rest"
             return "\(ProgramCyclePlanner.cycleDayLabel(index: index)) · \(title)"
         }
-        return "Rest"
+        return day.template.map { "Added · " + $0.name } ?? "Rest"
     }
 
     private var statusLabel: String {
@@ -2055,5 +2043,74 @@ private struct TrainingPhaseEditor: View {
             Toggle("Allow optional training", isOn: Binding(get: { phase.allowOptional != false }, set: { phase.allowOptional = $0 }))
             TextField("Notes", text: Binding(get: { phase.notes ?? "" }, set: { phase.notes = $0 }), axis: .vertical)
         }
+    }
+}
+
+
+private struct ProgramUpcomingActions: View {
+    @EnvironmentObject private var store: WorkoutStore
+    let program: TrainingProgram
+    let day: ProgramUpcomingDay
+    let previous: ProgramUpcomingDay?
+    let next: ProgramUpcomingDay?
+    @State private var inserting = false
+    @State private var deleting = false
+    @State private var templateID = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    private func allowed(_ type: String, date: String? = nil) -> Bool {
+        !saving && ProgramCyclePlanner.canEditUpcoming(program, date: date ?? day.dayKey, type: type, logs: store.logs)
+    }
+
+    private func apply(_ type: String, date: String? = nil) {
+        saving = true
+        Task {
+            defer { saving = false }
+            guard let latest = store.programs.first(where: { $0.id == program.id }),
+                  let updated = ProgramCyclePlanner.editingUpcoming(latest, date: date ?? day.dayKey, type: type, templateId: templateID.isEmpty ? nil : templateID, logs: store.logs) else {
+                error = "This change would move a logged workout or a day outside the editable program range."
+                return
+            }
+            do { try await store.saveProgram(updated); inserting = false }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+
+    var body: some View {
+        Menu("Edit day") {
+            Button("Insert day before") { templateID = ""; inserting = true }.disabled(!allowed("insert"))
+            Button("Move up") { if let previous { apply("swap", date: previous.dayKey) } }
+                .disabled(previous == nil || !allowed("swap", date: previous?.dayKey))
+            Button("Move down") { apply("swap") }.disabled(next == nil || !allowed("swap"))
+            Button("Delete day", role: .destructive) { deleting = true }.disabled(!allowed("delete"))
+        }
+        .disabled(saving)
+        .confirmationDialog("Delete this upcoming day?", isPresented: $deleting, titleVisibility: .visible) {
+            Button("Delete day", role: .destructive) { apply("delete") }
+        } message: {
+            Text("Later days move forward one day. The repeating cycle and workout history stay unchanged.")
+        }
+        .sheet(isPresented: $inserting) {
+            NavigationStack {
+                Form {
+                    Picker("Day type", selection: $templateID) {
+                        Text("Rest day").tag("")
+                        ForEach(store.templates) { template in Text(template.name).tag(template.id) }
+                    }
+                    Text("Insert before " + day.dayKey + ". Later days move back one day. The repeating cycle stays unchanged.")
+                    if let error { Text(error).foregroundStyle(Theme.danger) }
+                }
+                .navigationTitle("Insert day")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { inserting = false }.disabled(saving) }
+                    ToolbarItem(placement: .confirmationAction) { Button(saving ? "Saving…" : "Insert") { apply("insert") }.disabled(saving) }
+                }
+                .interactiveDismissDisabled(saving)
+            }
+        }
+        .alert("Could not update upcoming days", isPresented: Binding(get: { error != nil && !inserting }, set: { if !$0 { error = nil } })) {
+            Button("OK") { error = nil }
+        } message: { Text(error ?? "") }
     }
 }

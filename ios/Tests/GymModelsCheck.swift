@@ -62,6 +62,13 @@ struct GymModelsCheck {
         let restoredSetupExercise = try decoder.decode(Exercise.self, from: JSONEncoder().encode(setupExercise))
         precondition(restoredSetupExercise == setupExercise)
         precondition(setupRoutine.exerciseItems[0].setupProfile?.seat == "1")
+        var deletedSetupExercise = setupExercise
+        deletedSetupExercise.removeSetup(editedSetup.id)
+        precondition(deletedSetupExercise.setups(logs: [], templates: [setupRoutine], current: originalSetup).isEmpty)
+        precondition(deletedSetupExercise.currentSetup(originalSetup) == nil)
+        let roundTripDeletion = try decoder.decode(Exercise.self, from: JSONEncoder().encode(deletedSetupExercise))
+        precondition(roundTripDeletion.deletedEquipmentSetupIds == [editedSetup.id])
+        precondition(setupRoutine.exerciseItems[0].setupProfile == originalSetup)
         print("Gym model checks passed: legacy decoding, alternatives, gym matching, backup round-trip, brief, and limits.")
     }
 }

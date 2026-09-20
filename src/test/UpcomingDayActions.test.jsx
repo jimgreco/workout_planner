@@ -1,0 +1,20 @@
+import { it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import UpcomingDayActions from '../components/UpcomingDayActions.jsx';
+import { localDateKey, shiftedDay } from '../programs.js';
+import { saveProgram } from '../api.js';
+vi.mock('../api.js',()=>({saveProgram:vi.fn(async p=>[p])}));
+it('inserts a chosen workout and moves days up, reporting failed saves', async()=>{
+  const date=localDateKey(new Date());
+  const props={program:{id:'p',name:'Plan',startDate:date,schedule:[{id:'a',templateId:'a'}]},day:{dayKey:shiftedDay(date,1)},previous:{dayKey:date},next:{dayKey:shiftedDay(date,2)},templates:[{id:'b',name:'Legs'}],logs:[],onUpdate:vi.fn()};
+  render(<UpcomingDayActions {...props}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Insert day'}));
+  fireEvent.change(screen.getByLabelText('Day type'),{target:{value:'b'}});
+  fireEvent.click(within(screen.getByRole('heading').closest('.modal')).getByRole('button',{name:'Insert day'}));
+  await waitFor(()=>expect(props.onUpdate).toHaveBeenCalledOnce());
+  expect(saveProgram.mock.calls[0][0].scheduleEdits[0]).toMatchObject({date:props.day.dayKey,type:'insert',templateId:'b'});
+  saveProgram.mockRejectedValueOnce(new Error('Connection failed'));
+  fireEvent.click(screen.getByRole('button',{name:'Move '+props.day.dayKey+' up'}));
+  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Connection failed'));
+  expect(saveProgram.mock.calls[1][0].scheduleEdits[0]).toMatchObject({date,type:'swap'});
+});

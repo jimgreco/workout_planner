@@ -2068,6 +2068,7 @@ struct EquipmentSetupPicker: View {
     private var exercise: Exercise {
         store.exercises.first { $0.id == item.exerciseId } ?? Exercise(id: item.exerciseId, name: "")
     }
+    private var deletedCurrent: Bool { exercise.deletedEquipmentSetupIds?.contains(item.setupProfile?.id ?? "") == true }
     private var profiles: [EquipmentSetup] {
         exercise.setups(logs: logs, templates: store.templates, current: item.setupProfile)
     }
@@ -2085,6 +2086,9 @@ struct EquipmentSetupPicker: View {
                 useProfile(profiles.first { $0.id == id })
             })) {
                 Text("Unspecified").tag("")
+                if deletedCurrent, let profile = item.setupProfile {
+                    Text(profile.displayName + " (deleted)").tag(profile.id).disabled(true)
+                }
                 ForEach(profiles) { profile in
                     Text(readOnly && item.setupProfile?.id == profile.id ? item.setupProfile!.displayName : profile.displayName).tag(profile.id)
                 }
@@ -2096,14 +2100,16 @@ struct EquipmentSetupPicker: View {
                     .font(.caption).foregroundStyle(Theme.muted)
             }
             if !readOnly {
-                if let profile = item.setupProfile {
+                if !deletedCurrent, let profile = item.setupProfile {
                     Button("Edit setup") { editingExisting = true; draft = profiles.first { $0.id == profile.id } ?? profile }
                 }
                 Button("Save a new setup") { editingExisting = false; draft = EquipmentSetup() }
             }
         }
         .sheet(item: $draft) { profile in
-            EquipmentSetupEditor(profile: profile) { saved in
+            EquipmentSetupEditor(profile: profile, onDelete: editingExisting ? {
+                try await store.deleteEquipmentSetup(exerciseID: item.exerciseId, setupID: profile.id)
+            } : nil) { saved in
                 var updated = exercise
                 updated.equipmentSetups = profiles.filter { $0.id != saved.id } + [saved]
                 try await store.saveExercise(updated)
@@ -2120,12 +2126,15 @@ struct EquipmentSetupEditor: View {
     @State private var saving = false
     @State private var error: String?
     let onSave: (EquipmentSetup) async throws -> Void
+    let onDelete: (() async throws -> Void)?
+    @State private var confirmingDelete = false
 
-    init(profile: EquipmentSetup, onSave: @escaping (EquipmentSetup) async throws -> Void) {
+    init(profile: EquipmentSetup, onDelete: (() async throws -> Void)? = nil, onSave: @escaping (EquipmentSetup) async throws -> Void) {
         var editable = profile
         if editable.machine.isEmpty && editable.gym.isEmpty { editable.machine = editable.name }
         _draft = State(initialValue: editable)
         self.onSave = onSave
+        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -2145,6 +2154,23 @@ struct EquipmentSetupEditor: View {
                         .font(.caption)
                 }
                 if let error { Section { Text(error).foregroundStyle(Theme.danger) } }
+                if onDelete != nil {
+                    Section {
+                        Button("Delete setup", role: .destructive) { confirmingDelete = true }
+                    }
+                }
+            }
+            .confirmationDialog("Delete this equipment setup?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                Button("Delete setup", role: .destructive) {
+                    saving = true
+                    Task {
+                        do { try await onDelete?(); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                        saving = false
+                    }
+                }
+            } message: {
+                Text("This removes it from your saved choices. Past workouts keep their recorded settings.")
             }
             .disabled(saving)
             .navigationTitle("Equipment setup")

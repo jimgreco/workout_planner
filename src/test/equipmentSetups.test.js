@@ -23,3 +23,16 @@ describe('exercise setup library', () => {
     expect(cleanSetup({ id: 'a', gym: ' Home ', machine: ' Barbell ' })).toMatchObject({ id: 'a', name: 'Home · Barbell' });
   });
 });
+
+it('deleted setups stay out of choices even when referenced in logs, routines, or the current snapshot', async () => {
+  const { removingSetup } = await import('../equipmentSetups.js');
+  const profile = { id: 'home', gym: 'Home', machine: 'Dumbbells' };
+  const old = { id: 'press', equipmentSetups: [profile] };
+  const snapshot = { exerciseId: 'press', setupProfile: profile };
+  const updated = removingSetup(old, profile.id);
+  expect(exerciseSetups(updated, [{ exerciseItems: [snapshot] }], [{ exerciseItems: [snapshot] }], profile)).toEqual([]);
+  expect(currentSetup(updated, profile)).toBeUndefined();
+  expect(old.equipmentSetups).toEqual([profile]);
+  expect(snapshot.setupProfile).toEqual(profile);
+  expect(removingSetup(updated, profile.id).deletedEquipmentSetupIds).toEqual(['home']);
+});

@@ -173,6 +173,7 @@ private enum ExerciseSheet: Identifiable {
 private struct ExerciseRow: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var editingSetup: EquipmentSetup?
+    @State private var isNewSetup = false
     let exercise: Exercise
     let onDetail: () -> Void
     let onPB: () -> Void
@@ -210,15 +211,17 @@ private struct ExerciseRow: View {
                                 .font(.caption).foregroundStyle(Theme.muted)
                         }
                         Spacer()
-                        Button("Edit") { editingSetup = profile }
+                        Button("Edit") { isNewSetup = false; editingSetup = profile }
                             .accessibilityLabel("Edit setup " + profile.displayName)
                     }
                 }
-                Button("Add setup") { editingSetup = EquipmentSetup() }
+                Button("Add setup") { isNewSetup = true; editingSetup = EquipmentSetup() }
             }
         }
         .sheet(item: $editingSetup) { profile in
-            EquipmentSetupEditor(profile: profile) { saved in
+            EquipmentSetupEditor(profile: profile, onDelete: isNewSetup ? nil : {
+                try await store.deleteEquipmentSetup(exerciseID: exercise.id, setupID: profile.id)
+            }) { saved in
                 var latest = store.exercises.first { $0.id == exercise.id } ?? exercise
                 latest.equipmentSetups = latest.setups(logs: store.logs, templates: store.templates).filter { $0.id != saved.id } + [saved]
                 try await store.saveExercise(latest)

@@ -211,6 +211,12 @@ final class WorkoutStore: ObservableObject {
         persistOfflineSnapshot()
     }
 
+    func deleteEquipmentSetup(exerciseID: String, setupID: String) async throws {
+        guard var exercise = exercises.first(where: { $0.id == exerciseID }) else { throw WorkoutAPIError.server(404, "Exercise unavailable. Reload and try again.", requestID: nil, conflict: nil) }
+        exercise.removeSetup(setupID)
+        try await saveExercise(exercise)
+    }
+
     func saveExercise(_ exercise: Exercise) async throws {
         let saved: Exercise
         if usesLocalData {

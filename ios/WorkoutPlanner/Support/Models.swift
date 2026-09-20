@@ -39,6 +39,7 @@ struct Exercise: Codable, Identifiable, Equatable {
     var updatedAt: String?
     var equipmentAlternatives: [EquipmentAlternative]?
     var equipmentSetups: [EquipmentSetup]?
+    var deletedEquipmentSetupIds: [String]?
     var revision: Int?
 
     init(
@@ -55,10 +56,12 @@ struct Exercise: Codable, Identifiable, Equatable {
         updatedAt: String? = nil,
         revision: Int? = nil,
         equipmentAlternatives: [EquipmentAlternative]? = nil,
-        equipmentSetups: [EquipmentSetup]? = nil
+        equipmentSetups: [EquipmentSetup]? = nil,
+        deletedEquipmentSetupIds: [String]? = nil
     ) {
         self.equipmentAlternatives = equipmentAlternatives
         self.equipmentSetups = equipmentSetups
+        self.deletedEquipmentSetupIds = deletedEquipmentSetupIds
         self.id = id
         self.name = name
         self.muscleGroup = muscleGroup
@@ -164,6 +167,16 @@ struct EquipmentSetup: Codable, Identifiable, Equatable {
 }
 
 extension Exercise {
+    mutating func removeSetup(_ id: String) {
+        equipmentSetups = (equipmentSetups ?? []).filter { $0.id != id }
+        deletedEquipmentSetupIds = Array(Set((deletedEquipmentSetupIds ?? []) + [id])).sorted()
+    }
+
+    func currentSetup(_ profile: EquipmentSetup?) -> EquipmentSetup? {
+        guard let profile, !(deletedEquipmentSetupIds ?? []).contains(profile.id) else { return nil }
+        return equipmentSetups?.first { $0.id == profile.id } ?? profile
+    }
+
     func setups(logs: [WorkoutLog], templates: [WorkoutTemplate], current: EquipmentSetup? = nil) -> [EquipmentSetup] {
         var profiles: [String: EquipmentSetup] = [:]
         let orderedLogs = logs.sorted { lhs, rhs in
@@ -181,7 +194,7 @@ extension Exercise {
         }
         if let current { profiles[current.id] = current }
         for profile in equipmentSetups ?? [] { profiles[profile.id] = profile }
-        return profiles.values.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        return profiles.values.filter { !(deletedEquipmentSetupIds ?? []).contains($0.id) }.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 }
 struct TrainingPhase: Codable, Identifiable, Equatable {
@@ -382,6 +395,13 @@ struct ProgramActivity: Codable, Identifiable, Equatable {
     }
 }
 
+struct ProgramScheduleEdit: Codable, Identifiable, Equatable {
+    var id = UUID().uuidString
+    var date: String
+    var type: String
+    var templateId: String?
+}
+
 struct TrainingProgram: Codable, Identifiable, Equatable {
     var id: String
     var name: String
@@ -392,6 +412,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
     var phases: [TrainingPhase]?
     var startDate: String
     var insertedRestDays: [String]
+    var scheduleEdits: [ProgramScheduleEdit]
     var active: Bool?
     var progression: ProgramProgressionRule?
     var deload: ProgramDeloadRule?
@@ -407,6 +428,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         schedule: [ProgramScheduleItem] = [],
         startDate: String = DateHelpers.todayString(),
         insertedRestDays: [String] = [],
+        scheduleEdits: [ProgramScheduleEdit] = [],
         active: Bool? = true,
         progression: ProgramProgressionRule? = ProgramProgressionRule(),
         deload: ProgramDeloadRule? = nil,
@@ -421,6 +443,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         self.schedule = schedule
         self.startDate = startDate
         self.insertedRestDays = insertedRestDays
+        self.scheduleEdits = scheduleEdits
         self.active = active
         self.progression = progression
         self.deload = deload
@@ -437,7 +460,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         case schedule
         case endDate, scheduledActivation, phases
         case startDate
-        case insertedRestDays
+        case insertedRestDays, scheduleEdits
         case active
         case progression
         case deload
@@ -458,6 +481,7 @@ struct TrainingProgram: Codable, Identifiable, Equatable {
         phases = try container.decodeIfPresent([TrainingPhase].self, forKey: .phases)
         startDate = try container.decodeIfPresent(String.self, forKey: .startDate) ?? DateHelpers.todayString()
         insertedRestDays = (try container.decodeIfPresent([String].self, forKey: .insertedRestDays) ?? []).sorted()
+        scheduleEdits = try container.decodeIfPresent([ProgramScheduleEdit].self, forKey: .scheduleEdits) ?? []
         active = try container.decodeIfPresent(Bool.self, forKey: .active)
         progression = try container.decodeIfPresent(ProgramProgressionRule.self, forKey: .progression)
         deload = try container.decodeIfPresent(ProgramDeloadRule.self, forKey: .deload)
@@ -1096,7 +1120,6 @@ enum ProgramCyclePlanner {
             let currentSlot = slot(for: date, program: program, templatesById: templatesById)
             guard let template = currentSlot.template,
                   let scheduleItem = currentSlot.scheduleItem,
-                  let scheduleIndex = currentSlot.scheduleIndex,
                   !handledOn(logs: logs, template: template, dayKey: currentSlot.dayKey)
             else { continue }
 
@@ -1106,8 +1129,8 @@ enum ProgramCyclePlanner {
                 dayKey: currentSlot.dayKey,
                 template: template,
                 scheduleItem: scheduleItem,
-                scheduleIndex: scheduleIndex,
-                position: scheduleIndex + 1,
+                scheduleIndex: currentSlot.scheduleIndex ?? -1,
+                position: currentSlot.scheduleIndex.map { $0 + 1 } ?? 0,
                 total: program.schedule.count
             )
         }
@@ -1211,7 +1234,58 @@ enum ProgramCyclePlanner {
         return slot.date < Calendar.current.startOfDay(for: Date()) ? .missed : .planned
     }
 
+    static func shiftedDay(_ day: String, by offset: Int) -> String {
+        let date = DateHelpers.date(from: day)
+        return DateHelpers.dayString(from: Calendar.current.date(byAdding: .day, value: offset, to: date)!)
+    }
+
+    static func canEditUpcoming(_ program: TrainingProgram, date: String, type: String, logs: [WorkoutLog]) -> Bool {
+        guard !program.schedule.isEmpty, program.scheduleEdits.count < 500,
+              date >= DateHelpers.todayString(), date >= program.startDate,
+              program.endDate == nil || date <= program.endDate! else { return false }
+        let last = type == "swap" ? shiftedDay(date, by: 1) : program.endDate
+        if type == "swap", let end = program.endDate, let last, last > end { return false }
+        return !logs.contains { log in
+            log.date >= date && (last == nil || log.date <= last!) &&
+            ["finished", "skipped", "active", "planning"].contains(log.status ?? "")
+        }
+    }
+
+    static func editingUpcoming(_ program: TrainingProgram, date: String, type: String, templateId: String? = nil, logs: [WorkoutLog]) -> TrainingProgram? {
+        guard ["insert", "delete", "swap"].contains(type), canEditUpcoming(program, date: date, type: type, logs: logs) else { return nil }
+        var updated = program
+        updated.scheduleEdits.append(ProgramScheduleEdit(date: date, type: type, templateId: type == "insert" ? templateId : nil))
+        return updated
+    }
+
     private static func slot(for date: Date, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> ProgramSlot {
+        let target = Calendar.current.startOfDay(for: date)
+        let dayKey = DateHelpers.dayString(from: target)
+        guard !program.schedule.isEmpty, dayKey >= program.startDate, program.endDate == nil || dayKey <= program.endDate! else {
+            return baseSlot(for: date, program: program, templatesById: templatesById)
+        }
+        var source = dayKey
+        for edit in program.scheduleEdits.reversed() {
+            if edit.type == "insert" {
+                if source == edit.date {
+                    let item = ProgramScheduleItem(id: edit.id, templateId: edit.templateId)
+                    return ProgramSlot(date: target, dayKey: dayKey, scheduleIndex: nil, scheduleItem: item, template: edit.templateId.flatMap { templatesById[$0] }, isInsertedRest: edit.templateId == nil, isBeforeStart: false)
+                }
+                if source > edit.date { source = shiftedDay(source, by: -1) }
+            } else if edit.type == "delete", source >= edit.date {
+                source = shiftedDay(source, by: 1)
+            } else if edit.type == "swap" {
+                if source == edit.date { source = shiftedDay(source, by: 1) }
+                else if source == shiftedDay(edit.date, by: 1) { source = edit.date }
+            }
+        }
+        var base = program
+        base.endDate = nil
+        let original = baseSlot(for: DateHelpers.date(from: source), program: base, templatesById: templatesById)
+        return ProgramSlot(date: target, dayKey: dayKey, scheduleIndex: original.scheduleIndex, scheduleItem: original.scheduleItem, template: original.template, isInsertedRest: original.isInsertedRest, isBeforeStart: original.isBeforeStart)
+    }
+
+    private static func baseSlot(for date: Date, program: TrainingProgram, templatesById: [String: WorkoutTemplate]) -> ProgramSlot {
         let targetDate = Calendar.current.startOfDay(for: date)
         let dayKey = DateHelpers.dayString(from: targetDate)
         let startDate = DateHelpers.date(from: program.startDate)

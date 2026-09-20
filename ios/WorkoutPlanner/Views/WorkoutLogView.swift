@@ -810,7 +810,7 @@ struct WorkoutLogView: View {
             sets: sets,
             baselineId: last?.baselineId ?? item.baselineId,
             techniqueNote: last?.techniqueNote ?? item.techniqueNote,
-            setupProfile: store.exercises.first { $0.id == item.exerciseId }?.equipmentSetups?.first { $0.id == (last?.setupProfile ?? item.setupProfile)?.id } ?? last?.setupProfile ?? item.setupProfile
+            setupProfile: store.exercise(id: item.exerciseId)?.currentSetup(last?.setupProfile ?? item.setupProfile)
         )
     }
 

@@ -169,3 +169,16 @@ it('shows setups from routines and workouts and saves an exercise-level edit wit
   expect(saveExercise.mock.calls.at(-1)[0].equipmentSetups).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'home', seat: '4', name: 'Home · Dumbbells' })]));
   expect(old.seat).toBe('1');
 });
+
+it('deletes a history-only setup from the exercise library without editing the workout', async () => {
+  const profile = { id: 'home', gym: 'Home', machine: 'Dumbbells' };
+  const logs = [{ exerciseItems: [{ exerciseId: 'e1', setupProfile: profile }] }];
+  const onUpdate = vi.fn();
+  render(<Exercises exercises={[sampleExercises[0]]} logs={logs} onUpdate={onUpdate} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit setup Home · Dumbbells' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Delete setup', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm delete setup' }));
+  await waitFor(() => expect(onUpdate).toHaveBeenCalled());
+  expect(saveExercise.mock.calls.at(-1)[0]).toMatchObject({ id: 'e1', equipmentSetups: [], deletedEquipmentSetupIds: ['home'] });
+  expect(logs[0].exerciseItems[0].setupProfile).toEqual(profile);
+});

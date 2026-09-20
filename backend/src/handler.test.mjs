@@ -751,3 +751,34 @@ test('exercise library setup edits sync and survive older-client writes without 
   assert.equal(db.items.get(PK + '|EXERCISE#press').equipmentSetups[0].seat, '4');
   assert.equal(db.items.get(PK + '|LOG#history').exerciseItems[0].setupProfile.seat, '1');
 });
+
+test('deleted setup IDs survive older and stale library writes while historical snapshots remain intact', async () => {
+  const PK = 'USER#setup-delete-user';
+  const { token } = await createAppSession({ sub: 'setup-delete-user' });
+  const headers = { authorization: `Bearer ${token}` };
+  const profile = { id: 'home', gym: 'Home', machine: 'Dumbbells' };
+  const log = { PK, SK: 'LOG#history', id: 'history', exerciseItems: [{ exerciseId: 'press', setupProfile: profile, sets: [{ reps: '8', weight: '40' }] }] };
+  const db = fakeDb([{ PK, SK: 'EXERCISE#press', id: 'press', name: 'Press', equipmentSetups: [profile], revision: 1 }, log]);
+  __setTestDb(db);
+  let response = await handler(event('PUT', '/exercises/press', { name: 'Press', equipmentSetups: [], deletedEquipmentSetupIds: ['home'], expectedRevision: 1 }, headers));
+  assert.equal(response.statusCode, 200);
+  response = await handler(event('PUT', '/exercises/press', { name: 'Press', expectedRevision: 2 }, headers));
+  assert.equal(response.statusCode, 200);
+  response = await handler(event('PUT', '/exercises/press', { name: 'Press', equipmentSetups: [profile], deletedEquipmentSetupIds: [], expectedRevision: 3 }, headers));
+  assert.equal(response.statusCode, 200);
+  const saved = db.items.get(PK + '|EXERCISE#press');
+  assert.deepEqual(saved.deletedEquipmentSetupIds, ['home']);
+  assert.deepEqual(saved.equipmentSetups, []);
+  assert.deepEqual(db.items.get(PK + '|LOG#history'), log);
+});
+
+test('program occurrence edits persist when omitted by older clients', async () => {
+  __setTestDb(fakeDb());
+  const headers = {authorization:'Bearer dev-bypass-token'};
+  const p = {id:'p',name:'Program',startDate:'2026-09-20',schedule:[]};
+  const scheduleEdits = [{id:'e',date:'2026-09-21',type:'insert',templateId:'r'}];
+  assert.equal((await handler(event('PUT','/programs/p',{...p,scheduleEdits},headers))).statusCode,200);
+  const saved = await handler(event('PUT','/programs/p',p,headers));
+  assert.equal(saved.statusCode,200);
+  assert.deepEqual(JSON.parse(saved.body).scheduleEdits,scheduleEdits);
+});

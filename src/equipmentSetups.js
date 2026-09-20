@@ -24,7 +24,8 @@ export function cleanSetup(draft) {
 
 export function exerciseSetups(exercise, logs = [], templates = [], current) {
   const profiles = new Map();
-  const add = profile => { if (profile?.id) profiles.set(profile.id, profile); };
+  const deleted = new Set(exercise.deletedEquipmentSetupIds || []);
+  const add = profile => { if (profile?.id && !deleted.has(profile.id)) profiles.set(profile.id, profile); };
   const history = [...logs].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.updatedAt || '').localeCompare(b.updatedAt || ''));
   for (const source of [...history, ...templates]) {
     for (const item of [...(source.prescription?.exerciseItems || []), ...(source.exerciseItems || [])]) {
@@ -37,5 +38,14 @@ export function exerciseSetups(exercise, logs = [], templates = [], current) {
 }
 
 export function currentSetup(exercise, profile) {
+  if (exercise?.deletedEquipmentSetupIds?.includes(profile?.id)) return undefined;
   return exercise?.equipmentSetups?.find(entry => entry.id === profile?.id) || profile;
+}
+
+export function removingSetup(exercise, id) {
+  return {
+    ...exercise,
+    equipmentSetups: (exercise.equipmentSetups || []).filter(profile => profile.id !== id),
+    deletedEquipmentSetupIds: [...new Set([...(exercise.deletedEquipmentSetupIds || []), id])],
+  };
 }

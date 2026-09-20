@@ -1,5 +1,5 @@
 import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
-import { exerciseSetups, setupLabel } from '../equipmentSetups.js';
+import { exerciseSetups, setupLabel, removingSetup } from '../equipmentSetups.js';
 import { saveExercise, getExercises, getTemplates } from '../api.js';
 import { completionLabel } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
@@ -936,6 +936,13 @@ function EquipmentSetup({ exercise, item, logs, readOnly, onChange, onExercisesC
     onChange({ setupProfile: profile, baselineId: profile?.id || crypto.randomUUID(), sets });
   }
   const profiles = exerciseSetups(exercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile);
+  const deletedCurrent = exercise?.deletedEquipmentSetupIds?.includes(item.setupProfile?.id);
+  async function remove() {
+    const latestExercise = getExercises().find(entry => entry.id === item.exerciseId) || exercise;
+    if (!latestExercise) throw new Error('Exercise unavailable. Reload and try again.');
+    onExercisesChanged(await saveExercise(removingSetup(latestExercise, draft.id)));
+    setDraft(null);
+  }
   async function save(profile) {
     const latestExercise = getExercises().find(entry => entry.id === item.exerciseId) || exercise;
     const equipmentSetups = [...exerciseSetups(latestExercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile).filter(entry => entry.id !== profile.id), profile];
@@ -947,12 +954,13 @@ function EquipmentSetup({ exercise, item, logs, readOnly, onChange, onExercisesC
   return <div className="equipment-setup">
     <label>Equipment setup<select disabled={readOnly || Boolean(draft)} value={item.setupProfile?.id || ''} onChange={event => applyProfile(profiles.find(profile => profile.id === event.target.value))}>
       <option value="">Unspecified setup</option>
+      {deletedCurrent && <option value={item.setupProfile.id} disabled>{setupLabel(item.setupProfile)} (deleted)</option>}
       {profiles.map(profile => <option key={profile.id} value={profile.id}>{setupLabel(readOnly && item.setupProfile?.id === profile.id ? item.setupProfile : profile)}</option>)}
     </select></label>
     {item.setupProfile && <small>{[item.setupProfile.seat, item.setupProfile.grip, item.setupProfile.loadConvention].filter(Boolean).join(' · ')}</small>}
-    {!readOnly && !draft && item.setupProfile && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft(profiles.find(profile => profile.id === item.setupProfile.id) || item.setupProfile)}>Edit setup</button>}
+    {!readOnly && !draft && !deletedCurrent && item.setupProfile && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft(profiles.find(profile => profile.id === item.setupProfile.id) || item.setupProfile)}>Edit setup</button>}
     {!readOnly && !draft && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft({})}>Save a new setup</button>}
-    {!readOnly && draft && <EquipmentSetupEditor profile={draft} onSave={save} onCancel={() => setDraft(null)} />}
+    {!readOnly && draft && <EquipmentSetupEditor profile={draft} onSave={save} onDelete={draft.id ? remove : undefined} onCancel={() => setDraft(null)} />}
     <small>Each setup has its own comparison baseline. Saved workouts retain their original settings.</small>
   </div>;
 }

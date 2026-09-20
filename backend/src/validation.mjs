@@ -316,7 +316,7 @@ export function validateGym(body, pathId) {
 
 export function validateExercise(body, pathId) {
   assertObject(body, 'exercise');
-  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'equipmentAlternatives', 'equipmentSetups', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
+  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'equipmentAlternatives', 'equipmentSetups', 'deletedEquipmentSetupIds', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
   requireMatchingId(body, pathId);
   optionalRevision(body.expectedRevision, 'expectedRevision');
   const muscleGroup = stringValue(body.muscleGroup, 'muscleGroup', { max: 60 }) ?? 'Other';
@@ -357,6 +357,12 @@ export function validateExercise(body, pathId) {
     if (!Array.isArray(body.equipmentSetups) || body.equipmentSetups.length > 200) fail('equipmentSetups must be an array of at most 200 entries');
     exercise.equipmentSetups = body.equipmentSetups.map(setupProfile);
     if (new Set(exercise.equipmentSetups.map(profile => profile.id)).size !== exercise.equipmentSetups.length) fail('equipmentSetups must have unique IDs');
+  }
+  if (body.deletedEquipmentSetupIds !== undefined) {
+    if (!Array.isArray(body.deletedEquipmentSetupIds) || body.deletedEquipmentSetupIds.length > 1000) fail('deletedEquipmentSetupIds must be an array of at most 1000 IDs');
+    exercise.deletedEquipmentSetupIds = [...new Set(body.deletedEquipmentSetupIds.map(id => validateId(id, 'deletedEquipmentSetupIds')))];
+    exercise.equipmentSetups = exercise.equipmentSetups?.filter(profile => !exercise.deletedEquipmentSetupIds.includes(profile.id));
+    if (exercise.equipmentSetups === undefined) delete exercise.equipmentSetups;
   }
   const best = personalBest(body.personalBest);
   if (best !== undefined) exercise.personalBest = best;
@@ -495,7 +501,7 @@ export function validateProgram(body, pathId) {
   assertObject(body, 'program');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'description', 'schedule', 'startDate', 'endDate', 'scheduledActivation', 'phases', 'insertedRestDays', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'description', 'schedule', 'startDate', 'endDate', 'scheduledActivation', 'phases', 'insertedRestDays', 'scheduleEdits', 'active', 'progression', 'deload', 'progressionRule', 'activity', 'updatedAt', 'revision', 'expectedRevision']),
     'program',
   );
   requireMatchingId(body, pathId);
@@ -522,6 +528,22 @@ export function validateProgram(body, pathId) {
   if (progressionRule !== undefined) program.progressionRule = progressionRule;
   const activity = programActivity(body.activity);
   if (activity !== undefined) program.activity = activity;
+  if (body.scheduleEdits !== undefined) {
+    if (!Array.isArray(body.scheduleEdits) || body.scheduleEdits.length > 500) fail('scheduleEdits must contain at most 500 edits');
+    const seen = new Set();
+    program.scheduleEdits = body.scheduleEdits.map(value => {
+      assertObject(value, 'schedule edit');
+      assertAllowedKeys(value, new Set(['id', 'date', 'type', 'templateId']), 'schedule edit');
+      const id = validateId(value.id, 'schedule edit ID');
+      if (seen.has(id)) fail('Schedule edit IDs must be unique');
+      seen.add(id);
+      const date = dateValue(value.date, 'schedule edit date', { required: true });
+      const type = stringValue(value.type, 'schedule edit type', { required: true });
+      if (!['insert', 'delete', 'swap'].includes(type)) fail('Invalid schedule edit type');
+      if (value.templateId !== undefined && type !== 'insert') fail('Only inserted days can specify a routine');
+      return { id, date, type, ...(value.templateId ? { templateId: validateId(value.templateId, 'schedule edit routine') } : {}) };
+    });
+  }
   return program;
 }
 

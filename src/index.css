@@ -3650,3 +3650,12 @@ input:focus, select:focus, textarea:focus {
 }
 .equipment-setup-editor { border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
 .equipment-setup-editor legend { padding: 0 4px; font-weight: 600; }
+
+.program-upcoming-list { grid-auto-rows: max-content; }
+.upcoming-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.upcoming-edit-actions [role="alert"] { flex-basis: 100%; color: var(--danger); }
+@media (max-width: 640px) {
+  .program-upcoming-day { flex-direction: row; flex-wrap: wrap; }
+  .program-upcoming-actions { width: 100%; flex-wrap: wrap; }
+  .upcoming-edit-actions { justify-content: flex-start; }
+}

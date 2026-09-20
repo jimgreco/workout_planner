@@ -141,7 +141,56 @@ export function removeProgramRestDay(program, dayKey) {
   };
 }
 
+export function shiftedDay(dayKey, offset) {
+  const date = parseLocalDate(dayKey);
+  if (!date) return '';
+  date.setDate(date.getDate() + offset);
+  return localDateKey(date);
+}
+
+export function canEditUpcoming(program, date, type, logs = []) {
+  const today = localDateKey(startOfToday());
+  if (!program?.schedule?.length || !parseLocalDate(date) || date < today || date < program.startDate || (program.endDate && date > program.endDate)) return false;
+  if ((program.scheduleEdits || []).length >= 500) return false;
+  const last = type === 'swap' ? shiftedDay(date, 1) : program.endDate;
+  if (type === 'swap' && program.endDate && last > program.endDate) return false;
+  return !logs.some(log => log.date >= date && (!last || log.date <= last) && ['finished', 'skipped', 'active', 'planning'].includes(log.status));
+}
+
+export function editUpcomingProgram(program, date, type, templateId, logs = []) {
+  if (!['insert', 'delete', 'swap'].includes(type) || !canEditUpcoming(program, date, type, logs)) throw new Error('This change would move a logged workout or a day outside the editable program range.');
+  return { ...program, scheduleEdits: [...(program.scheduleEdits || []), {
+    id: randomId('schedule-edit'), date, type,
+    ...(type === 'insert' && templateId ? { templateId } : {}),
+  }] };
+}
+
 export function programSlotForDate(program, date, templatesById = null) {
+  program = normalizeProgram(program);
+  const target = typeof date === 'string' ? parseLocalDate(date) : startOfToday(date);
+  if (!target) return baseProgramSlotForDate(program, date, templatesById);
+  const dayKey = localDateKey(target);
+  if (dayKey < program.startDate || (program.endDate && dayKey > program.endDate) || !program.schedule?.length) return baseProgramSlotForDate(program, date, templatesById);
+  let source = dayKey;
+  for (const edit of [...(program.scheduleEdits || [])].reverse()) {
+    if (edit.type === 'insert') {
+      if (source === edit.date) {
+        const templateId = edit.templateId || '';
+        const template = templatesById?.get(templateId) || null;
+        return { date: target, dayKey, scheduleIndex: null, scheduleItem: { id: edit.id, ...(templateId ? { templateId } : {}) }, cycleRound: null, templateId, template, isInsertedRest: !templateId, isBeforeStart: false, isRest: !template };
+      }
+      if (source > edit.date) source = shiftedDay(source, -1);
+    } else if (edit.type === 'delete' && source >= edit.date) source = shiftedDay(source, 1);
+    else if (edit.type === 'swap') {
+      if (source === edit.date) source = shiftedDay(source, 1);
+      else if (source === shiftedDay(edit.date, 1)) source = edit.date;
+    }
+  }
+  const slot = baseProgramSlotForDate({ ...program, endDate: undefined }, source, templatesById);
+  return { ...slot, date: target, dayKey };
+}
+
+function baseProgramSlotForDate(program, date, templatesById = null) {
   const normalized = normalizeProgram(program);
   const targetDate = typeof date === 'string' ? parseLocalDate(date) : startOfToday(date);
   const dayKey = targetDate ? localDateKey(targetDate) : trimString(date);
@@ -255,7 +304,7 @@ export function nextProgramWorkout(program, templates, logs, lookaheadDays = 28)
       template: slot.template,
       scheduleItem: slot.scheduleItem,
       scheduleIndex: slot.scheduleIndex,
-      position: (slot.scheduleIndex ?? 0) + 1,
+      position: slot.scheduleIndex == null ? 0 : slot.scheduleIndex + 1,
       total: normalized.schedule.length,
     };
   }

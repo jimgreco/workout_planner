@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import Templates from '../pages/Templates.jsx';
 import { saveExercise, saveLog, saveProgram, saveTemplate } from '../api.js';
 
@@ -360,14 +360,11 @@ describe('Routines page', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /insert rest day on today/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Insert day' })[0]);
+    fireEvent.click(within(screen.getByRole('heading', { name: /^Insert before/ }).closest('.modal')).getByRole('button', { name: 'Insert day' }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    expect(saveProgram.mock.calls[0][0].insertedRestDays).toEqual([dayKey(0)]);
-    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
-      type: 'rest_insert',
-      title: 'Inserted rest day',
-    });
+    expect(saveProgram.mock.calls[0][0].scheduleEdits).toEqual([expect.objectContaining({ date: dayKey(0), type: 'insert' })]);
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
@@ -396,14 +393,11 @@ describe('Routines page', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /remove inserted rest day on today/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete day' })[0]);
+    fireEvent.click(within(screen.getByRole('heading', { name: /^Delete day/ }).closest('.modal')).getByRole('button', { name: 'Delete day' }));
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
-    expect(saveProgram.mock.calls[0][0].insertedRestDays).toEqual([]);
-    expect(saveProgram.mock.calls[0][0].activity[0]).toMatchObject({
-      type: 'rest_remove',
-      title: 'Removed inserted rest day',
-    });
+    expect(saveProgram.mock.calls[0][0].scheduleEdits).toEqual([expect.objectContaining({ date: dayKey(0), type: 'delete' })]);
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
