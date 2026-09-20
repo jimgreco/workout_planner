@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import WorkoutBuilder from '../components/WorkoutBuilder';
+vi.mock('../api.js', () => ({
+  getExercises: () => [],
+  getTemplates: () => [],
+  saveExercise: vi.fn(async exercise => [exercise]),
+}));
 
 const exercises = [
   { id: 'ex1', name: 'Bench Press', muscleGroup: 'Chest', notes: '' },
@@ -563,14 +568,15 @@ describe('equipment setup editing', () => {
   const profile = { id: 'setup-1', name: 'Home bench', seat: '3' };
   const item = { ...oneItem[0], setupProfile: profile, baselineId: 'baseline-1' };
 
-  it('edits details without changing identity, baseline, sets, or history', () => {
+  it('edits details without changing identity, baseline, sets, or history', async () => {
     const onChange = vi.fn();
     const logs = [{ exerciseItems: [item] }];
     render(<WorkoutBuilder exercises={exercises} items={[item]} logs={logs} onChange={onChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
-    fireEvent.change(screen.getByLabelText('Setup name'), { target: { value: '  Home bench corrected  ' } });
+    fireEvent.change(screen.getByLabelText('Equipment / model'), { target: { value: '  Home bench corrected  ' } });
     fireEvent.change(screen.getByLabelText('Seat / bench setting'), { target: { value: '4' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save setup' }));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
     const updated = onChange.mock.calls.at(-1)[0][0];
     expect(updated.setupProfile).toMatchObject({ id: profile.id, name: 'Home bench corrected', seat: '4' });
     expect(updated.baselineId).toBe(item.baselineId);
@@ -582,12 +588,12 @@ describe('equipment setup editing', () => {
     const onChange = vi.fn();
     render(<WorkoutBuilder exercises={exercises} items={[item]} onChange={onChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
-    fireEvent.change(screen.getByLabelText('Setup name'), { target: { value: ' ' } });
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Equipment / model'), { target: { value: ' ' } });
+    expect(screen.getByRole('button', { name: 'Save setup' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
-    expect(screen.getByLabelText('Setup name')).toHaveValue(profile.name);
+    expect(screen.getByLabelText('Equipment / model')).toHaveValue(profile.name);
   });
 
   it('hides setup editing in read-only workouts', () => {

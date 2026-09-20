@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { DEFAULT_EXERCISES } from './default-exercises.mjs';
+import { EXERCISE_FAMILIES, planFamily } from './exercise-consolidation.mjs';
+test('defaults consolidate equipment variants while retaining distinct movements', () => {
+  const names = DEFAULT_EXERCISES.map(exercise => exercise.name);
+  for (const name of ['Chest Press', 'Incline Chest Press', 'Biceps Curl', 'Hammer Curl', 'Incline Dumbbell Curl', 'Dumbbell Row', 'Front Squat']) assert.ok(names.includes(name), name);
+  for (const name of ['Dumbbell Bench Press', 'Dumbbell Shoulder Press', 'Barbell Curl', 'Cable Curl', 'Cable Crossover']) assert.ok(!names.includes(name), name);
+  assert.ok(DEFAULT_EXERCISES.find(exercise => exercise.name === 'Chest Press').equipmentAlternatives.some(ref => ref.equipmentId === 'eq-dumbbells'));
+});
+test('consolidation preserves sets, snapshots, unilateral tracking and separate baselines, and is idempotent', () => {
+  const base = { PK: 'USER#test', muscleGroup: 'Chest' };
+  const first = { ...base, SK: 'EXERCISE#a', id: 'a', name: 'Bench Press', personalBest: { weight: '100' } };
+  const second = { ...base, SK: 'EXERCISE#b', id: 'b', name: 'DB Bench Press', isUnilateral: true, description: 'Original cues' };
+  const sets = [{ reps: '8', weight: '40', completion: 'recorded' }];
+  const items = [first, second, { PK: base.PK, SK: 'LOG#l', id: 'l', revision: 3, pbExerciseIds: ['b'], prescription: { exerciseItems: [{ exerciseId: 'b', sets }] }, exerciseItems: [{ exerciseId: 'a', sets }, { exerciseId: 'b', sets }] }];
+  const plan = planFamily(items, EXERCISE_FAMILIES[0]);
+  const log = plan.changed.find(change => change.after.SK === 'LOG#l').after;
+  assert.deepEqual(log.exerciseItems.map(item => item.sets), [sets, sets]);
+  assert.notEqual(log.exerciseItems[0].baselineId, log.exerciseItems[1].baselineId);
+  assert.equal(log.exerciseItems[1].useIndividualReps, true);
+  assert.equal(log.exerciseItems[1].description, 'Original cues');
+  assert.equal(log.prescription.exerciseItems[0].exerciseId, 'a');
+  assert.deepEqual(log.pbExerciseIds, ['a']);
+  assert.equal(plan.archives[0].personalBest.weight, '100');
+  assert.equal(plan.changed.at(-1).after.personalBest, undefined);
+  const migrated = items.filter(item => !plan.removed.some(source => source.SK === item.SK)).map(item => plan.changed.find(change => change.before.SK === item.SK)?.after || item);
+  assert.equal(planFamily(migrated, EXERCISE_FAMILIES[0]), null);
+  assert.equal(items[2].exerciseItems[1].exerciseId, 'b');
+});

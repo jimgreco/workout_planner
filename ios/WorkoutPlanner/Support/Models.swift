@@ -38,6 +38,7 @@ struct Exercise: Codable, Identifiable, Equatable {
     var personalBest: PersonalBest?
     var updatedAt: String?
     var equipmentAlternatives: [EquipmentAlternative]?
+    var equipmentSetups: [EquipmentSetup]?
     var revision: Int?
 
     init(
@@ -53,9 +54,11 @@ struct Exercise: Codable, Identifiable, Equatable {
         personalBest: PersonalBest? = nil,
         updatedAt: String? = nil,
         revision: Int? = nil,
-        equipmentAlternatives: [EquipmentAlternative]? = nil
+        equipmentAlternatives: [EquipmentAlternative]? = nil,
+        equipmentSetups: [EquipmentSetup]? = nil
     ) {
         self.equipmentAlternatives = equipmentAlternatives
+        self.equipmentSetups = equipmentSetups
         self.id = id
         self.name = name
         self.muscleGroup = muscleGroup
@@ -137,6 +140,49 @@ struct EquipmentSetup: Codable, Identifiable, Equatable {
     var seat = ""
     var grip = ""
     var loadConvention = ""
+
+    var displayName: String {
+        let parts = [gym, machine].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return parts.isEmpty ? (name.isEmpty ? "Equipment setup" : name) : parts.joined(separator: " · ")
+    }
+
+    var isValid: Bool {
+        !machine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        [gym, machine, seat, grip, loadConvention].allSatisfy { $0.count <= 120 }
+    }
+
+    var cleaned: EquipmentSetup {
+        var result = self
+        result.gym = gym.trimmingCharacters(in: .whitespacesAndNewlines)
+        result.machine = machine.trimmingCharacters(in: .whitespacesAndNewlines)
+        result.seat = seat.trimmingCharacters(in: .whitespacesAndNewlines)
+        result.grip = grip.trimmingCharacters(in: .whitespacesAndNewlines)
+        result.loadConvention = loadConvention.trimmingCharacters(in: .whitespacesAndNewlines)
+        result.name = String(result.displayName.prefix(120))
+        return result
+    }
+}
+
+extension Exercise {
+    func setups(logs: [WorkoutLog], templates: [WorkoutTemplate], current: EquipmentSetup? = nil) -> [EquipmentSetup] {
+        var profiles: [String: EquipmentSetup] = [:]
+        let orderedLogs = logs.sorted { lhs, rhs in
+            lhs.date == rhs.date ? (lhs.updatedAt ?? "") < (rhs.updatedAt ?? "") : lhs.date < rhs.date
+        }
+        for log in orderedLogs {
+            for item in (log.prescription?.exerciseItems ?? []) + log.exerciseItems where item.exerciseId == id {
+                if let profile = item.setupProfile { profiles[profile.id] = profile }
+            }
+        }
+        for template in templates {
+            for item in template.exerciseItems where item.exerciseId == id {
+                if let profile = item.setupProfile { profiles[profile.id] = profile }
+            }
+        }
+        if let current { profiles[current.id] = current }
+        for profile in equipmentSetups ?? [] { profiles[profile.id] = profile }
+        return profiles.values.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
 }
 struct TrainingPhase: Codable, Identifiable, Equatable {
     var id = UUID().uuidString

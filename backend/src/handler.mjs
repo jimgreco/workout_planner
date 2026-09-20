@@ -847,6 +847,7 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
     ...body,
     ...(SK.startsWith('LOG#') && existing?.prescription ? { prescription: existing.prescription } : {}),
     ...(SK.startsWith('TEMPLATE#') && body.gymId === undefined && existing?.gymId ? { gymId: existing.gymId } : {}),
+    ...(SK.startsWith('EXERCISE#') && body.equipmentSetups === undefined && existing?.equipmentSetups ? { equipmentSetups: existing.equipmentSetups } : {}),
     ...(SK.startsWith('EXERCISE#') && body.equipmentAlternatives === undefined && existing?.equipmentAlternatives ? { equipmentAlternatives: existing.equipmentAlternatives } : {}),
     updatedAt: now,
     revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,

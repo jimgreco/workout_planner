@@ -234,3 +234,14 @@ test('exercises support zero, one, or multiple equipment alternatives', () => {
   const restored = validateImport({ data: { exercises: [{ ...exercise, equipmentAlternatives: alternatives }] } });
   assert.deepEqual(restored.exercises[0].equipmentAlternatives, alternatives);
 });
+
+test('exercise setup library supports derived labels and preserves explicit IDs', () => {
+  const setup = { id: 'press-home', gym: 'Home', machine: 'Dumbbells', seat: '30 degrees' };
+  const result = validateExercise({ name: 'Press', equipmentSetups: [setup] }, 'press');
+  assert.equal(result.equipmentSetups[0].name, 'Home · Dumbbells');
+  assert.equal(result.equipmentSetups[0].id, setup.id);
+  assert.throws(() => validateExercise({ name: 'Press', equipmentSetups: [setup, setup] }, 'press'), ValidationError);
+  assert.throws(() => validateExercise({ name: 'Press', equipmentSetups: [{ id: 'empty' }] }, 'press'), ValidationError);
+  const log = validateLog({ name: 'Workout', date: '2026-09-19', exerciseItems: [{ exerciseId: 'press', setupProfile: setup, sets: [] }] }, 'log');
+  assert.equal(log.exerciseItems[0].setupProfile.name, 'Home · Dumbbells');
+});

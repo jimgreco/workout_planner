@@ -171,6 +171,8 @@ private enum ExerciseSheet: Identifiable {
 }
 
 private struct ExerciseRow: View {
+    @EnvironmentObject private var store: WorkoutStore
+    @State private var editingSetup: EquipmentSetup?
     let exercise: Exercise
     let onDetail: () -> Void
     let onPB: () -> Void
@@ -195,6 +197,31 @@ private struct ExerciseRow: View {
                     badges
                 }
                 exerciseNotes(lineLimit: 3)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Equipment setups").font(.caption.weight(.bold)).foregroundStyle(Theme.muted)
+                let profiles = exercise.setups(logs: store.logs, templates: store.templates)
+                if profiles.isEmpty { Text("No saved setups yet.").font(.caption).foregroundStyle(Theme.muted) }
+                ForEach(profiles) { profile in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(profile.displayName).font(.subheadline)
+                            Text([profile.seat.isEmpty ? "" : "Seat: " + profile.seat, profile.grip, profile.loadConvention].filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(Theme.muted)
+                        }
+                        Spacer()
+                        Button("Edit") { editingSetup = profile }
+                            .accessibilityLabel("Edit setup " + profile.displayName)
+                    }
+                }
+                Button("Add setup") { editingSetup = EquipmentSetup() }
+            }
+        }
+        .sheet(item: $editingSetup) { profile in
+            EquipmentSetupEditor(profile: profile) { saved in
+                var latest = store.exercises.first { $0.id == exercise.id } ?? exercise
+                latest.equipmentSetups = latest.setups(logs: store.logs, templates: store.templates).filter { $0.id != saved.id } + [saved]
+                try await store.saveExercise(latest)
             }
         }
         .padding(12)

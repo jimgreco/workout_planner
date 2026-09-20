@@ -1,3 +1,6 @@
+import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
+import { exerciseSetups, setupLabel } from '../equipmentSetups.js';
+import { saveExercise, getExercises, getTemplates } from '../api.js';
 import { completionLabel } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
@@ -216,6 +219,7 @@ export default function WorkoutBuilder({
   planningMode = false,
   lastWeightTypeByExerciseId = {},
   logs = [],
+  onExercisesChanged = () => {},
 }) {
   const [exerciseSearch, setExerciseSearch] = useState('');
   const exerciseListId = useId();
@@ -560,7 +564,7 @@ export default function WorkoutBuilder({
                   )}
                 </div>
                 {!planningMode && <div className="exercise-evidence">
-                  <EquipmentSetup item={item} logs={logs} readOnly={readOnly} onChange={patch=>updateItem(idx,patch)} />
+                  <EquipmentSetup exercise={exercises.find(exercise => exercise.id === item.exerciseId)} onExercisesChanged={onExercisesChanged} item={item} logs={logs} readOnly={readOnly} onChange={patch=>updateItem(idx,patch)} />
                   <label>Technique / equipment note
                     <input type="text" maxLength={300} value={item.techniqueNote || ''} disabled={readOnly}
                       placeholder="Depth, bench angle, machine setting…"
@@ -925,19 +929,30 @@ export default function WorkoutBuilder({
   );
 }
 
-function EquipmentSetup({item,logs,readOnly,onChange}) {
-  const [draft,setDraft] = useState(null);
+function EquipmentSetup({ exercise, item, logs, readOnly, onChange, onExercisesChanged }) {
+  const [draft, setDraft] = useState(null);
   function applyProfile(profile) {
-    const sets = item.sets.map(set=>({...set,placeholderWeight:'',placeholderReps:set.placeholderReps?.match(/\(([^)]+)\)$/)?.[1] || set.placeholderReps}));
-    onChange({setupProfile:profile,baselineId:profile?.id||crypto.randomUUID(),sets});
+    const sets = item.sets.map(set => ({ ...set, placeholderWeight: '', placeholderReps: set.placeholderReps?.match(/\(([^)]+)\)$/)?.[1] || set.placeholderReps }));
+    onChange({ setupProfile: profile, baselineId: profile?.id || crypto.randomUUID(), sets });
   }
-  const profiles = [...new Map([...(logs||[]).flatMap(log=>log.exerciseItems||[]).filter(i=>i.exerciseId===item.exerciseId).map(i=>i.setupProfile),item.setupProfile].filter(Boolean).map(p=>[p.id,p])).values()];
+  const profiles = exerciseSetups(exercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile);
+  async function save(profile) {
+    const latestExercise = getExercises().find(entry => entry.id === item.exerciseId) || exercise;
+    const equipmentSetups = [...exerciseSetups(latestExercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile).filter(entry => entry.id !== profile.id), profile];
+    if (latestExercise) onExercisesChanged(await saveExercise({ ...latestExercise, equipmentSetups }));
+    if (draft.id) onChange({ setupProfile: profile });
+    else applyProfile(profile);
+    setDraft(null);
+  }
   return <div className="equipment-setup">
-    <label>Equipment setup<select disabled={readOnly} value={item.setupProfile?.id||''} onChange={e=>{const profile=profiles.find(p=>p.id===e.target.value); applyProfile(profile);}}><option value="">Unspecified setup</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-    {item.setupProfile && <small>{['gym','machine','seat','grip','loadConvention'].map(k=>item.setupProfile[k]).filter(Boolean).join(' · ')}</small>}
-    {!readOnly && !draft && item.setupProfile && <button type="button" className="btn btn-secondary btn-sm" onClick={()=>setDraft({...item.setupProfile})}>Edit setup</button>}
-    {!readOnly && !draft && <button type="button" className="btn btn-secondary btn-sm" onClick={()=>setDraft({name:'',gym:'',machine:'',seat:'',grip:'',loadConvention:''})}>Save a new setup</button>}
-    {!readOnly && draft && <fieldset><legend>{draft.id ? 'Edit equipment setup' : 'New equipment setup'}</legend>{['name','gym','machine','seat','grip','loadConvention'].map(k=><label key={k}>{({name:'Setup name',gym:'Gym',machine:'Machine / model',seat:'Seat / bench setting',grip:'Grip / attachment',loadConvention:'Load convention (per hand, total, stack)'})[k]}<input type="text" maxLength={120} value={draft[k] || ''} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></label>)}<button type="button" className="btn btn-primary" disabled={!draft.name.trim()} onClick={()=>{const profile={...draft,name:draft.name.trim(),id:draft.id || crypto.randomUUID()};if(draft.id){onChange({setupProfile:profile});}else{applyProfile(profile);}setDraft(null);}}>{draft.id ? 'Save changes' : 'Use setup'}</button><button type="button" className="btn btn-secondary" onClick={()=>setDraft(null)}>Cancel</button></fieldset>}
+    <label>Equipment setup<select disabled={readOnly || Boolean(draft)} value={item.setupProfile?.id || ''} onChange={event => applyProfile(profiles.find(profile => profile.id === event.target.value))}>
+      <option value="">Unspecified setup</option>
+      {profiles.map(profile => <option key={profile.id} value={profile.id}>{setupLabel(readOnly && item.setupProfile?.id === profile.id ? item.setupProfile : profile)}</option>)}
+    </select></label>
+    {item.setupProfile && <small>{[item.setupProfile.seat, item.setupProfile.grip, item.setupProfile.loadConvention].filter(Boolean).join(' · ')}</small>}
+    {!readOnly && !draft && item.setupProfile && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft(profiles.find(profile => profile.id === item.setupProfile.id) || item.setupProfile)}>Edit setup</button>}
+    {!readOnly && !draft && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft({})}>Save a new setup</button>}
+    {!readOnly && draft && <EquipmentSetupEditor profile={draft} onSave={save} onCancel={() => setDraft(null)} />}
     <small>Each setup has its own comparison baseline. Saved workouts retain their original settings.</small>
   </div>;
 }

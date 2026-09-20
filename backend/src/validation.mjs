@@ -185,7 +185,9 @@ function setupProfile(value) {
   assertObject(value, 'setupProfile');
   assertAllowedKeys(value, new Set(['id','name','gym','machine','seat','grip','loadConvention']), 'setupProfile');
   const result = { id: validateId(value.id, 'setupProfile.id') };
-  for (const key of ['name','gym','machine','seat','grip','loadConvention']) result[key] = stringValue(value[key], `setupProfile.${key}`, { required: key === 'name', max: 120, allowEmpty: key !== 'name' }) ?? '';
+  for (const key of ['name','gym','machine','seat','grip','loadConvention']) result[key] = stringValue(value[key], `setupProfile.${key}`, { max: 120 }) ?? '';
+  if (!result.machine && !result.gym && !result.name) fail('Equipment setup needs equipment or gym details');
+  if (!result.name) result.name = [result.gym, result.machine].filter(Boolean).join(' · ').slice(0, 120);
   return result;
 }
 function programPhases(value, start, end) {
@@ -314,7 +316,7 @@ export function validateGym(body, pathId) {
 
 export function validateExercise(body, pathId) {
   assertObject(body, 'exercise');
-  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'equipmentAlternatives', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
+  assertAllowedKeys(body, new Set(['id', 'name', 'muscleGroup', 'notes', 'description', 'isUnilateral', 'usesTime', 'defaultSets', 'defaultReps', 'personalBest', 'equipmentAlternatives', 'equipmentSetups', 'updatedAt', 'revision', 'expectedRevision']), 'exercise');
   requireMatchingId(body, pathId);
   optionalRevision(body.expectedRevision, 'expectedRevision');
   const muscleGroup = stringValue(body.muscleGroup, 'muscleGroup', { max: 60 }) ?? 'Other';
@@ -350,6 +352,11 @@ export function validateExercise(body, pathId) {
       refs.add(key);
       return { ...(gymId ? { gymId } : {}), equipmentId };
     });
+  }
+  if (body.equipmentSetups !== undefined) {
+    if (!Array.isArray(body.equipmentSetups) || body.equipmentSetups.length > 200) fail('equipmentSetups must be an array of at most 200 entries');
+    exercise.equipmentSetups = body.equipmentSetups.map(setupProfile);
+    if (new Set(exercise.equipmentSetups.map(profile => profile.id)).size !== exercise.equipmentSetups.length) fail('equipmentSetups must have unique IDs');
   }
   const best = personalBest(body.personalBest);
   if (best !== undefined) exercise.personalBest = best;

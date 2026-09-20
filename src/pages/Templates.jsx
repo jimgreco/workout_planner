@@ -1256,6 +1256,7 @@ export default function Templates({
       {showExerciseLibrary && (
       <section className="exercise-library-section">
         <Exercises
+            templates={templates}
           gyms={gyms}
           exercises={exercises}
           logs={logs}

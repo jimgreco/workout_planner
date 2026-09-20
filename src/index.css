@@ -3634,3 +3634,19 @@ input:focus, select:focus, textarea:focus {
 .equipment-library-name { text-align: left; background: none; border: 0; color: var(--text); padding: 8px 0; cursor: pointer; }
 .equipment-library-row small { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
 .gyms-page > .btn { margin-bottom: 16px; }
+
+.exercise-setups { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.exercise-setups small, .exercise-setup-row small { display: block; color: var(--text-muted); }
+.exercise-setup-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.exercise-setup-row > div { min-width: 0; overflow-wrap: anywhere; }
+.equipment-setup-editor { display: grid; gap: 12px; min-width: 0; }
+.equipment-setup-editor label { display: grid; gap: 5px; }
+
+.exercise-item.exercise-with-setups { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.exercise-with-setups > .exercise-setups { grid-column: 1 / -1; }
+@media (max-width: 480px) {
+  .exercise-item.exercise-with-setups { grid-template-columns: minmax(0, 1fr); }
+  .exercise-with-setups > .card-actions { justify-content: flex-end; }
+}
+.equipment-setup-editor { border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.equipment-setup-editor legend { padding: 0 4px; font-weight: 600; }

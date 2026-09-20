@@ -2058,18 +2058,18 @@ private struct RestTimerText: View {
 
 
 struct EquipmentSetupPicker: View {
+    @EnvironmentObject private var store: WorkoutStore
     @Binding var item: ExerciseItem
     var logs: [WorkoutLog]
     var readOnly = false
     var onChanged: () -> Void
-    @State private var editing = false
-    @State private var draft = EquipmentSetup()
+    @State private var draft: EquipmentSetup?
     @State private var editingExisting = false
+    private var exercise: Exercise {
+        store.exercises.first { $0.id == item.exerciseId } ?? Exercise(id: item.exerciseId, name: "")
+    }
     private var profiles: [EquipmentSetup] {
-        var result: [String: EquipmentSetup] = [:]
-        for log in logs { for entry in log.exerciseItems where entry.exerciseId == item.exerciseId { if let p = entry.setupProfile { result[p.id] = p } } }
-        if let p = item.setupProfile { result[p.id] = p }
-        return result.values.sorted { $0.name < $1.name }
+        exercise.setups(logs: logs, templates: store.templates, current: item.setupProfile)
     }
     private func useProfile(_ profile: EquipmentSetup?) {
         item.setupProfile = profile; item.baselineId = profile?.id ?? UUID().uuidString
@@ -2083,41 +2083,85 @@ struct EquipmentSetupPicker: View {
                 .foregroundStyle(Theme.muted)
             Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
                 useProfile(profiles.first { $0.id == id })
-            })) { Text("Unspecified").tag(""); ForEach(profiles) { Text($0.name).tag($0.id) } }
+            })) {
+                Text("Unspecified").tag("")
+                ForEach(profiles) { profile in
+                    Text(readOnly && item.setupProfile?.id == profile.id ? item.setupProfile!.displayName : profile.displayName).tag(profile.id)
+                }
+            }
             .pickerStyle(.menu)
             .disabled(readOnly)
-            if let p = item.setupProfile { Text([p.gym,p.machine,p.seat,p.grip,p.loadConvention].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(Theme.muted) }
+            if let profile = item.setupProfile {
+                Text([profile.seat, profile.grip, profile.loadConvention].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(Theme.muted)
+            }
             if !readOnly {
                 if let profile = item.setupProfile {
-                    Button("Edit setup") { draft = profile; editingExisting = true; editing = true }
+                    Button("Edit setup") { editingExisting = true; draft = profiles.first { $0.id == profile.id } ?? profile }
                 }
-                Button("Save a new setup") { draft = EquipmentSetup(); editingExisting = false; editing = true }
+                Button("Save a new setup") { editingExisting = false; draft = EquipmentSetup() }
             }
         }
-        .sheet(isPresented: $editing) {
-            NavigationStack {
-                Form {
-                    TextField("Setup name", text: $draft.name)
+        .sheet(item: $draft) { profile in
+            EquipmentSetupEditor(profile: profile) { saved in
+                var updated = exercise
+                updated.equipmentSetups = profiles.filter { $0.id != saved.id } + [saved]
+                try await store.saveExercise(updated)
+                if editingExisting { item.setupProfile = saved; onChanged() }
+                else { useProfile(saved) }
+            }
+        }
+    }
+}
+
+struct EquipmentSetupEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: EquipmentSetup
+    @State private var saving = false
+    @State private var error: String?
+    let onSave: (EquipmentSetup) async throws -> Void
+
+    init(profile: EquipmentSetup, onSave: @escaping (EquipmentSetup) async throws -> Void) {
+        var editable = profile
+        if editable.machine.isEmpty && editable.gym.isEmpty { editable.machine = editable.name }
+        _draft = State(initialValue: editable)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Equipment") {
                     TextField("Gym", text: $draft.gym)
-                    TextField("Machine / model", text: $draft.machine)
+                    TextField("Equipment / model", text: $draft.machine)
+                }
+                Section("Settings") {
                     TextField("Seat / bench setting", text: $draft.seat)
                     TextField("Grip / attachment", text: $draft.grip)
                     TextField("Load convention: per hand, total, stack", text: $draft.loadConvention)
-                    Text("Each setup has its own comparison baseline. Previous workouts keep their original settings.").font(.caption)
-                }.navigationTitle(editingExisting ? "Edit equipment setup" : "Equipment setup").toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editing = false } }
-                    ToolbarItem(placement: .confirmationAction) { Button(editingExisting ? "Save changes" : "Use setup") {
-                        draft.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if editingExisting {
-                            item.setupProfile = draft
-                            onChanged()
-                        } else {
-                            useProfile(draft)
+                }
+                Section {
+                    Text("Use a new setup when changing equipment or load conventions to keep comparisons separate. Past workouts keep their recorded settings.")
+                        .font(.caption)
+                }
+                if let error { Section { Text(error).foregroundStyle(Theme.danger) } }
+            }
+            .disabled(saving)
+            .navigationTitle("Equipment setup")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "Saving…" : "Save setup") {
+                        saving = true
+                        Task {
+                            do { try await onSave(draft.cleaned); dismiss() }
+                            catch { self.error = error.localizedDescription }
+                            saving = false
                         }
-                        editing = false
-                    }.disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || [draft.name,draft.gym,draft.machine,draft.seat,draft.grip,draft.loadConvention].contains { $0.count > 120 }) }
+                    }.disabled(saving || !draft.isValid)
                 }
             }
+            .interactiveDismissDisabled(saving)
         }
     }
 }

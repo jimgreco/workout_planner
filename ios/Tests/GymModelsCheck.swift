@@ -44,6 +44,24 @@ struct GymModelsCheck {
         let libraryBackup = ForgeExportPayload(exercises: [libraryExercise], gyms: [linkedGym], equipment: GymEquipment.preloaded)
         let decodedLibraryBackup = try decoder.decode(ForgeExportPayload.self, from: JSONEncoder().encode(libraryBackup))
         precondition(decodedLibraryBackup == libraryBackup)
+        var originalSetup = EquipmentSetup()
+        originalSetup.id = "setup-home"
+        originalSetup.name = "Old custom title"
+        originalSetup.gym = "Home"
+        originalSetup.machine = "Dumbbells"
+        originalSetup.seat = "1"
+        var editedSetup = originalSetup
+        editedSetup.seat = "4"
+        let setupExercise = Exercise(id: "press", name: "Press", equipmentSetups: [editedSetup])
+        let setupRoutine = WorkoutTemplate(name: "Push", exerciseItems: [ExerciseItem(exerciseId: "press", sets: [], setupProfile: originalSetup)])
+        precondition(setupExercise.setups(logs: [], templates: [setupRoutine]) == [editedSetup])
+        precondition(editedSetup.displayName == "Home · Dumbbells")
+        precondition(editedSetup.cleaned.name == "Home · Dumbbells")
+        precondition(editedSetup.isValid)
+        precondition(!EquipmentSetup().isValid)
+        let restoredSetupExercise = try decoder.decode(Exercise.self, from: JSONEncoder().encode(setupExercise))
+        precondition(restoredSetupExercise == setupExercise)
+        precondition(setupRoutine.exerciseItems[0].setupProfile?.seat == "1")
         print("Gym model checks passed: legacy decoding, alternatives, gym matching, backup round-trip, brief, and limits.")
     }
 }

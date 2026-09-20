@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, Plus, Search, Star, Pencil, Trash2, Dumbbell } from 'lucide-react';
+import ExerciseSetups from '../components/ExerciseSetups.jsx';
 import Modal from '../components/Modal.jsx';
 import EquipmentAlternatives from '../components/EquipmentAlternatives.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
@@ -197,7 +198,7 @@ export function ExerciseFormFields({ form, setForm, gyms = [], autoFocus = false
   );
 }
 
-export default function Exercises({ gyms = [], exercises, logs = [], onUpdate, actionRequest = null, embedded = false }) {
+export default function Exercises({ gyms = [], exercises, logs = [], templates = [], onUpdate, actionRequest = null, embedded = false }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'pb'
   const [form, setForm]                 = useState(emptyExercise());
   const [search, setSearch]             = useState('');
@@ -314,7 +315,7 @@ export default function Exercises({ gyms = [], exercises, logs = [], onUpdate, a
           </div>
         )}
         {filtered.map((ex) => (
-          <div key={ex.id} className="exercise-item">
+          <div key={ex.id} className="exercise-item exercise-with-setups">
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="ex-name">{ex.name}</div>
               <div className="ex-meta">
@@ -348,6 +349,7 @@ export default function Exercises({ gyms = [], exercises, logs = [], onUpdate, a
                 <Trash2 size={16} color="var(--danger)" />
               </button>
             </div>
+            <ExerciseSetups exercise={ex} logs={logs} templates={templates} onUpdate={onUpdate} />
           </div>
         ))}
       </div>

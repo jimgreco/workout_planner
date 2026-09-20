@@ -1,3 +1,4 @@
+import { consolidateDefaultExercises } from './exercise-consolidation.mjs';
 /**
  * Default exercises seeded for new users on their first GET /exercises.
  */
@@ -162,11 +163,12 @@ const EQUIPMENT_BY_EXERCISE = {
   "Elliptical": [{"equipmentId": "eq-elliptical"}]
 };
 
-export const DEFAULT_EXERCISES = exercises.map((exercise) => ({ ...exercise, equipmentAlternatives: EQUIPMENT_BY_EXERCISE[exercise.name] }));
+const LEGACY_DEFAULT_EXERCISES = exercises.map((exercise) => ({ ...exercise, equipmentAlternatives: EQUIPMENT_BY_EXERCISE[exercise.name] }));
+export const DEFAULT_EXERCISES = consolidateDefaultExercises(LEGACY_DEFAULT_EXERCISES);
 
 // Enrich legacy preloaded exercises without overwriting any explicit user selection.
 export function withDefaultEquipment(exercise) {
   if (exercise.equipmentAlternatives !== undefined) return exercise;
-  const preset = DEFAULT_EXERCISES.find((item) => item.name === exercise.name && item.muscleGroup === exercise.muscleGroup);
+  const preset = [...DEFAULT_EXERCISES, ...LEGACY_DEFAULT_EXERCISES].find((item) => item.name === exercise.name && item.muscleGroup === exercise.muscleGroup);
   return preset ? { ...exercise, equipmentAlternatives: preset.equipmentAlternatives } : exercise;
 }

@@ -151,3 +151,21 @@ describe('Exercises page', () => {
     expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
   });
 });
+
+it('shows setups from routines and workouts and saves an exercise-level edit without rewriting history', async () => {
+  const old = { id: 'home', name: 'Old title', gym: 'Home', machine: 'Dumbbells', seat: '1' };
+  const logs = [{ date: '2026-09-19', exerciseItems: [{ exerciseId: 'e1', setupProfile: old }] }];
+  const templates = [{ exerciseItems: [{ exerciseId: 'e1', setupProfile: { id: 'gym', gym: 'Gym', machine: 'Cable' } }] }];
+  const onUpdate = vi.fn();
+  render(<Exercises exercises={[sampleExercises[0]]} logs={logs} templates={templates} onUpdate={onUpdate} />);
+  expect(screen.getByText('Home · Dumbbells')).toBeInTheDocument();
+  expect(screen.getByText('Gym · Cable')).toBeInTheDocument();
+  expect(screen.queryByText('Old title')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit setup Home · Dumbbells' }));
+  expect(screen.queryByLabelText('Setup name')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Seat / bench setting'), { target: { value: '4' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save setup' }));
+  await waitFor(() => expect(onUpdate).toHaveBeenCalled());
+  expect(saveExercise.mock.calls.at(-1)[0].equipmentSetups).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'home', seat: '4', name: 'Home · Dumbbells' })]));
+  expect(old.seat).toBe('1');
+});

@@ -747,8 +747,8 @@ struct WorkoutLogView: View {
     }
 
     private func prepopulated(_ item: ExerciseItem, program: TrainingProgram? = nil) -> ExerciseItem {
-        let last = lastFinishedItem(for: item.exerciseId)
-        let isUnilateral = store.exercise(id: item.exerciseId)?.isUnilateral == true
+        let last = lastFinishedItem(for: item.exerciseId, baselineId: item.baselineId ?? item.setupProfile?.id)
+        let isUnilateral = item.useIndividualReps ?? (store.exercise(id: item.exerciseId)?.isUnilateral == true)
         let hitTarget = program != nil ? exerciseHitTarget(templateSets: item.sets, lastSets: last?.sets ?? []) : false
         let hitCap = program != nil ? exerciseHitRepCap(templateSets: item.sets, lastSets: last?.sets ?? [], cap: Double(program?.progression?.maxReps ?? 12)) : false
         let preferredWeightType = last?.weightType ?? item.weightType ?? "weight"
@@ -810,7 +810,7 @@ struct WorkoutLogView: View {
             sets: sets,
             baselineId: last?.baselineId ?? item.baselineId,
             techniqueNote: last?.techniqueNote ?? item.techniqueNote,
-            setupProfile: last?.setupProfile ?? item.setupProfile
+            setupProfile: store.exercises.first { $0.id == item.exerciseId }?.equipmentSetups?.first { $0.id == (last?.setupProfile ?? item.setupProfile)?.id } ?? last?.setupProfile ?? item.setupProfile
         )
     }
 
@@ -961,12 +961,12 @@ struct WorkoutLogView: View {
         )
     }
 
-    private func lastFinishedItem(for exerciseId: String) -> ExerciseItem? {
+    private func lastFinishedItem(for exerciseId: String, baselineId: String? = nil) -> ExerciseItem? {
         let finished = store.logs
             .filter { $0.status == "finished" }
             .sorted { $0.date > $1.date }
         for log in finished {
-            if let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId }) {
+            if let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId && (baselineId == nil || $0.baselineId == baselineId) }) {
                 return item
             }
         }

@@ -678,7 +678,7 @@ test('preloaded exercise mappings are valid, enrich old presets, and respect exp
   const { DEFAULT_EXERCISES, withDefaultEquipment } = await import('./default-exercises.mjs');
   const { DEFAULT_EQUIPMENT } = await import('./default-equipment.mjs');
   const ids = new Set(DEFAULT_EQUIPMENT.map((item) => item.id));
-  assert.equal(DEFAULT_EXERCISES.length, 65);
+  assert.equal(DEFAULT_EXERCISES.length, 59);
   for (const exercise of DEFAULT_EXERCISES) {
     assert.ok(Array.isArray(exercise.equipmentAlternatives), exercise.name);
     assert.ok(exercise.equipmentAlternatives.every((ref) => ids.has(ref.equipmentId)), exercise.name);
@@ -734,4 +734,20 @@ test('new preloaded exercises do not reference equipment removed before exercise
   assert.equal((await handler(event('DELETE', '/equipment/eq-barbell-plates', undefined, headers))).statusCode, 204);
   const exercises = JSON.parse((await handler(event('GET', '/exercises', undefined, headers))).body);
   assert.equal(exercises.some((exercise) => exercise.equipmentAlternatives.some((ref) => ref.equipmentId === 'eq-barbell-plates')), false);
+});
+
+test('exercise library setup edits sync and survive older-client writes without rewriting logs', async () => {
+  const PK = 'USER#setup-library-user';
+  const { token } = await createAppSession({ sub: 'setup-library-user', email: 'setup@example.com' });
+  const headers = { authorization: `Bearer ${token}` };
+  const profile = { id: 'home', name: 'Home · Dumbbells', gym: 'Home', machine: 'Dumbbells', seat: '1', grip: '', loadConvention: '' };
+  const log = { PK, SK: 'LOG#history', id: 'history', exerciseItems: [{ exerciseId: 'press', setupProfile: profile, sets: [{ reps: '8', weight: '40' }] }] };
+  const db = fakeDb([{ PK, SK: 'EXERCISE#press', id: 'press', name: 'Press', equipmentSetups: [profile], revision: 1 }, log]);
+  __setTestDb(db);
+  let response = await handler(event('PUT', '/exercises/press', { id: 'press', name: 'Press', equipmentSetups: [{ ...profile, seat: '4' }], expectedRevision: 1 }, headers));
+  assert.equal(response.statusCode, 200);
+  response = await handler(event('PUT', '/exercises/press', { id: 'press', name: 'Updated press', expectedRevision: 2 }, headers));
+  assert.equal(response.statusCode, 200);
+  assert.equal(db.items.get(PK + '|EXERCISE#press').equipmentSetups[0].seat, '4');
+  assert.equal(db.items.get(PK + '|LOG#history').exerciseItems[0].setupProfile.seat, '1');
 });

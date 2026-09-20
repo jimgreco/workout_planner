@@ -781,6 +781,7 @@ export default function App() {
         )}
         {page === 'exercises' && (
           <Exercises
+            templates={templates}
             gyms={gyms}
             exercises={exercises}
             logs={logs}
