@@ -41,7 +41,7 @@ targets:
     info:
       path: WorkoutPlanner/Info.plist
       properties:
-        CFBundleDisplayName: Rep, Mix, Burn
+        CFBundleDisplayName: Rep Mix Burn
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
