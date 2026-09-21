@@ -566,7 +566,7 @@ export default function WorkoutBuilder({
                 {!planningMode && <div className="exercise-evidence">
                   <EquipmentSetup exercise={exercises.find(exercise => exercise.id === item.exerciseId)} onExercisesChanged={onExercisesChanged} item={item} logs={logs} readOnly={readOnly} onChange={patch=>updateItem(idx,patch)} />
                   <label>Technique / equipment note
-                    <input type="text" maxLength={300} value={item.techniqueNote || ''} disabled={readOnly}
+                    <textarea rows={3} maxLength={300} value={item.techniqueNote || ''} disabled={readOnly}
                       placeholder="Depth, bench angle, machine setting…"
                       onChange={e => updateItem(idx, { techniqueNote: e.target.value })} />
                   </label>

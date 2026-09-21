@@ -2058,10 +2058,12 @@ private struct RestTimerText: View {
 
 
 struct EquipmentSetupPicker: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: WorkoutStore
     @Binding var item: ExerciseItem
     var logs: [WorkoutLog]
     var readOnly = false
+    var compact = false
     var onChanged: () -> Void
     @State private var draft: EquipmentSetup?
     @State private var editingExisting = false
@@ -2079,22 +2081,28 @@ struct EquipmentSetupPicker: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Equipment setup")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Theme.muted)
-            Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
-                useProfile(profiles.first { $0.id == id })
-            })) {
-                Text("Unspecified").tag("")
-                if deletedCurrent, let profile = item.setupProfile {
-                    Text(profile.displayName + " (deleted)").tag(profile.id).disabled(true)
+            let inline = compact && !dynamicTypeSize.isAccessibilitySize
+            let layout = inline ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            layout {
+                Text("Equipment setup")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.muted)
+                if inline { Spacer(minLength: 0) }
+                Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
+                    useProfile(profiles.first { $0.id == id })
+                })) {
+                    Text("Unspecified").tag("")
+                    if deletedCurrent, let profile = item.setupProfile {
+                        Text(profile.displayName + " (deleted)").tag(profile.id).disabled(true)
+                    }
+                    ForEach(profiles) { profile in
+                        Text(readOnly && item.setupProfile?.id == profile.id ? item.setupProfile!.displayName : profile.displayName).tag(profile.id)
+                    }
                 }
-                ForEach(profiles) { profile in
-                    Text(readOnly && item.setupProfile?.id == profile.id ? item.setupProfile!.displayName : profile.displayName).tag(profile.id)
-                }
+                .pickerStyle(.menu)
+                .disabled(readOnly)
+                .labelsHidden()
             }
-            .pickerStyle(.menu)
-            .disabled(readOnly)
             if let profile = item.setupProfile {
                 Text([profile.seat, profile.grip, profile.loadConvention].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.caption).foregroundStyle(Theme.muted)

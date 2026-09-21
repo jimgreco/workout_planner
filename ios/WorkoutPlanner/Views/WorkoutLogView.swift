@@ -1890,24 +1890,23 @@ private struct WorkoutLiveActivityCard: View {
             VStack(alignment: .leading, spacing: liveGridSpacing) {
                 quickEntryPanel(context, set: set, repMode: repMode, showsWeight: showsWeight)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Reps left")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Theme.muted)
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent {
                         Picker("Reps left with the same form", selection: stringBinding(set, \.rir)) {
                             Text("Not sure").tag("")
                             ForEach(0...10, id: \.self) { Text(String($0)).tag(String($0)) }
                         }
                         .pickerStyle(.menu)
-                        Text("How many more reps could you do with the same form?")
-                            .font(.caption)
-                            .foregroundStyle(Theme.muted)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Set status")
+                        .labelsHidden()
+                    } label: {
+                        Text("Reps left")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Theme.muted)
+                    }
+                    Text("How many more reps with the same form?")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                    LabeledContent {
                         Picker("Set status", selection: Binding(get: {
                             set.wrappedValue.completion ?? (hasRecordedWorkoutReps(set.wrappedValue) ? "recorded" : "unrecorded")
                         }, set: { value in set.wrappedValue.completion = value; onChanged() })) {
@@ -1916,12 +1915,18 @@ private struct WorkoutLiveActivityCard: View {
                             Text("Skipped").tag("skipped")
                         }
                         .pickerStyle(.menu)
+                        .labelsHidden()
+                    } label: {
+                        Text("Set status")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.muted)
                     }
-                    setTypeMenu(set: set, height: liveSecondaryTileHeight)
-                    EquipmentSetupPicker(item: Binding(get: { items[context.exerciseIndex] }, set: { items[context.exerciseIndex] = $0 }), logs: logs, onChanged: onChanged)
+                    setTypeMenu(set: set)
+                    EquipmentSetupPicker(item: Binding(get: { items[context.exerciseIndex] }, set: { items[context.exerciseIndex] = $0 }), logs: logs, compact: true, onChanged: onChanged)
                     TextField("Technique / equipment note", text: Binding(get: {
                         items[context.exerciseIndex].techniqueNote ?? ""
-                    }, set: { value in items[context.exerciseIndex].techniqueNote = String(value.prefix(300)); onTextChanged() }))
+                    }, set: { value in items[context.exerciseIndex].techniqueNote = String(value.prefix(300)); onTextChanged() }), axis: .vertical)
+                    .lineLimit(2...)
                     Button("Start new technique baseline") {
                         items[context.exerciseIndex].baselineId = DateHelpers.todayString() + "_" + UUID().uuidString
                         onChanged()
@@ -2451,7 +2456,7 @@ private struct WorkoutLiveActivityCard: View {
         )
     }
 
-    private func setTypeMenu(set: Binding<WorkoutSet>, height: CGFloat) -> some View {
+    private func setTypeMenu(set: Binding<WorkoutSet>) -> some View {
         Menu {
             ForEach(liveSetTypeOptions, id: \.value) { option in
                 Button(option.label) {
@@ -2460,7 +2465,17 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
         } label: {
-            WorkoutLiveMenuMetric(title: "Set Type", value: setTypeLabel(set.wrappedValue.setType), height: height)
+            HStack {
+                Text("Set type")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.muted)
+                Spacer()
+                Text(setTypeLabel(set.wrappedValue.setType))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
