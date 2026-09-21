@@ -9,7 +9,7 @@ auth, and deployment. The active production path is EC2 + Docker Compose.
 - API: Node 22 backend container running `backend/local-server.mjs`.
 - Data: DynamoDB table keyed by `USER#<providerSub>`.
 - Deploy: GitHub Actions verifies, rsyncs to EC2, rebuilds Docker Compose, and
-  smoke-tests `https://workout-planner.jim-greco.com/api/healthz`.
+  smoke-tests `https://repmixburn.com/api/healthz`.
 
 ## Auth
 

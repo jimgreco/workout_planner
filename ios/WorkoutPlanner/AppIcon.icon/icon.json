@@ -40,12 +40,12 @@
             }
           ],
           "glass" : false,
-          "image-name" : "04-forge-letter.svg",
-          "name" : "Forge F"
+          "image-name" : "04-repmixburn-letter.svg",
+          "name" : "Rep, Mix, Burn R"
         }
       ],
       "lighting" : "combined",
-      "name" : "Forge inlay",
+      "name" : "Rep, Mix, Burn inlay",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.14
@@ -140,12 +140,12 @@
             }
           ],
           "glass" : true,
-          "image-name" : "01-forged-medallion.svg",
-          "name" : "Forged medallion"
+          "image-name" : "01-training-medallion.svg",
+          "name" : "Training medallion"
         }
       ],
       "lighting" : "combined",
-      "name" : "Forged plate",
+      "name" : "Training plate",
       "shadow" : {
         "kind" : "layer-color",
         "opacity" : 0.38

@@ -3,8 +3,8 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-private let forgeAccent = Color(red: 0.96, green: 0.16, blue: 0.38)
-private let forgeSuccess = Color(red: 0.23, green: 0.82, blue: 0.48)
+private let repmixburnAccent = Color(red: 0.96, green: 0.16, blue: 0.38)
+private let repmixburnSuccess = Color(red: 0.23, green: 0.82, blue: 0.48)
 private let liveActivityBackground = Color(red: 0.07, green: 0.07, blue: 0.08)
 private let liveActivityRaised = Color.white.opacity(0.10)
 private let liveActivityText = Color.white
@@ -20,7 +20,7 @@ struct WorkoutPlannerLiveActivity: Widget {
                 isStale: context.isStale
             )
                 .activityBackgroundTint(liveActivityBackground)
-                .activitySystemActionForegroundColor(forgeAccent)
+                .activitySystemActionForegroundColor(repmixburnAccent)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.bottom) {
@@ -40,7 +40,7 @@ struct WorkoutPlannerLiveActivity: Widget {
             } minimal: {
                 LiveActivityMinimalLabel(state: context.state, isStale: context.isStale)
             }
-            .keylineTint(forgeAccent)
+            .keylineTint(repmixburnAccent)
         }
     }
 }
@@ -163,7 +163,7 @@ private struct DynamicIslandExpandedWorkoutView: View {
                 if let personalBest = state.personalBest {
                     Text("PB \(personalBest)")
                         .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .foregroundStyle(forgeAccent)
+                        .foregroundStyle(repmixburnAccent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
@@ -245,10 +245,10 @@ private struct DynamicIslandMetric: View {
                 if let badge {
                     Text(badge)
                         .font(.system(size: 8, weight: .heavy, design: .rounded))
-                        .foregroundStyle(forgeAccent)
+                        .foregroundStyle(repmixburnAccent)
                         .padding(.horizontal, 5)
                         .frame(height: 14)
-                        .background(forgeAccent.opacity(0.16), in: Capsule())
+                        .background(repmixburnAccent.opacity(0.16), in: Capsule())
                         .lineLimit(1)
                 }
             }
@@ -349,7 +349,7 @@ private struct DynamicIslandCheckButton<I: LiveActivityIntent>: View {
                 .font(.system(size: 14, weight: .black))
                 .foregroundStyle(liveActivityText)
                 .frame(width: 46, height: 26)
-                .background(forgeAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(repmixburnAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -395,7 +395,7 @@ private struct LockScreenWorkoutView: View {
     }
 
     private var progressTint: Color {
-        state.isComplete ? forgeSuccess : forgeAccent
+        state.isComplete ? repmixburnSuccess : repmixburnAccent
     }
 
     private var thirdMetricTitle: String {
@@ -441,7 +441,7 @@ private struct LockScreenWorkoutView: View {
                     if let personalBest = state.personalBest {
                         Text("PB \(personalBest)")
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundStyle(forgeAccent)
+                            .foregroundStyle(repmixburnAccent)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
@@ -539,10 +539,10 @@ private struct LiveActivityTag: View {
             .font(.system(size: compact ? 9 : 11, weight: .heavy, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
-            .foregroundStyle(accent ? forgeAccent : liveActivitySecondaryText)
+            .foregroundStyle(accent ? repmixburnAccent : liveActivitySecondaryText)
             .padding(.horizontal, compact ? 5 : 7)
             .frame(height: compact ? 19 : 24)
-            .background((accent ? forgeAccent.opacity(0.16) : liveActivityRaised), in: Capsule())
+            .background((accent ? repmixburnAccent.opacity(0.16) : liveActivityRaised), in: Capsule())
     }
 }
 
@@ -654,10 +654,10 @@ private struct LiveActivitySummaryStrip: View {
                 if let badge {
                     Text(badge)
                         .font(.system(size: 8, weight: .heavy, design: .rounded))
-                        .foregroundStyle(forgeAccent)
+                        .foregroundStyle(repmixburnAccent)
                         .padding(.horizontal, 5)
                         .frame(height: 16)
-                        .background(forgeAccent.opacity(0.16), in: Capsule())
+                        .background(repmixburnAccent.opacity(0.16), in: Capsule())
                         .lineLimit(1)
                 }
             }
@@ -712,7 +712,7 @@ private struct LiveActivityIconActionButton<I: LiveActivityIntent>: View {
                 .font(.system(size: 15, weight: .black))
                 .foregroundStyle(.white)
                 .frame(width: 58, height: 34)
-                .background(forgeAccent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(repmixburnAccent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -753,10 +753,10 @@ private struct LiveActivityAddWeightChip: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
-        .foregroundStyle(forgeAccent)
+        .foregroundStyle(repmixburnAccent)
         .padding(.horizontal, compact ? 6 : 8)
         .padding(.vertical, compact ? 3 : 4)
-        .background(forgeAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .background(repmixburnAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
         .accessibilityLabel("Add weight")
     }
 }
@@ -817,11 +817,11 @@ private struct LiveActivityIslandTimerLabel: View {
 private func liveActivityTimerTint(for state: WorkoutLiveActivityAttributes.ContentState, isStale: Bool = false) -> Color {
     guard state.isResting else { return liveActivityText }
     if let restTimerIsOverTarget = state.restTimerIsOverTarget {
-        return restTimerIsOverTarget || isStale ? forgeAccent : liveActivityText
+        return restTimerIsOverTarget || isStale ? repmixburnAccent : liveActivityText
     }
-    if isStale { return forgeAccent }
-    guard let restTargetEnd = state.restTargetEnd else { return forgeAccent }
-    return restTargetEnd > Date() ? liveActivityText : forgeAccent
+    if isStale { return repmixburnAccent }
+    guard let restTargetEnd = state.restTargetEnd else { return repmixburnAccent }
+    return restTargetEnd > Date() ? liveActivityText : repmixburnAccent
 }
 
 private struct LiveActivityCompactLeadingLabel: View {
@@ -840,7 +840,7 @@ private struct LiveActivityCompactLeadingLabel: View {
         } else {
             Text(label)
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(forgeAccent)
+                .foregroundStyle(repmixburnAccent)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -878,7 +878,7 @@ private struct LiveActivityMinimalLabel: View {
         } else {
             Image(systemName: state.isResting ? "timer" : "bolt.fill")
                 .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(forgeAccent)
+                .foregroundStyle(repmixburnAccent)
         }
     }
 }

@@ -16,7 +16,7 @@ test('rejects disallowed browser origins for state-changing requests', () => {
   const error = originPolicyError({
     method: 'POST',
     origin: 'https://evil.example.com',
-    allowedOrigins: ['https://workout-planner.jim-greco.com'],
+    allowedOrigins: ['https://repmixburn.com'],
   });
   assert.equal(error, 'Forbidden request origin');
 });
@@ -24,13 +24,13 @@ test('rejects disallowed browser origins for state-changing requests', () => {
 test('allows trusted browser origins and no-origin native requests', () => {
   assert.equal(originPolicyError({
     method: 'DELETE',
-    origin: 'https://workout-planner.jim-greco.com',
-    allowedOrigins: ['https://workout-planner.jim-greco.com'],
+    origin: 'https://repmixburn.com',
+    allowedOrigins: ['https://repmixburn.com'],
   }), undefined);
   assert.equal(originPolicyError({
     method: 'PUT',
     origin: undefined,
-    allowedOrigins: ['https://workout-planner.jim-greco.com'],
+    allowedOrigins: ['https://repmixburn.com'],
   }), undefined);
 });
 
@@ -39,7 +39,7 @@ test('checks preflight requested method', () => {
     method: 'OPTIONS',
     requestedMethod: 'DELETE',
     origin: 'https://evil.example.com',
-    allowedOrigins: ['https://workout-planner.jim-greco.com'],
+    allowedOrigins: ['https://repmixburn.com'],
   });
   assert.equal(error, 'Forbidden request origin');
 });

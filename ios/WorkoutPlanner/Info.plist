@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>API_BASE_URL</key>
-	<string>https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com</string>
+	<string>https://repmixburn.com/api</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.workoutplanner.ios.pending-sync</string>
@@ -11,7 +11,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Forge</string>
+	<string>Rep, Mix, Burn</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -36,9 +36,10 @@
 		</dict>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>Forge companion</string>
+			<string>Rep, Mix, Burn companion</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>repmixburn</string>
 				<string>forgeworkout</string>
 			</array>
 		</dict>

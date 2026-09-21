@@ -420,7 +420,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `forge-workout-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `repmixburn-workout-export-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
       const exportedAt = validTimestamp(data.exportedAt, new Date().toISOString());
@@ -591,7 +591,7 @@ export default function App() {
         <div className="mobile-brand">
           <Logo variant="mark" className="app-logo-mark" title="" />
           <div>
-            <strong>Forge</strong>
+            <strong>Rep, Mix, Burn</strong>
             <span>{pagesById[page]?.label}</span>
           </div>
         </div>
@@ -923,7 +923,7 @@ export default function App() {
         >
           <div className="import-modal">
             <div className="form-group">
-              <label htmlFor="import-file">Forge JSON export</label>
+              <label htmlFor="import-file">Rep, Mix, Burn JSON export</label>
               <input id="import-file" type="file" accept="application/json,.json" onChange={handleImportFile} />
             </div>
 
@@ -1057,7 +1057,7 @@ export default function App() {
 
       {showOnboarding && (
         <Modal
-          title="Start Forge"
+          title="Start Rep, Mix, Burn"
           onClose={() => dismissOnboarding()}
           footer={
             <>

@@ -28,7 +28,7 @@
 
 ## What This Project Is
 
-Forge is a React web app plus native SwiftUI iPhone app for tracking workouts.
+Rep, Mix, Burn is a React web app plus native SwiftUI iPhone app for tracking workouts.
 Both clients sync through the same Node API and DynamoDB table.
 
 ## Current Deployment Shape

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: forge-production-deploy
+  group: repmixburn-production-deploy
   cancel-in-progress: false
 
 jobs:
@@ -59,8 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     env:
-      WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://workout-planner.jim-greco.com' }}
-      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://workout-planner.jim-greco.com' }}
+      WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://repmixburn.com' }}
+      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://repmixburn.com' }}
       APP_VERSION: ${{ vars.APP_VERSION || '1.0.0' }}
       APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
       GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
@@ -137,6 +137,9 @@ jobs:
             --exclude '.env.*' \
             --exclude 'node_modules' \
             . ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/workout_planner/
+          # Remove obsolete public bundles from previous releases.
+          rsync -az --delete -e "ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" \
+            dist/ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/workout_planner/dist/
 
       - name: Rebuild and restart Workout Planner
         run: |

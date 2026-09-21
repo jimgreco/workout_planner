@@ -5,7 +5,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Forge palette defaults; the 2026 visual system below adds full surface tokens. */
+  /* Rep, Mix, Burn palette defaults; the 2026 visual system below adds full surface tokens. */
   --bg: #ffffff;
   --surface: #f7f7f7;
   --surface2: #ebebeb;
@@ -76,7 +76,7 @@ html, body, #root {
   padding: 0 18px 24px;
 }
 
-.forge-logo {
+.repmixburn-logo {
   display: block;
   flex-shrink: 0;
   --logo-ember: var(--accent);
@@ -86,25 +86,25 @@ html, body, #root {
   --logo-subtitle: var(--text-muted);
   --logo-letter: #ffffff;
 }
-.forge-logo-tone-light {
+.repmixburn-logo-tone-light {
   --logo-word: #222222;
   --logo-subtitle: #717171;
 }
-.forge-logo-tone-dark {
+.repmixburn-logo-tone-dark {
   --logo-word: #f7f7fb;
   --logo-subtitle: #aaaabb;
 }
-.forge-logo-flame-main { fill: var(--logo-ember); }
-.forge-logo-flame-side { fill: var(--logo-ember-dark); }
-.forge-logo-flame-highlight { fill: var(--logo-ember-light); }
-.forge-logo-letter { fill: var(--logo-letter); }
-.forge-logo-word {
+.repmixburn-logo-flame-main { fill: var(--logo-ember); }
+.repmixburn-logo-flame-side { fill: var(--logo-ember-dark); }
+.repmixburn-logo-flame-highlight { fill: var(--logo-ember-light); }
+.repmixburn-logo-letter { fill: var(--logo-letter); }
+.repmixburn-logo-word {
   fill: var(--logo-word);
-  font-size: 31px;
+  font-size: 28px;
   font-weight: 800;
   font-family: Circular, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
 }
-.forge-logo-subtitle {
+.repmixburn-logo-subtitle {
   fill: var(--logo-subtitle);
   font-size: 11px;
   font-weight: 700;
@@ -3015,7 +3015,7 @@ input:focus, select:focus, textarea:focus {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Forge 2026 — performance training visual system
+   Rep, Mix, Burn 2026 — performance training visual system
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
@@ -3285,7 +3285,7 @@ h3 {
   right: 12px;
 }
 
-.forge-logo {
+.repmixburn-logo {
   --logo-ember: var(--accent);
   --logo-ember-dark: var(--accent-dark);
   --logo-ember-light: var(--accent-light);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Forge Support Admin</title>
+    <title>Rep, Mix, Burn Support Admin</title>
     <link rel="icon" href="/favicon.svg">
     <style>
       :root {
@@ -170,7 +170,7 @@
   </head>
   <body>
     <header>
-      <h1>Forge Support Admin</h1>
+      <h1>Rep, Mix, Burn Support Admin</h1>
       <p class="muted">Secret-protected support tools for feedback triage and account lookup.</p>
     </header>
 
@@ -241,7 +241,7 @@
       let feedbackCursor = null;
       let feedbackItems = [];
 
-      secretInput.value = sessionStorage.getItem('forgeAdminSecret') || '';
+      secretInput.value = sessionStorage.getItem('repmixburnAdminSecret') || '';
 
       function secret() {
         return secretInput.value.trim();
@@ -417,7 +417,7 @@
           const href = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = href;
-          link.download = `forge-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
+          link.download = `repmixburn-feedback-${new Date().toISOString().slice(0, 10)}.csv`;
           document.body.appendChild(link);
           link.click();
           link.remove();
@@ -429,7 +429,7 @@
 
       document.querySelector('#secret-form').addEventListener('submit', (event) => {
         event.preventDefault();
-        sessionStorage.setItem('forgeAdminSecret', secret());
+        sessionStorage.setItem('repmixburnAdminSecret', secret());
         refresh();
       });
 

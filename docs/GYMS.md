@@ -97,7 +97,7 @@ a migration update, which can retry on the next load.
 ## AI briefs and backups
 
 **Build with AI** previews a brief to copy or share into the user’s chosen AI
-conversation. Forge does not send it automatically. A routine brief includes its
+conversation. Rep, Mix, Burn does not send it automatically. A routine brief includes its
 prescription and equipment alternatives available at the selected gym. Unmatched
 alternatives are reported explicitly, and supporting equipment must be checked.
 

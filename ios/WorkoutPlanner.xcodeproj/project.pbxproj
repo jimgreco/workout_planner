@@ -409,7 +409,7 @@
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios;
-				PRODUCT_NAME = Forge;
+				PRODUCT_NAME = "Rep, Mix, Burn";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -430,7 +430,7 @@
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios.LiveActivity;
-				PRODUCT_NAME = ForgeLiveActivity;
+				PRODUCT_NAME = RepMixBurnLiveActivity;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -454,7 +454,7 @@
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios;
-				PRODUCT_NAME = Forge;
+				PRODUCT_NAME = "Rep, Mix, Burn";
 				PROVISIONING_PROFILE_SPECIFIER = "$(IOS_PROFILE_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -478,7 +478,7 @@
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios.LiveActivity;
-				PRODUCT_NAME = ForgeLiveActivity;
+				PRODUCT_NAME = RepMixBurnLiveActivity;
 				PROVISIONING_PROFILE_SPECIFIER = "$(IOS_LIVE_ACTIVITY_PROFILE_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;

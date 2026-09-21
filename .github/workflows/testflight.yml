@@ -129,7 +129,7 @@ jobs:
 
           node .github/scripts/ensure-app-store-profile.mjs \
             --bundle-id "$IOS_BUNDLE_ID" \
-            --profile-name "Forge App Store ${GITHUB_RUN_ID}" \
+            --profile-name "Rep, Mix, Burn App Store ${GITHUB_RUN_ID}" \
             --certificate-der "$RUNNER_TEMP/distribution-cert.der" \
             --output "$RUNNER_TEMP/profile.mobileprovision"
 
@@ -164,7 +164,7 @@ jobs:
 
           node .github/scripts/ensure-app-store-profile.mjs \
             --bundle-id "$IOS_LIVE_ACTIVITY_BUNDLE_ID" \
-            --profile-name "Forge Live Activity App Store ${GITHUB_RUN_ID}" \
+            --profile-name "Rep, Mix, Burn Live Activity App Store ${GITHUB_RUN_ID}" \
             --certificate-der "$RUNNER_TEMP/distribution-cert.der" \
             --output "$RUNNER_TEMP/live-activity-profile.mobileprovision"
 

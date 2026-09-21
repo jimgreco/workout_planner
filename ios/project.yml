@@ -25,7 +25,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.workoutplanner.ios
-        PRODUCT_NAME: Forge
+        PRODUCT_NAME: Rep, Mix, Burn
         MARKETING_VERSION: 1.1
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.0
@@ -41,7 +41,7 @@ targets:
     info:
       path: WorkoutPlanner/Info.plist
       properties:
-        CFBundleDisplayName: Forge
+        CFBundleDisplayName: Rep, Mix, Burn
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
@@ -52,7 +52,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        API_BASE_URL: "https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com"
+        API_BASE_URL: "https://repmixburn.com/api"
         GOOGLE_IOS_CLIENT_ID: "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com"
         GIT_COMMIT_HASH: "local"
         NSSupportsLiveActivities: true
@@ -64,6 +64,11 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLSchemes:
               - "com.googleusercontent.apps.YOUR_IOS_CLIENT_ID"
+          - CFBundleURLName: Rep, Mix, Burn companion
+            CFBundleURLSchemes:
+              - repmixburn
+              # Compatibility for existing companion app installations.
+              - forgeworkout
   WorkoutPlannerLiveActivity:
     type: app-extension
     platform: iOS
@@ -73,7 +78,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.workoutplanner.ios.LiveActivity
-        PRODUCT_NAME: ForgeLiveActivity
+        PRODUCT_NAME: RepMixBurnLiveActivity
         MARKETING_VERSION: 1.1
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.0
@@ -87,7 +92,7 @@ targets:
     info:
       path: WorkoutPlannerLiveActivity/Info.plist
       properties:
-        CFBundleDisplayName: Forge
+        CFBundleDisplayName: Rep, Mix, Burn
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:

@@ -1,4 +1,4 @@
-# Forge Operations Runbook
+# Rep, Mix, Burn Operations Runbook
 
 ## Friends-and-Family Release Checklist
 
@@ -6,7 +6,7 @@ Before inviting more testers:
 
 1. Confirm GitHub secrets and vars:
    - `APP_SESSION_SECRET` is set and at least 32 random characters.
-   - `IOS_API_BASE_URL` points at `https://workout-planner.jim-greco.com/api`.
+   - `IOS_API_BASE_URL` points at `https://repmixburn.com/api`.
    - `GOOGLE_CLIENT_IDS` includes web and iOS client IDs in the production backend environment.
    - `APPLE_CLIENT_IDS` includes `com.workoutplanner.ios`.
    - `ALLOWED_ORIGINS` includes only trusted web origins.
@@ -128,8 +128,8 @@ release metadata and production auth settings.
 When a tester reports "it won't load":
 
 1. Ask whether it is web or iOS and what sign-in provider they used.
-2. Check live health: `curl https://workout-planner.jim-greco.com/api/healthz`.
-3. Check live version: `curl https://workout-planner.jim-greco.com/api/version`.
+2. Check live health: `curl https://repmixburn.com/api/healthz`.
+3. Check live version: `curl https://repmixburn.com/api/version`.
 4. Ask for the Request ID shown in the app error, if one appears.
 5. Check recent backend logs for that `requestId`, `handler_error`, or elevated `401`/`500`.
 6. Ask them to send feedback from the account menu if they can open the app.
@@ -145,20 +145,20 @@ Recent in-app feedback is available through the secret-protected support route:
 
 ```bash
 curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
-  "https://workout-planner.jim-greco.com/api/admin/feedback?limit=25"
+  "https://repmixburn.com/api/admin/feedback?limit=25"
 ```
 
 Feedback supports cursor paging and CSV export:
 
 ```bash
 curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
-  "https://workout-planner.jim-greco.com/api/admin/feedback?limit=100&format=csv"
+  "https://repmixburn.com/api/admin/feedback?limit=100&format=csv"
 ```
 
 The same support tools are available in the browser at:
 
 ```text
-https://workout-planner.jim-greco.com/admin.html
+https://repmixburn.com/admin.html
 ```
 
 The support response intentionally returns a short `userHash` instead of raw
@@ -170,7 +170,7 @@ recent logs, and recent import audits:
 
 ```bash
 curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
-  "https://workout-planner.jim-greco.com/api/admin/accounts?email=tester@example.com&detail=1"
+  "https://repmixburn.com/api/admin/accounts?email=tester@example.com&detail=1"
 ```
 
 Do not ask testers for provider tokens, app session tokens, or screenshots that

@@ -44,7 +44,7 @@ struct AppShell: View {
                 HStack(spacing: 8) {
                     Button("Nutrition · Macrovana") { UIApplication.shared.open(URL(string: "dailymacros://companion")!, options: [:]) { opened in if !opened { DispatchQueue.main.async { UIApplication.shared.open(URL(string: "https://macrovana.com")!) } } } }
                     Spacer()
-                    Label("Training · Forge", systemImage: "dumbbell.fill").fontWeight(.semibold)
+                    Label("Training · Rep, Mix, Burn", systemImage: "dumbbell.fill").fontWeight(.semibold)
                 }.font(.caption).padding(.horizontal, 16).padding(.vertical, 10).background(Theme.surface)
                 tabShell.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -516,9 +516,9 @@ private struct SettingsPage: View {
         do {
             let data = try await store.exportData()
             let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("forge-workout-export-\(DateHelpers.todayString()).json")
+                .appendingPathComponent("repmixburn-workout-export-\(DateHelpers.todayString()).json")
             try data.write(to: url, options: .atomic)
-            let payload = try? JSONDecoder().decode(ForgeExportPayload.self, from: data)
+            let payload = try? JSONDecoder().decode(RepMixBurnExportPayload.self, from: data)
             let exportedAt = AccountBackupDateFormatting.normalizedTimestamp(payload?.exportedAt)
                 ?? ISO8601DateFormatter().string(from: Date())
             lastExportAt = exportedAt
@@ -546,7 +546,7 @@ private struct SettingsPage: View {
                 if didStartAccess { url.stopAccessingSecurityScopedResource() }
             }
             let data = try Data(contentsOf: url)
-            let payload = try JSONDecoder().decode(ForgeExportPayload.self, from: data)
+            let payload = try JSONDecoder().decode(RepMixBurnExportPayload.self, from: data)
             let preview = store.previewImport(payload)
             importDraft = ImportDraft(
                 fileName: url.lastPathComponent,
@@ -609,7 +609,7 @@ private struct AccountProfileCard: View {
 
     private var displayName: String {
         let trimmed = user?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? "Forge Account" : trimmed
+        return trimmed.isEmpty ? "Rep, Mix, Burn Account" : trimmed
     }
 
     private var email: String {
@@ -959,23 +959,23 @@ private struct ExportFile: Identifiable {
 private struct ImportDraft: Identifiable {
     let id = UUID()
     let fileName: String
-    let payload: ForgeExportPayload
-    let preview: ForgeImportPreview
-    let defaultMode: ForgeImportMode
+    let payload: RepMixBurnExportPayload
+    let preview: RepMixBurnImportPreview
+    let defaultMode: RepMixBurnImportMode
 }
 
 private struct ImportPreviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let draft: ImportDraft
     @Binding var isImporting: Bool
-    let onImport: (ForgeImportMode) async throws -> ForgeImportResult
-    @State private var mode: ForgeImportMode
+    let onImport: (RepMixBurnImportMode) async throws -> RepMixBurnImportResult
+    @State private var mode: RepMixBurnImportMode
     @State private var errorMessage: String?
 
     init(
         draft: ImportDraft,
         isImporting: Binding<Bool>,
-        onImport: @escaping (ForgeImportMode) async throws -> ForgeImportResult
+        onImport: @escaping (RepMixBurnImportMode) async throws -> RepMixBurnImportResult
     ) {
         self.draft = draft
         _isImporting = isImporting
@@ -1005,7 +1005,7 @@ private struct ImportPreviewSheet: View {
                 if !draft.preview.isEmpty {
                     Section {
                         Picker("Mode", selection: $mode) {
-                            ForEach(ForgeImportMode.allCases) { option in
+                            ForEach(RepMixBurnImportMode.allCases) { option in
                                 Text(option.label).tag(option)
                             }
                         }
@@ -1074,8 +1074,8 @@ private struct ImportPreviewSheet: View {
 }
 
 private enum SupportLinks {
-    static let support = URL(string: "https://workout-planner.jim-greco.com/support.html")!
-    static let privacy = URL(string: "https://workout-planner.jim-greco.com/privacy.html")!
+    static let support = URL(string: "https://repmixburn.com/support.html")!
+    static let privacy = URL(string: "https://repmixburn.com/privacy.html")!
 }
 
 private struct FeedbackSheet: View {

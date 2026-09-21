@@ -783,7 +783,7 @@ struct SyncConflictItem: Codable, Identifiable, Equatable {
     var id: String { "\(resource.rawValue):\(itemId)" }
 }
 
-enum ForgeImportMode: String, Codable, CaseIterable, Identifiable {
+enum RepMixBurnImportMode: String, Codable, CaseIterable, Identifiable {
     case merge
     case emptyOnly
 
@@ -797,7 +797,7 @@ enum ForgeImportMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct ForgeExportPayload: Codable, Equatable {
+struct RepMixBurnExportPayload: Codable, Equatable {
     var exportedAt: String?
     var exercises: [Exercise]?
     var templates: [WorkoutTemplate]?
@@ -808,12 +808,12 @@ struct ForgeExportPayload: Codable, Equatable {
     var settings: WorkoutSettings?
 }
 
-struct ForgeImportRequest: Encodable {
-    var mode: ForgeImportMode
-    var data: ForgeExportPayload
+struct RepMixBurnImportRequest: Encodable {
+    var mode: RepMixBurnImportMode
+    var data: RepMixBurnExportPayload
 }
 
-struct ForgeImportCounts: Codable, Equatable {
+struct RepMixBurnImportCounts: Codable, Equatable {
     var exercises: Int
     var templates: Int
     var logs: Int
@@ -823,45 +823,45 @@ struct ForgeImportCounts: Codable, Equatable {
     var settings: Bool?
 }
 
-struct ForgeSkippedExercise: Codable, Equatable {
+struct RepMixBurnSkippedExercise: Codable, Equatable {
     var id: String
     var name: String?
 }
 
-struct ForgeSkippedLog: Codable, Equatable {
+struct RepMixBurnSkippedLog: Codable, Equatable {
     var id: String
     var name: String?
     var date: String?
 }
 
-struct ForgeImportSkipped: Codable, Equatable {
-    var exercises: [ForgeSkippedExercise]?
-    var templates: [ForgeSkippedExercise]?
-    var logs: [ForgeSkippedLog]?
-    var programs: [ForgeSkippedExercise]?
-    var gyms: [ForgeSkippedExercise]? = nil
+struct RepMixBurnImportSkipped: Codable, Equatable {
+    var exercises: [RepMixBurnSkippedExercise]?
+    var templates: [RepMixBurnSkippedExercise]?
+    var logs: [RepMixBurnSkippedLog]?
+    var programs: [RepMixBurnSkippedExercise]?
+    var gyms: [RepMixBurnSkippedExercise]? = nil
 }
 
-struct ForgeImportRename: Codable, Equatable {
+struct RepMixBurnImportRename: Codable, Equatable {
     var from: String
     var to: String
 }
 
-struct ForgeImportRenamed: Codable, Equatable {
-    var exercises: [ForgeImportRename]?
-    var templates: [ForgeImportRename]?
-    var logs: [ForgeImportRename]?
-    var programs: [ForgeImportRename]?
-    var gyms: [ForgeImportRename]? = nil
+struct RepMixBurnImportRenamed: Codable, Equatable {
+    var exercises: [RepMixBurnImportRename]?
+    var templates: [RepMixBurnImportRename]?
+    var logs: [RepMixBurnImportRename]?
+    var programs: [RepMixBurnImportRename]?
+    var gyms: [RepMixBurnImportRename]? = nil
 }
 
-struct ForgeImportResult: Codable, Equatable {
-    var imported: ForgeImportCounts
-    var renamed: ForgeImportRenamed?
-    var skipped: ForgeImportSkipped?
+struct RepMixBurnImportResult: Codable, Equatable {
+    var imported: RepMixBurnImportCounts
+    var renamed: RepMixBurnImportRenamed?
+    var skipped: RepMixBurnImportSkipped?
 }
 
-struct ForgeImportPreview: Equatable {
+struct RepMixBurnImportPreview: Equatable {
     struct Counts: Equatable {
         var exercises: Int
         var templates: Int

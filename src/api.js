@@ -817,7 +817,7 @@ export function previewImportData(data, current = {
   equipment: getEquipment(),
 }) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    throw new Error('Import file must be a Forge JSON export.');
+    throw new Error('Import file must be a Rep, Mix, Burn JSON export.');
   }
   const gyms = Array.isArray(data.gyms) ? data.gyms : [];
   const equipment = Array.isArray(data.equipment) ? data.equipment : [];

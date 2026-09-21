@@ -1,6 +1,6 @@
 import Foundation
 
-// Run: swiftc ios/WorkoutPlanner/Support/Models.swift ios/Tests/GymModelsCheck.swift -o /tmp/forge-gym-model-check && /tmp/forge-gym-model-check
+// Run: swiftc ios/WorkoutPlanner/Support/Models.swift ios/Tests/GymModelsCheck.swift -o /tmp/repmixburn-gym-model-check && /tmp/repmixburn-gym-model-check
 @main
 struct GymModelsCheck {
     static func main() throws {
@@ -11,7 +11,7 @@ struct GymModelsCheck {
         precondition(legacyRoutine.gymId == nil)
         let unassignedJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(legacyRoutine)) as! [String: Any]
         precondition(unassignedJSON["gymId"] is NSNull)
-        let oldBackup = try decoder.decode(ForgeExportPayload.self, from: Data(#"{"exercises":[],"templates":[]}"#.utf8))
+        let oldBackup = try decoder.decode(RepMixBurnExportPayload.self, from: Data(#"{"exercises":[],"templates":[]}"#.utf8))
         precondition(oldBackup.gyms == nil)
 
         let gym = Gym(id: "home", name: "Home", equipment: [
@@ -27,8 +27,8 @@ struct GymModelsCheck {
         precondition(exercise.equipmentSummary(at: hotel) == "No recorded alternative at this gym")
         precondition(legacy.equipmentSummary(at: gym) == "No equipment requirement recorded")
         let routine = WorkoutTemplate(name: "Push", gymId: gym.id)
-        let backup = ForgeExportPayload(exercises: [exercise], templates: [routine], gyms: [gym])
-        let restored = try decoder.decode(ForgeExportPayload.self, from: JSONEncoder().encode(backup))
+        let backup = RepMixBurnExportPayload(exercises: [exercise], templates: [routine], gyms: [gym])
+        let restored = try decoder.decode(RepMixBurnExportPayload.self, from: JSONEncoder().encode(backup))
         precondition(restored == backup)
         precondition(restored.templates?.first?.gymId == restored.gyms?.first?.id)
         precondition(gym.aiBrief(routine: routine).contains("5–50 lb"))
@@ -41,8 +41,8 @@ struct GymModelsCheck {
         let libraryExercise = Exercise(name: "Press", equipmentAlternatives: [EquipmentAlternative(equipmentId: "eq-dumbbells")])
         let linkedGym = Gym(name: "Hotel", equipment: [GymEquipment(name: "Dumbbells", category: "Free weights", equipmentId: "eq-dumbbells")])
         precondition(libraryExercise.equipmentSummary(at: linkedGym) == "Dumbbells")
-        let libraryBackup = ForgeExportPayload(exercises: [libraryExercise], gyms: [linkedGym], equipment: GymEquipment.preloaded)
-        let decodedLibraryBackup = try decoder.decode(ForgeExportPayload.self, from: JSONEncoder().encode(libraryBackup))
+        let libraryBackup = RepMixBurnExportPayload(exercises: [libraryExercise], gyms: [linkedGym], equipment: GymEquipment.preloaded)
+        let decodedLibraryBackup = try decoder.decode(RepMixBurnExportPayload.self, from: JSONEncoder().encode(libraryBackup))
         precondition(decodedLibraryBackup == libraryBackup)
         var originalSetup = EquipmentSetup()
         originalSetup.id = "setup-home"

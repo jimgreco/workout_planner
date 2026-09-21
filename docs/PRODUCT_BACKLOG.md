@@ -23,7 +23,7 @@
 - Empty template libraries can create starter Push, Pull, and Legs workouts.
 - Workout log saves can queue locally when the network drops, with pending sync state in web and iOS.
 - Support admins have a static secret-protected viewer for feedback, build overview, request-ID helper commands, and email-based account summaries.
-- Web and iOS can import Forge JSON exports with preview counts, empty-account restore, merge mode, duplicate-name handling, and existing-ID skips.
+- Web and iOS can import Rep, Mix, Burn JSON exports with preview counts, empty-account restore, merge mode, duplicate-name handling, and existing-ID skips.
 - Offline queues now cover exercise/routine updates and deletes, plus workout log deletes, with pending sync counts across web and iOS.
 - Web has a first-run start sheet and throttled client-error feedback reports for beta triage.
 - Web and iOS now have a server-backed program layer with weekday routine scheduling and next-workout starts.

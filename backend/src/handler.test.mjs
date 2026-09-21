@@ -394,7 +394,7 @@ test('program routes persist repeating cycle schedules', async () => {
   assert.equal(db.items.has('USER#dev-user-local|PROGRAM#strength'), false);
 });
 
-test('import restores Forge export data into an empty account', async () => {
+test('import restores Rep, Mix, Burn export data into an empty account', async () => {
   const db = fakeDb();
   __setTestDb(db);
   const headers = { Authorization: 'Bearer dev-bypass-token' };

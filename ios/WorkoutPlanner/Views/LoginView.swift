@@ -34,10 +34,12 @@ struct LoginView: View {
                         .shadow(color: Theme.accent.opacity(0.28), radius: 18, y: 9)
 
                     VStack(spacing: 6) {
-                        Text("Forge")
-                            .font(.system(size: 48, weight: .heavy, design: .rounded))
+                        Text("Rep, Mix, Burn")
+                            .font(.system(size: 38, weight: .heavy, design: .rounded))
                             .foregroundStyle(Theme.text)
-                            .tracking(-1.8)
+                            .tracking(-1.2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         Text("Strength, structured.")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Theme.muted)

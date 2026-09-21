@@ -113,7 +113,7 @@ async function ensureBundleId(token, identifier) {
       type: 'bundleIds',
       attributes: {
         identifier,
-        name: 'Forge Live Activity',
+        name: 'Rep, Mix, Burn Live Activity',
         platform: BUNDLE_PLATFORM,
       },
     },

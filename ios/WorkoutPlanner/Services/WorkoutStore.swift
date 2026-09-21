@@ -65,14 +65,14 @@ final class WorkoutStore: ObservableObject {
             return syncIssueMessage
         }
         if pendingConflictCount > 0 {
-            return "Review sync conflicts before Forge retries those changes."
+            return "Review sync conflicts before Rep, Mix, Burn retries those changes."
         }
         if pendingSyncCount > 0 {
             let retryText = lastSyncAttemptAt.map { "Last retry \(Self.syncAttemptFormatter.string(from: $0))" } ?? "Will retry automatically"
-            return "\(retryText) while Forge is open."
+            return "\(retryText) while Rep, Mix, Burn is open."
         }
         if isUsingOfflineSnapshot {
-            return "Showing saved data. Changes will sync when Forge reconnects."
+            return "Showing saved data. Changes will sync when Rep, Mix, Burn reconnects."
         }
         return nil
     }
@@ -112,7 +112,7 @@ final class WorkoutStore: ObservableObject {
         }
 
         guard let api else {
-            errorMessage = "API configuration is missing. Install a build configured for Forge production."
+            errorMessage = "API configuration is missing. Install a build configured for Rep, Mix, Burn production."
             return
         }
 
@@ -406,7 +406,7 @@ final class WorkoutStore: ObservableObject {
         guard !isSyncingPending else { return }
         guard !usesLocalData else { return }
         guard let api else {
-            errorMessage = "API configuration is missing. Install a build configured for Forge production."
+            errorMessage = "API configuration is missing. Install a build configured for Rep, Mix, Burn production."
             return
         }
         isSyncingPending = true
@@ -422,7 +422,7 @@ final class WorkoutStore: ObservableObject {
     func resolveSyncConflict(_ conflict: SyncConflictItem, keeping resolution: SyncConflictResolution) async {
         guard !usesLocalData else { return }
         guard let api else {
-            errorMessage = "API configuration is missing. Install a build configured for Forge production."
+            errorMessage = "API configuration is missing. Install a build configured for Rep, Mix, Burn production."
             return
         }
 
@@ -481,7 +481,7 @@ final class WorkoutStore: ObservableObject {
 
     func exportData() async throws -> Data {
         if usesLocalData {
-            return try JSONEncoder().encode(ForgeExportPayload(
+            return try JSONEncoder().encode(RepMixBurnExportPayload(
                 exportedAt: ISO8601DateFormatter().string(from: Date()),
                 exercises: exercises,
                 templates: templates,
@@ -502,7 +502,7 @@ final class WorkoutStore: ObservableObject {
         }
     }
 
-    func previewImport(_ payload: ForgeExportPayload) -> ForgeImportPreview {
+    func previewImport(_ payload: RepMixBurnExportPayload) -> RepMixBurnImportPreview {
         let importedExercises = payload.exercises ?? []
         let importedTemplates = payload.templates ?? []
         let importedLogs = payload.logs ?? []
@@ -513,7 +513,7 @@ final class WorkoutStore: ObservableObject {
         let existingTemplateIds = Set(templates.map(\.id))
         let existingLogIds = Set(logs.map(\.id))
         let existingProgramIds = Set(programs.map(\.id))
-        return ForgeImportPreview(
+        return RepMixBurnImportPreview(
             counts: .init(
                 exercises: importedExercises.count,
                 templates: importedTemplates.count,
@@ -536,7 +536,7 @@ final class WorkoutStore: ObservableObject {
         )
     }
 
-    func importData(_ payload: ForgeExportPayload, mode: ForgeImportMode) async throws -> ForgeImportResult {
+    func importData(_ payload: RepMixBurnExportPayload, mode: RepMixBurnImportMode) async throws -> RepMixBurnImportResult {
         if usesLocalData {
             return try importLocalData(payload, mode: mode)
         }
@@ -546,7 +546,7 @@ final class WorkoutStore: ObservableObject {
         return result
     }
 
-    private func importLocalData(_ payload: ForgeExportPayload, mode: ForgeImportMode) throws -> ForgeImportResult {
+    private func importLocalData(_ payload: RepMixBurnExportPayload, mode: RepMixBurnImportMode) throws -> RepMixBurnImportResult {
         let incomingExercises = payload.exercises ?? []
         let incomingTemplates = payload.templates ?? []
         let incomingLogs = payload.logs ?? []
@@ -565,7 +565,7 @@ final class WorkoutStore: ObservableObject {
             gyms = incomingGyms
             equipment = incomingEquipment.isEmpty ? GymEquipment.preloaded : incomingEquipment
             if let importedSettings = payload.settings { settings = importedSettings }
-            return ForgeImportResult(
+            return RepMixBurnImportResult(
                 imported: .init(
                     exercises: incomingExercises.count,
                     templates: incomingTemplates.count,
@@ -584,14 +584,14 @@ final class WorkoutStore: ObservableObject {
         let existingTemplateIds = Set(templates.map(\.id))
         let existingLogIds = Set(logs.map(\.id))
         let existingProgramIds = Set(programs.map(\.id))
-        var skippedExercises: [ForgeSkippedExercise] = []
-        var skippedTemplates: [ForgeSkippedExercise] = []
-        var skippedLogs: [ForgeSkippedLog] = []
-        var skippedPrograms: [ForgeSkippedExercise] = []
-        var renamedExercises: [ForgeImportRename] = []
-        var renamedTemplates: [ForgeImportRename] = []
-        var renamedLogs: [ForgeImportRename] = []
-        var renamedPrograms: [ForgeImportRename] = []
+        var skippedExercises: [RepMixBurnSkippedExercise] = []
+        var skippedTemplates: [RepMixBurnSkippedExercise] = []
+        var skippedLogs: [RepMixBurnSkippedLog] = []
+        var skippedPrograms: [RepMixBurnSkippedExercise] = []
+        var renamedExercises: [RepMixBurnImportRename] = []
+        var renamedTemplates: [RepMixBurnImportRename] = []
+        var renamedLogs: [RepMixBurnImportRename] = []
+        var renamedPrograms: [RepMixBurnImportRename] = []
         var exerciseNames = Set(exercises.map { nameKey($0.name) })
         var templateNames = Set(templates.map { nameKey($0.name) })
         var logNamesByDate = Set(logs.map { "\($0.date)|\(nameKey($0.name))" })
@@ -648,8 +648,8 @@ final class WorkoutStore: ObservableObject {
 
         var gymIds = Set(gyms.map(\.id))
         var gymNames = Set(gyms.map { nameKey($0.name) })
-        var renamedGyms: [ForgeImportRename] = []
-        var skippedGyms: [ForgeSkippedExercise] = []
+        var renamedGyms: [RepMixBurnImportRename] = []
+        var skippedGyms: [RepMixBurnSkippedExercise] = []
         let newGyms: [Gym] = incomingGyms.compactMap { gym in
             guard gymIds.insert(gym.id).inserted else {
                 skippedGyms.append(.init(id: gym.id, name: gym.name))
@@ -668,7 +668,7 @@ final class WorkoutStore: ObservableObject {
         programs = (programs + newPrograms).sortedForDisplay()
         if let importedSettings = payload.settings { settings = importedSettings }
 
-        return ForgeImportResult(
+        return RepMixBurnImportResult(
             imported: .init(
                 exercises: newExercises.count,
                 templates: newTemplates.count,
@@ -1460,7 +1460,7 @@ private func nameKey(_ value: String) -> String {
 private func uniqueImportedName(
     _ name: String,
     existingNames: inout Set<String>,
-    renamed: inout [ForgeImportRename]
+    renamed: inout [RepMixBurnImportRename]
 ) -> String {
     let base = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         ? "Imported"

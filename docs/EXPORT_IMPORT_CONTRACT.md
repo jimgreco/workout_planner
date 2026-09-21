@@ -1,6 +1,6 @@
 # Export And Import Compatibility Contract
 
-Forge exports are portable, user-scoped JSON backups. Web and iOS both use the
+Rep, Mix, Burn exports are portable, user-scoped JSON backups. Web and iOS both use the
 same API contract, and the backend remains the source of truth for validation.
 
 ## Endpoints

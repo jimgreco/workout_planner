@@ -1,4 +1,4 @@
-# Forge Workout Planner
+# Rep, Mix, Burn
 
 A React web app and native SwiftUI iPhone app for tracking gym workouts. Both
 clients use the same Node API and DynamoDB table so friends-and-family testers
@@ -21,7 +21,7 @@ can sync workouts across devices.
 ```text
 Browser / iOS app
       ↓
-workout-planner.jim-greco.com
+repmixburn.com
       ↓
 Nginx frontend container → /api proxy → Node API container → DynamoDB
 ```
