@@ -190,3 +190,34 @@ before retrying. A disconnected client can leave a build consuming memory and
 disk. Inspect memory, disk, and only the affected release's build processes;
 avoid restarting unrelated apps or deleting database volumes. The September
 2026 gym rollout exposed memory and disk pressure on the shared 2 GB / 8 GB host.
+
+## Sign in with Apple account deletion
+
+Before deploying native authorization-code exchange, configure these entries in
+`~/deploy/.env` on EC2 (never commit their values):
+
+- `WORKOUT_APPLE_TEAM_ID`: Apple Developer team ID.
+- `WORKOUT_APPLE_SIGN_IN_KEY_ID`: Sign in with Apple key ID, authorized for `com.workoutplanner.ios`.
+- `WORKOUT_APPLE_SIGN_IN_PRIVATE_KEY_BASE64`: base64-encoded PKCS#8 `.p8` key.
+- `WORKOUT_APPLE_TOKEN_ENCRYPTION_KEY`: independent random 32-byte key encoded as base64.
+
+Both Compose overrides pass these to the API. The App Store Connect upload key
+is not a Sign in with Apple key. Preserve the encryption key across deployments
+and backups; changing it requires migrating existing encrypted token records.
+
+New native sign-ins exchange Apple's one-use authorization code and retain only
+an AES-GCM-encrypted refresh token in a private `APPLE_TOKEN#` record. The server
+verifies the exchange identity against the original sign-in. Export responses
+exclude token records. Deletion revokes every stored Apple credential before
+removing app data and account aliases, including deletion through a linked Google
+session. Apple/network failures preserve data and credentials for retry.
+
+Legacy accounts without a retained token can still delete their app data. The
+response instructs the updated native/web clients to explain manual revocation
+in Apple Account settings, as documented in Apple's TN3194. The native client
+also responds to Apple's credential-revoked notification by signing out.
+
+Acceptance: with a disposable Apple account, sign in on the updated build, delete
+the account, and verify both app data deletion and removal of Apple authorization.
+Repeat deletion through a linked Google account. Do not use a real user's account
+for this destructive check. Automated mocks do not establish live Apple acceptance.

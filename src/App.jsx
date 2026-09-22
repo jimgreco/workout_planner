@@ -500,8 +500,11 @@ export default function App() {
     if (accountBusy) return;
     setAccountBusy(true);
     try {
-      await deleteAccountData();
+      const result = await deleteAccountData();
       handleSignOut();
+      if (result?.appleRevocationRequired) {
+        window.alert('Your app data has been deleted. To remove the Apple connection for this older account, visit account.apple.com > Sign-In and Security > Sign in with Apple, select Rep, Mix, Burn, and stop using Sign in with Apple.');
+      }
     } finally {
       setAccountBusy(false);
     }

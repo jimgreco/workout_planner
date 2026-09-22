@@ -653,13 +653,14 @@ export function validateAuthBody(body, provider) {
       credential: stringValue(body.credential, 'credential', { required: true, max: 8192, allowEmpty: false }),
     };
   }
-  assertAllowedKeys(body, new Set(['identityToken', 'profile']), 'auth');
+  assertAllowedKeys(body, new Set(['identityToken', 'authorizationCode', 'profile']), 'auth');
   const profile = body.profile;
   if (profile !== undefined) {
     assertObject(profile, 'profile');
     assertAllowedKeys(profile, new Set(['name', 'email', 'picture']), 'profile');
   }
   return {
+    authorizationCode: stringValue(body.authorizationCode, 'authorizationCode', { max: 8192, allowEmpty: false }),
     identityToken: stringValue(body.identityToken, 'identityToken', { required: true, max: 8192, allowEmpty: false }),
     profile: profile
       ? {

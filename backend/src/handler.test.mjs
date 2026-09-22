@@ -782,3 +782,76 @@ test('program occurrence edits persist when omitted by older clients', async () 
   assert.equal(saved.statusCode,200);
   assert.deepEqual(JSON.parse(saved.body).scheduleEdits,scheduleEdits);
 });
+
+test('legacy Apple account deletion returns manual-revocation guidance and removes aliases', async () => {
+  const db = fakeDb([
+    { PK: 'USER#user-1', SK: 'AUTH#apple:legacy', aliasPK: 'AUTH#apple:legacy', aliasSK: 'ALIAS' },
+    { PK: 'AUTH#apple:legacy', SK: 'ALIAS', accountSub: 'user-1' },
+  ]);
+  __setTestDb(db);
+  const session = await createAppSession({ sub: 'user-1', provider: 'google' });
+  const deleted = await handler(event('DELETE', '/account', undefined, { Authorization: `Bearer ${session.token}` }));
+  assert.equal(deleted.statusCode, 200);
+  assert.equal(JSON.parse(deleted.body).appleRevocationRequired, true);
+  assert.equal(db.items.has('AUTH#apple:legacy|ALIAS'), false);
+});
+
+test('Apple revocation failure preserves account data and credentials and export excludes secrets', async () => {
+  const db = fakeDb([
+    { PK: 'USER#user-1', SK: 'LOG#old', id: 'old', name: 'Old', date: '2026-01-01', exerciseItems: [], status: 'finished' },
+    { PK: 'USER#user-1', SK: 'APPLE_TOKEN#apple:user-1#native', encryptedToken: 'unreadable-token', clientId: 'native' },
+  ]);
+  __setTestDb(db);
+  const session = await createAppSession({ sub: 'user-1', provider: 'apple' });
+  const headers = { Authorization: `Bearer ${session.token}` };
+  const exported = await handler(event('GET', '/export', undefined, headers));
+  assert.equal(exported.statusCode, 200);
+  assert.ok(!exported.body.includes('unreadable-token'));
+  const deleted = await handler(event('DELETE', '/account', undefined, headers));
+  assert.equal(deleted.statusCode, 503);
+  assert.ok(db.items.has('USER#user-1|LOG#old'));
+  assert.ok(db.items.has('USER#user-1|APPLE_TOKEN#apple:user-1#native'));
+  assert.equal((await handler(event('GET', '/logs', undefined, headers))).statusCode, 200);
+});
+
+test('account deletion revokes stored Apple tokens before deleting data and invalidates the app session', async (t) => {
+  const { generateKeyPairSync, randomBytes } = await import('node:crypto');
+  const { encryptAppleToken } = await import('./apple-tokens.mjs');
+  const names = ['APPLE_TEAM_ID', 'APPLE_SIGN_IN_KEY_ID', 'APPLE_SIGN_IN_PRIVATE_KEY_BASE64', 'APPLE_TOKEN_ENCRYPTION_KEY'];
+  const original = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  t.after(() => {
+    for (const name of names) {
+      if (original[name] === undefined) delete process.env[name];
+      else process.env[name] = original[name];
+    }
+  });
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  process.env.APPLE_TEAM_ID = 'test-team';
+  process.env.APPLE_SIGN_IN_KEY_ID = 'test-key';
+  process.env.APPLE_SIGN_IN_PRIVATE_KEY_BASE64 = Buffer.from(privateKey.export({ type: 'pkcs8', format: 'pem' })).toString('base64');
+  process.env.APPLE_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64');
+  const PK = 'USER#user-1'; const SK = 'APPLE_TOKEN#apple:person#native';
+  const db = fakeDb([
+    { PK, SK, clientId: 'native', providerSub: 'apple:person', encryptedToken: encryptAppleToken('private-token', `${PK}|${SK}`) },
+    { PK, SK: 'AUTH#apple:person', aliasPK: 'AUTH#apple:person', aliasSK: 'ALIAS' },
+    { PK: 'AUTH#apple:person', SK: 'ALIAS', accountSub: 'user-1' },
+    { PK, SK: 'LOG#old', id: 'old' },
+  ]);
+  __setTestDb(db);
+  let revoked = false;
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://appleid.apple.com/auth/revoke');
+    assert.equal(options.body.get('token'), 'private-token');
+    assert.ok(db.items.has(`${PK}|LOG#old`));
+    revoked = true;
+    return new Response(null, { status: 200 });
+  });
+  const session = await createAppSession({ sub: 'user-1', provider: 'google' });
+  const headers = { Authorization: `Bearer ${session.token}` };
+  const result = await handler(event('DELETE', '/account', undefined, headers));
+  assert.equal(result.statusCode, 200);
+  assert.equal(JSON.parse(result.body).appleRevocationRequired, false);
+  assert.equal(revoked, true);
+  assert.deepEqual([...db.items.keys()], [`${PK}|ACCOUNT`]);
+  assert.equal((await handler(event('GET', '/logs', undefined, headers))).statusCode, 401);
+});

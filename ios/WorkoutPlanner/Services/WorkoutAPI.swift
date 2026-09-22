@@ -150,8 +150,10 @@ struct WorkoutAPI {
         try await request("POST", path: "/import", body: RepMixBurnImportRequest(mode: mode, data: data))
     }
 
-    func deleteAccount() async throws {
-        _ = try await perform("DELETE", path: "/account", body: Optional<Data>.none)
+    func deleteAccount() async throws -> Bool {
+        struct DeletionResult: Decodable { let appleRevocationRequired: Bool? }
+        let result: DeletionResult = try await request("DELETE", path: "/account")
+        return result.appleRevocationRequired ?? false
     }
 
     private func request<T: Decodable>(_ method: String, path: String) async throws -> T {

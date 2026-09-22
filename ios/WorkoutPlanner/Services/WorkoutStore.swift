@@ -683,12 +683,14 @@ final class WorkoutStore: ObservableObject {
         )
     }
 
-    func deleteAccount() async throws {
+    func deleteAccount() async throws -> Bool {
+        var appleRevocationRequired = false
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
-            try await api.deleteAccount()
+            appleRevocationRequired = try await api.deleteAccount()
         }
         reset()
+        return appleRevocationRequired
     }
 
     func activeWorkout() -> WorkoutLog? {

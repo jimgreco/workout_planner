@@ -33,6 +33,7 @@ import {
 import { OAuth2Client } from 'google-auth-library';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { emailAliasPk, normalizeEmail, isVerifiedEmail, resolveAccountUser } from './account-linking.mjs';
+import { encryptAppleToken, exchangeAppleCode, revokeAppleTokens } from './apple-tokens.mjs';
 import { DEFAULT_EQUIPMENT, equipmentLibraryId } from './default-equipment.mjs';
 import { DEFAULT_EXERCISES, withDefaultEquipment } from './default-exercises.mjs';
 import { createAppSession, hashUserId, verifyAppSession } from './session.mjs';
@@ -266,6 +267,7 @@ async function verifyAppleIdentityToken(identityToken, profile = {}) {
     sub: providerSub,
     providerSub,
     provider: 'apple',
+    appleClientId: payload.aud,
     name: profile.name || '',
     email: typeof payload.email === 'string' ? payload.email : (profile.email || ''),
     emailVerified: isVerifiedEmail(payload.email_verified),
@@ -279,12 +281,24 @@ async function handleAuth(provider, body, event) {
   const user = provider === 'google'
     ? await verifyGoogleCredential(parsed.credential)
     : await verifyAppleIdentityToken(parsed.identityToken, parsed.profile);
+  const appleToken = provider === 'apple' && parsed.authorizationCode
+    ? await exchangeAppleCode({ code: parsed.authorizationCode, clientId: user.appleClientId,
+        subject: user.providerSub, verifyIdentityToken: verifyAppleIdentityToken })
+    : null;
   const accountUser = await resolveAccountUser({
     db,
     tableName: TABLE,
     user,
     requestedAccount,
   });
+  if (appleToken) {
+    const PK = `USER#${accountUser.sub}`;
+    const SK = `APPLE_TOKEN#${user.providerSub}#${user.appleClientId}`;
+    await db.send(new PutCommand({ TableName: TABLE, Item: {
+      PK, SK, providerSub: user.providerSub, clientId: user.appleClientId,
+      encryptedToken: encryptAppleToken(appleToken, `${PK}|${SK}`),
+    } }));
+  }
   return ok(await createAppSession(accountUser));
 }
 
@@ -1125,9 +1139,15 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
 
   if (resource === 'account' && method === 'DELETE' && !id) {
     const items = await queryAllUserItems(PK);
+    let appleRevocationRequired;
+    try {
+      appleRevocationRequired = await revokeAppleTokens(items);
+    } catch {
+      return err(503, 'Apple authorization could not be revoked. Your account has not been deleted. Please try again.');
+    }
     await batchDelete(deletionItems(items));
     await putAccountTombstone(PK, new Date().toISOString());
-    return ok({ deleted: items.length });
+    return ok({ deleted: items.length, appleRevocationRequired });
   }
 
   if (resource === 'feedback' && method === 'POST' && !id) {

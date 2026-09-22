@@ -1,4 +1,5 @@
 import AuthenticationServices
+import Combine
 import Foundation
 import GoogleSignIn
 import Security
@@ -28,6 +29,7 @@ private struct GoogleAuthRequest: Encodable {
 
 private struct AppleAuthRequest: Encodable {
     let identityToken: String
+    let authorizationCode: String
     let profile: AppleProfilePayload
 }
 
@@ -43,9 +45,23 @@ final class AuthManager: ObservableObject {
     @Published var isRestoring = true
     @Published var authError: String?
     @Published var isDemoMode = false
+    @Published var showAppleRevocationInstructions = false
     private var currentProvider: AuthProvider?
+    private var appleRevocationObserver: AnyCancellable?
 
     init() {
+        appleRevocationObserver = NotificationCenter.default.publisher(for: ASAuthorizationAppleIDProvider.credentialRevokedNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, let session = AppleSessionStore.loadApple() else { return }
+                    let credential = await self.appleCredentialState(for: session.userID)
+                    if credential.error == nil && credential.state != .authorized {
+                        self.signOut()
+                    }
+                }
+            }
+
         if let clientID = AppConfiguration.googleClientID {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         }
@@ -132,7 +148,9 @@ final class AuthManager: ObservableObject {
         case let .success(authorization):
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                   let tokenData = credential.identityToken,
-                  let token = String(data: tokenData, encoding: .utf8)
+                  let token = String(data: tokenData, encoding: .utf8),
+                  let codeData = credential.authorizationCode,
+                  let authorizationCode = String(data: codeData, encoding: .utf8)
             else {
                 authError = "Apple did not return a usable identity token."
                 return
@@ -147,7 +165,7 @@ final class AuthManager: ObservableObject {
             let profile = UserProfile(sub: credential.user, name: displayName, email: email, picture: nil)
 
             do {
-                let response = try await exchangeAppleSession(identityToken: token, profile: profile)
+                let response = try await exchangeAppleSession(identityToken: token, authorizationCode: authorizationCode, profile: profile)
                 let sessionProfile = response.user ?? profile
                 GIDSignIn.sharedInstance.signOut()
                 AppleSessionStore.saveApple(userID: credential.user, identityToken: token, profile: sessionProfile)
@@ -179,7 +197,9 @@ final class AuthManager: ObservableObject {
             }
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                   let tokenData = credential.identityToken,
-                  let token = String(data: tokenData, encoding: .utf8)
+                  let token = String(data: tokenData, encoding: .utf8),
+                  let codeData = credential.authorizationCode,
+                  let authorizationCode = String(data: codeData, encoding: .utf8)
             else {
                 authError = "Apple did not return a usable identity token."
                 return false
@@ -193,7 +213,7 @@ final class AuthManager: ObservableObject {
             let profile = UserProfile(sub: credential.user, name: displayName, email: email, picture: user?.picture)
 
             do {
-                let response = try await exchangeAppleSession(identityToken: token, profile: profile, linkToCurrentAccount: true)
+                let response = try await exchangeAppleSession(identityToken: token, authorizationCode: authorizationCode, profile: profile, linkToCurrentAccount: true)
                 user = response.user ?? user
                 if let user {
                     CachedUserProfileStore.save(user)
@@ -318,11 +338,12 @@ final class AuthManager: ObservableObject {
         return response
     }
 
-    private func exchangeAppleSession(identityToken: String, profile: UserProfile, linkToCurrentAccount: Bool = false) async throws -> AuthSessionResponse {
+    private func exchangeAppleSession(identityToken: String, authorizationCode: String, profile: UserProfile, linkToCurrentAccount: Bool = false) async throws -> AuthSessionResponse {
         let response: AuthSessionResponse = try await exchangeSession(
             path: "auth/apple",
             body: AppleAuthRequest(
                 identityToken: identityToken,
+                authorizationCode: authorizationCode,
                 profile: AppleProfilePayload(name: profile.name, email: profile.email, picture: profile.picture)
             ),
             includeAuthorization: linkToCurrentAccount

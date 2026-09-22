@@ -137,5 +137,13 @@ struct LoginView: View {
             .frame(maxWidth: 440)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .alert("Account deleted", isPresented: $auth.showAppleRevocationInstructions) {
+            Button("Apple Account Settings") {
+                UIApplication.shared.open(URL(string: "https://account.apple.com/account/manage")!)
+            }
+            Button("Done", role: .cancel) { }
+        } message: {
+            Text("Your app data has been deleted. To remove the Apple connection for this older account, open Apple Account Settings > Sign-In and Security > Sign in with Apple, select Rep, Mix, Burn, and stop using Sign in with Apple.")
+        }
     }
 }

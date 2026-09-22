@@ -436,8 +436,9 @@ private struct SettingsPage: View {
                     accountBusy = true
                     defer { accountBusy = false }
                     do {
-                        try await store.deleteAccount()
+                        let needsAppleRevocation = try await store.deleteAccount()
                         onSignOut()
+                        auth.showAppleRevocationInstructions = needsAppleRevocation
                     } catch {
                         if !isCancellationError(error) {
                             store.errorMessage = error.localizedDescription
