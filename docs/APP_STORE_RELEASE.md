@@ -5,7 +5,7 @@ SpringBoard display name: Rep Mix Burn.
 
 ## Listing
 
-- Version: 1.1; free; manual release after approval.
+- Version: 1.1; iPhone-only; free; manual release after approval.
 - Category: Health & Fitness.
 - Subtitle: Workout planner & strength log.
 - Age rating: 9+, including health or wellness topics; no social content,
@@ -35,9 +35,8 @@ supply their own bundled manifests.
 
 ## Remaining release gates
 
-- Add public support email and Apple's private review contact details.
-- Capture and inspect actual iPhone and iPad screenshots, with synthetic demo
-  data. Upload the required display sizes shown by App Store Connect.
+- Public support: jgreco@gmail.com. App Review contact entered in App Store Connect.
+- Three inspected iPhone 6.9-inch screenshots are uploaded, using synthetic demo data.
 - Supply working reviewer access. Production supports Apple and Google sign-in;
   local demo mode is Debug-only and is not reviewer access in the release binary.
   Do not enable backend development authentication in production.
@@ -45,8 +44,8 @@ supply their own bundled manifests.
   a disposable test account on a physical device.
 - Select the final processed build containing the space-separated SpringBoard
   name and privacy manifest; verify encryption/compliance answers.
-- Complete distribution availability and content declarations; resolve any
-  remaining App Store Connect validation messages before submission.
+- Worldwide availability, content declarations, and privacy disclosures are saved.
+  Resolve any remaining App Store Connect validation messages before submission.
 - Follow `OPERATIONS.md` for exact-SHA deployment and TestFlight evidence.
 
 Do not equate an upload, simulator build, or saved listing with App Review approval

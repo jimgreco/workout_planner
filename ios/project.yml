@@ -24,6 +24,7 @@ targets:
         embed: true
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.workoutplanner.ios
         PRODUCT_NAME: Rep, Mix, Burn
         MARKETING_VERSION: 1.1
@@ -77,6 +78,7 @@ targets:
       - Shared
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.workoutplanner.ios.LiveActivity
         PRODUCT_NAME: RepMixBurnLiveActivity
         MARKETING_VERSION: 1.1
