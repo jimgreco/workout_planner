@@ -572,7 +572,7 @@ export default function WorkoutBuilder({
                   </label>
                   {item.baselineId && <small>New comparison baseline · {item.baselineId.slice(0, 10)}</small>}
                   {!readOnly && <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateItem(idx, { baselineId: `${new Date().toISOString().slice(0, 10)}_${crypto.randomUUID()}` })}>Start new technique baseline</button>}
-                  <small>Use a new baseline after changing technique or equipment. Past workouts stay unchanged. Reps left means more reps with the same form.</small>
+                  <small>Use a new baseline after changing technique or equipment. Past workouts stay unchanged.</small>
                 </div>}
                 {(item.description || !readOnly) && (
                   <textarea

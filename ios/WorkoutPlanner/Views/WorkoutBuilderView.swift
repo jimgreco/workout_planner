@@ -2080,38 +2080,11 @@ struct EquipmentSetupPicker: View {
         onChanged()
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            let inline = compact && !dynamicTypeSize.isAccessibilitySize
-            let layout = inline ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-            layout {
-                Text("Equipment setup")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.muted)
-                if inline { Spacer(minLength: 0) }
-                Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
-                    useProfile(profiles.first { $0.id == id })
-                })) {
-                    Text("Unspecified").tag("")
-                    if deletedCurrent, let profile = item.setupProfile {
-                        Text(profile.displayName + " (deleted)").tag(profile.id).disabled(true)
-                    }
-                    ForEach(profiles) { profile in
-                        Text(readOnly && item.setupProfile?.id == profile.id ? item.setupProfile!.displayName : profile.displayName).tag(profile.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .disabled(readOnly)
-                .labelsHidden()
-            }
-            if let profile = item.setupProfile {
-                Text([profile.seat, profile.grip, profile.loadConvention].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(Theme.muted)
-            }
-            if !readOnly {
-                if !deletedCurrent, let profile = item.setupProfile {
-                    Button("Edit setup") { editingExisting = true; draft = profiles.first { $0.id == profile.id } ?? profile }
-                }
-                Button("Save a new setup") { editingExisting = false; draft = EquipmentSetup() }
+        Group {
+            if compact {
+                compactSetupMenu
+            } else {
+                fullSetupPicker
             }
         }
         .sheet(item: $draft) { profile in
@@ -2123,6 +2096,91 @@ struct EquipmentSetupPicker: View {
                 try await store.saveExercise(updated)
                 if editingExisting { item.setupProfile = saved; onChanged() }
                 else { useProfile(saved) }
+            }
+        }
+    }
+
+    private var compactSetupMenu: some View {
+        Menu {
+            if !readOnly {
+                Button("Unspecified") { useProfile(nil) }
+                ForEach(profiles) { profile in
+                    Button(profile.displayName) { useProfile(profile) }
+                }
+                Divider()
+                if !deletedCurrent, let profile = item.setupProfile {
+                    Button("Edit setup", systemImage: "pencil") {
+                        editingExisting = true
+                        draft = profiles.first { $0.id == profile.id } ?? profile
+                    }
+                }
+                Button("Save a new setup", systemImage: "plus") {
+                    editingExisting = false
+                    draft = EquipmentSetup()
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Equipment setup")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.muted)
+                    Text(item.setupProfile?.displayName ?? "Unspecified")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let profile = item.setupProfile {
+                        let details = [profile.seat, profile.grip, profile.loadConvention].filter { !$0.isEmpty }.joined(separator: " · ")
+                        if !details.isEmpty {
+                            Text(details)
+                                .font(.caption)
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                if !readOnly {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+            .padding(10)
+            .background(Theme.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(readOnly)
+    }
+
+    private var fullSetupPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Equipment setup")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.muted)
+            Picker("Equipment setup", selection: Binding(get: { item.setupProfile?.id ?? "" }, set: { id in
+                useProfile(profiles.first { $0.id == id })
+            })) {
+                Text("Unspecified").tag("")
+                if deletedCurrent, let profile = item.setupProfile {
+                    Text(profile.displayName + " (deleted)").tag(profile.id).disabled(true)
+                }
+                ForEach(profiles) { profile in
+                    Text(readOnly && item.setupProfile?.id == profile.id ? item.setupProfile!.displayName : profile.displayName).tag(profile.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(readOnly)
+            if let profile = item.setupProfile {
+                Text([profile.seat, profile.grip, profile.loadConvention].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(Theme.muted)
+            }
+            if !readOnly {
+                if !deletedCurrent, let profile = item.setupProfile {
+                    Button("Edit setup") { editingExisting = true; draft = profiles.first { $0.id == profile.id } ?? profile }
+                }
+                Button("Save a new setup") { editingExisting = false; draft = EquipmentSetup() }
             }
         }
     }
