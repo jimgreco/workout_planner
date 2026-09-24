@@ -86,7 +86,7 @@ const DEV_USER_SUB = 'dev-user-local';
 const SERVICE_NAME = 'workout-planner-api';
 const BUILD_INFO = {
   service: SERVICE_NAME,
-  version: process.env.APP_VERSION || '1.0.0',
+  version: process.env.APP_VERSION || '1.2.0',
   commit: process.env.GIT_COMMIT || process.env.SHORT_SHA || 'local',
   builtAt: process.env.BUILD_TIME || 'local',
 };

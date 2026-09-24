@@ -24,7 +24,7 @@ ENV NODE_ENV=production
 COPY backend/package*.json ./backend/
 RUN cd backend && npm ci --omit=dev
 COPY backend/ ./backend/
-ARG APP_VERSION=1.0.0
+ARG APP_VERSION=1.2.0
 ARG GIT_COMMIT=local
 ARG BUILD_TIME=local
 ENV APP_VERSION=$APP_VERSION

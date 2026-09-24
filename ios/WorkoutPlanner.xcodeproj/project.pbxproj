@@ -411,7 +411,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios;
 				PRODUCT_NAME = "Rep, Mix, Burn";
 				SDKROOT = iphoneos;
@@ -432,7 +432,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios.LiveActivity;
 				PRODUCT_NAME = RepMixBurnLiveActivity;
 				SDKROOT = iphoneos;
@@ -456,7 +456,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios;
 				PRODUCT_NAME = "Rep, Mix, Burn";
 				PROVISIONING_PROFILE_SPECIFIER = "$(IOS_PROFILE_NAME)";
@@ -480,7 +480,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.workoutplanner.ios.LiveActivity;
 				PRODUCT_NAME = RepMixBurnLiveActivity;
 				PROVISIONING_PROFILE_SPECIFIER = "$(IOS_LIVE_ACTIVITY_PROFILE_NAME)";

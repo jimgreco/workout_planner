@@ -27,7 +27,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.workoutplanner.ios
         PRODUCT_NAME: Rep, Mix, Burn
-        MARKETING_VERSION: 1.1
+        MARKETING_VERSION: 1.2
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.0
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -81,7 +81,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.workoutplanner.ios.LiveActivity
         PRODUCT_NAME: RepMixBurnLiveActivity
-        MARKETING_VERSION: 1.1
+        MARKETING_VERSION: 1.2
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 5.0
         CODE_SIGN_ENTITLEMENTS: WorkoutPlannerLiveActivity/WorkoutPlannerLiveActivity.entitlements
