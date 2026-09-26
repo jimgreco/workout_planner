@@ -727,6 +727,7 @@ func routineExerciseNeedsWeightIncrease(_ item: ExerciseItem, logs: [WorkoutLog]
     else { return false }
 
     let loggedSet = lastItem.sets[item.sets.count - 1]
+    guard isRecordedWorkingSet(loggedSet), personalBestContext(item) == personalBestContext(lastItem) else { return false }
     if let common = caps.common {
         return workoutLoggedRepValue(loggedSet) >= common
     }
@@ -1463,7 +1464,6 @@ func effectiveRecordedWeight(_ weight: String?, weightType: String?, smithBarWei
         guard let resistance = validSmithBarWeight(smithBarWeight) else { return nil }
         return value * 2 + resistance
     }
-    guard value > 0 else { return 0 }
     if weightType == "bar_double" { return value * 2 + 45 }
     if weightType == "double" { return value * 2 }
     return value
@@ -1668,8 +1668,8 @@ func calculatedWeightTotal(weight: String?, weightType: String?, smithBarWeight:
         guard let raw = weight, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return effectiveRecordedWeight(raw, weightType: weightType, smithBarWeight: smithBarWeight)
     }
-    let value = Double((weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-    guard value > 0 else { return nil }
+    guard let value = Double((weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)),
+          value.isFinite, value >= 0, value > 0 || weightType == "bar_double" else { return nil }
     switch weightType {
     case "double":
         return value * 2

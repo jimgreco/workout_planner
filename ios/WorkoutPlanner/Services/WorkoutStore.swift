@@ -30,6 +30,7 @@ final class WorkoutStore: ObservableObject {
 
     private let auth: AuthManager
     private var pendingRetryTask: Task<Void, Never>?
+    private var isFlushingPendingChanges = false
     private var api: WorkoutAPI? {
         guard let baseURL = AppConfiguration.apiBaseURL else { return nil }
         return WorkoutAPI(baseURL: baseURL) { [auth] in
@@ -1103,6 +1104,9 @@ final class WorkoutStore: ObservableObject {
     }
 
     private func flushPendingChanges(using api: WorkoutAPI) async {
+        guard !isFlushingPendingChanges else { return }
+        isFlushingPendingChanges = true
+        defer { isFlushingPendingChanges = false }
         await flushPendingResources(using: api)
         await flushPendingLogs(using: api)
     }
@@ -1115,30 +1119,37 @@ final class WorkoutStore: ObservableObject {
         }
 
         for change in pending {
+            guard PendingResourceQueue.all.contains(change) else { continue }
             do {
                 switch (change.resource, change.operation) {
                 case (.exercises, .delete):
                     try await api.deleteExercise(change.id)
+                    guard PendingResourceQueue.all.contains(change) else { continue }
                     exercises.removeAll { $0.id == change.id }
                 case (.exercises, .put):
                     guard let exercise = change.exercise else { break }
                     let saved = try await api.saveExercise(exercise)
+                    guard PendingResourceQueue.all.contains(change) else { continue }
                     upsert(saved, in: &exercises)
                     PendingSyncConflictQueue.remove(.exercises, id: change.id)
                 case (.templates, .delete):
                     try await api.deleteTemplate(change.id)
+                    guard PendingResourceQueue.all.contains(change) else { continue }
                     templates.removeAll { $0.id == change.id }
                 case (.templates, .put):
                     guard let template = change.template else { break }
                     let saved = try await api.saveTemplate(template)
+                    guard PendingResourceQueue.all.contains(change) else { continue }
                     upsert(saved, in: &templates)
                     PendingSyncConflictQueue.remove(.templates, id: change.id)
                 case (.programs, .delete):
                     try await api.deleteProgram(change.id)
+                    guard PendingResourceQueue.all.contains(change) else { continue }
                     programs.removeAll { $0.id == change.id }
                 case (.programs, .put):
                     guard let program = change.program else { break }
                     let saved = try await api.saveProgram(program)
+                    guard PendingResourceQueue.all.contains(change) else { continue }
                     upsert(saved, in: &programs)
                     PendingSyncConflictQueue.remove(.programs, id: change.id)
                 }
@@ -1149,6 +1160,7 @@ final class WorkoutStore: ObservableObject {
                 break
             } catch {
                 if isCancellationError(error) { break }
+                guard PendingResourceQueue.all.contains(change) else { continue }
                 if rememberConflict(change, error: error) {
                     syncIssueMessage = "A pending library change changed in the cloud. Review sync conflicts."
                 } else if !isNetworkAvailabilityError(error) {
@@ -1173,12 +1185,15 @@ final class WorkoutStore: ObservableObject {
         }
 
         for change in pending {
+            guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
             do {
                 if change.operation == .delete {
                     try await api.deleteLog(change.id)
+                    guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
                     logs.removeAll { $0.id == change.id }
                 } else if let log = change.log {
                     let saved = try await api.saveLog(log)
+                    guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
                     upsert(saved, in: &logs)
                     PendingSyncConflictQueue.remove(.logs, id: change.id)
                 }
@@ -1189,6 +1204,7 @@ final class WorkoutStore: ObservableObject {
                 break
             } catch {
                 if isCancellationError(error) { break }
+                guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
                 if rememberConflict(change, error: error) {
                     syncIssueMessage = "A pending workout changed in the cloud. Review sync conflicts."
                 } else if !isNetworkAvailabilityError(error) {
@@ -1303,7 +1319,7 @@ private enum PendingResourceOperation: String, Codable {
     }
 }
 
-private struct PendingResourceChange: Codable, Identifiable {
+private struct PendingResourceChange: Codable, Identifiable, Equatable {
     var resource: PendingResourceKind
     var operation: PendingResourceOperation
     var id: String
@@ -1312,7 +1328,7 @@ private struct PendingResourceChange: Codable, Identifiable {
     var program: TrainingProgram?
 }
 
-private struct PendingWorkoutLogChange: Codable, Identifiable {
+private struct PendingWorkoutLogChange: Codable, Identifiable, Equatable {
     var operation: PendingResourceOperation
     var id: String
     var log: WorkoutLog?

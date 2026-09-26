@@ -74,6 +74,70 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe.each([
+  { label: 'workouts', item: LOG, save: saveLog, remove: deleteLog, flush: flushPendingLogSaves, get: getLogs },
+  { label: 'library items', item: EX, save: saveExercise, remove: deleteExercise, flush: flushPendingResourceChanges, get: getExercises },
+])('in-flight sync for $label', ({ item, save, remove, flush, get }) => {
+  function holdNextRequest() {
+    let resolve, reject;
+    const response = new Promise((yes, no) => { resolve = yes; reject = no; });
+    globalThis.fetch = vi.fn().mockReturnValueOnce(response).mockRejectedValue(new TypeError('Offline'));
+    return {
+      succeed: () => resolve({ ok: true, status: 200, json: async () => ({ ...item, revision: 2 }) }),
+      fail: () => reject(new TypeError('Offline')),
+    };
+  }
+
+  beforeEach(async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Offline'));
+    await save({ ...item, revision: 1 });
+  });
+
+  it.each(['success', 'failure'])('retains newly queued items after a retry %s', async (outcome) => {
+    const held = holdNextRequest();
+    const syncing = flush();
+    await save({ ...item, id: 'new-item' });
+    if (outcome === 'success') held.succeed(); else held.fail();
+    await syncing;
+    expect(pendingChangeCount()).toBe(outcome === 'success' ? 1 : 2);
+    expect(get().find(entry => entry.id === 'new-item')).toMatchObject({ pendingSync: true });
+
+    mockFetch({ 'PUT *': () => ({ body: { ...item, id: 'new-item', revision: 1 } }) });
+    await flush();
+    expect(globalThis.fetch.mock.calls.some(([, options]) => JSON.parse(options.body).id === 'new-item')).toBe(true);
+  });
+
+  it('keeps a newer edit to the same item queued and visible', async () => {
+    const held = holdNextRequest();
+    const syncing = flush();
+    await save({ ...item, revision: 1, notes: 'Newer local edit' });
+    held.succeed();
+    await syncing;
+    expect(pendingChangeCount()).toBe(1);
+    expect(get()[0]).toMatchObject({ notes: 'Newer local edit', pendingSync: true });
+  });
+
+  it('does not resurrect an item deleted while its save was in flight', async () => {
+    const held = holdNextRequest();
+    const syncing = flush();
+    await remove(item.id);
+    held.succeed();
+    await syncing;
+    expect(pendingChangeCount()).toBe(1);
+    expect(get()).toEqual([]);
+  });
+
+  it('shares overlapping retries instead of sending the same write twice', async () => {
+    const held = holdNextRequest();
+    const first = flush();
+    const second = flush();
+    held.succeed();
+    await Promise.all([first, second]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(pendingChangeCount()).toBe(0);
+  });
+});
+
 // ── initData ──────────────────────────────────────────────────────────────────
 describe('initData', () => {
   it('fetches all collections and populates the cache', async () => {

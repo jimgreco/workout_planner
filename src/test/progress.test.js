@@ -128,6 +128,28 @@ describe('progress calculations', () => {
     expect(progress.totalVolume).toBe(500);
   });
 
+  it.each(['linkedSides', 'separateSides'])('uses side reps to rank %s best sets', (repMode) => {
+    const summary = summarizeExercise(exercises[1], [{
+      id: 'sides', name: 'Arms', date: '2026-09-26', status: 'finished',
+      exerciseItems: [{ exerciseId: 'curl', weightType: 'weight', sets: [
+        { reps: '', repsLeft: '5', repsRight: '5', repMode, weight: '25' },
+        { reps: '', repsLeft: '10', repsRight: '10', repMode, weight: '25' },
+      ] }],
+    }]);
+    expect(summary.best.reps).toBe(10);
+    expect(summary.best.score).toBeCloseTo(25 * (1 + 10 / 30));
+    expect(summary.best.set.repsLeft).toBe('10');
+  });
+
+  it('does not select missing loads as a weighted best set', () => {
+    const summary = summarizeExercise(exercises[1], [{
+      id: 'no-load', name: 'Arms', date: '2026-09-26', status: 'finished',
+      exerciseItems: [{ exerciseId: 'curl', weightType: 'weight', sets: [{ reps: '10', weight: '' }] }],
+    }]);
+    expect(summary.best).toBeNull();
+    expect(summary.totalSets).toBe(1);
+  });
+
   it('filters the 7-day range inclusively', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-24T12:00:00'));

@@ -10,7 +10,6 @@ export function effectiveWeight(weight, weightType = 'weight', barWeight) {
     const resistance = smithBarWeight(barWeight);
     return resistance === null ? null : value * 2 + resistance;
   }
-  if (value === 0) return 0;
   if (weightType === 'bar_double') return value * 2 + 45;
   if (weightType === 'double') return value * 2;
   return value;

@@ -37,6 +37,8 @@ const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeco
 const PENDING_LOG_QUEUE_KEY = 'forge.pendingLogSaves.v1';
 const PENDING_RESOURCE_QUEUE_KEY = 'forge.pendingResourceChanges.v1';
 const PENDING_CONFLICTS_KEY = 'forge.pendingConflicts.v1';
+let pendingLogFlush;
+let pendingResourceFlush;
 
 function withExpectedRevision(item) {
   if (!Number.isInteger(item.revision)) return item;
@@ -623,28 +625,42 @@ export async function deleteLog(id) {
   return cache.logs;
 }
 
-export async function flushPendingLogSaves() {
+// A retry acknowledges only the exact change it sent. Replacing the queue from
+// a snapshot would discard edits queued while the network request was pending.
+function samePendingChange(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function flushPendingLogSaves() {
+  pendingLogFlush ??= flushLogQueue().finally(() => { pendingLogFlush = undefined; });
+  return pendingLogFlush;
+}
+
+async function flushLogQueue() {
   const queue = readPendingLogQueue();
   if (queue.length === 0 || (DEV_BYPASS && !BASE_URL)) {
     dispatchSyncStatus();
     return getLogs();
   }
 
-  const remaining = [];
   for (let index = 0; index < queue.length; index += 1) {
     const entry = queue[index];
+    if (!readPendingLogQueue().some(current => samePendingChange(current, entry))) continue;
     try {
+      let saved;
       if (entry.operation === 'delete') {
         await request('DELETE', `/logs/${entry.id}`);
-        cache.logs = (cache.logs ?? []).filter((log) => log.id !== entry.id);
       } else {
-        const saved = await request('PUT', `/logs/${entry.id}`, withExpectedRevision(stripLocalLogFields(entry)));
-        upsertLogItem(saved);
+        saved = await request('PUT', `/logs/${entry.id}`, withExpectedRevision(stripLocalLogFields(entry)));
       }
+      const currentQueue = readPendingLogQueue();
+      if (!currentQueue.some(current => samePendingChange(current, entry))) continue;
+      if (entry.operation === 'delete') cache.logs = (cache.logs ?? []).filter(log => log.id !== entry.id);
+      else upsertLogItem(saved);
+      writePendingLogQueue(currentQueue.filter(current => !samePendingChange(current, entry)));
       removePendingConflict(pendingConflictId('logs', entry.id));
     } catch (error) {
-      remaining.push(entry);
-      remaining.push(...queue.slice(index + 1));
+      if (!readPendingLogQueue().some(current => samePendingChange(current, entry))) continue;
       if (error.status === 409) {
         const conflict = storePendingConflict('logs', entry.operation, entry, error);
         dispatchSyncStatus({ syncIssue: error.message });
@@ -666,11 +682,15 @@ export async function flushPendingLogSaves() {
     }
   }
 
-  writePendingLogQueue(remaining);
   return getLogs();
 }
 
-export async function flushPendingResourceChanges() {
+export function flushPendingResourceChanges() {
+  pendingResourceFlush ??= flushResourceQueue().finally(() => { pendingResourceFlush = undefined; });
+  return pendingResourceFlush;
+}
+
+async function flushResourceQueue() {
   const queue = readPendingResourceQueue();
   if (queue.length === 0 || (DEV_BYPASS && !BASE_URL)) {
     dispatchSyncStatus();
@@ -681,21 +701,24 @@ export async function flushPendingResourceChanges() {
     };
   }
 
-  const remaining = [];
   for (let index = 0; index < queue.length; index += 1) {
     const entry = queue[index];
+    if (!readPendingResourceQueue().some(current => samePendingChange(current, entry))) continue;
     try {
+      let saved;
       if (entry.operation === 'delete') {
         await request('DELETE', `/${entry.resource}/${entry.id}`);
-        cache[entry.resource] = (cache[entry.resource] ?? []).filter((item) => item.id !== entry.id);
       } else {
-        const saved = await request('PUT', `/${entry.resource}/${entry.id}`, withExpectedRevision(stripLocalResourceFields(entry.item)));
-        upsertCached(entry.resource, saved);
+        saved = await request('PUT', `/${entry.resource}/${entry.id}`, withExpectedRevision(stripLocalResourceFields(entry.item)));
       }
+      const currentQueue = readPendingResourceQueue();
+      if (!currentQueue.some(current => samePendingChange(current, entry))) continue;
+      if (entry.operation === 'delete') cache[entry.resource] = (cache[entry.resource] ?? []).filter(item => item.id !== entry.id);
+      else upsertCached(entry.resource, saved);
+      writePendingResourceQueue(currentQueue.filter(current => !samePendingChange(current, entry)));
       removePendingConflict(pendingConflictId(entry.resource, entry.id));
     } catch (error) {
-      remaining.push(entry);
-      remaining.push(...queue.slice(index + 1));
+      if (!readPendingResourceQueue().some(current => samePendingChange(current, entry))) continue;
       if (error.status === 409) {
         const conflict = storePendingConflict(entry.resource, entry.operation, entry.item ?? { id: entry.id }, error);
         dispatchSyncStatus({ syncIssue: error.message });
@@ -717,7 +740,6 @@ export async function flushPendingResourceChanges() {
     }
   }
 
-  writePendingResourceQueue(remaining);
   return {
     exercises: getExercises(),
     templates: getTemplates(),

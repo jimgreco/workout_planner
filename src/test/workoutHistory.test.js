@@ -71,4 +71,27 @@ describe('routineExerciseNeedsWeightIncrease', () => {
 
     expect(routineExerciseNeedsWeightIncrease(item, [log])).toBe(false);
   });
+
+  it.each(['skipped', 'unrecorded'])('ignores %s sets with retained reps', (completion) => {
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    log.exerciseItems[0].sets[1].completion = completion;
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(false);
+  });
+
+  it.each([
+    { baselineId: 'previous-technique' },
+    { setupProfile: { id: 'different-machine' } },
+    { weightType: 'double' },
+  ])('does not suggest an increase from a different comparison context: %j', (context) => {
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    Object.assign(log.exerciseItems[0], context);
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(false);
+  });
+
+  it('does not suggest an increase after Smith resistance changes', () => {
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    Object.assign(log.exerciseItems[0], { weightType: 'smith_double', setupProfile: { id: 'smith', smithBarWeight: 20 } });
+    const item = { ...rangeRoutineItem, weightType: 'smith_double', setupProfile: { id: 'smith', smithBarWeight: 35 } };
+    expect(routineExerciseNeedsWeightIncrease(item, [log])).toBe(false);
+  });
 });

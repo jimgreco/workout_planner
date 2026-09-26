@@ -218,10 +218,11 @@ export function getExerciseHistory(exerciseId, logs = []) {
       const bestSet = sets.reduce((best, set) => {
         const weight = effectiveWeight(set.weight, item.weightType, item.setupProfile?.smithBarWeight);
         if (weight === null) return best;
-        const reps = numeric(set.reps);
+        const reps = setRepBest(set);
         const score = item.weightType === 'none'
           ? reps
-          : estimateOneRepMax(weight, set.reps);
+          : estimateOneRepMax(weight, reps);
+        if (score <= 0) return best;
         if (!best || score > best.score) {
           return { set, score, weight, reps };
         }

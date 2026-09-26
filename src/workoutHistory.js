@@ -1,4 +1,5 @@
 import { isWorkingSet } from './setEvidence.js';
+import { personalBestContext } from './progress.js';
 const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'smith_double', 'none']);
 
 function logSortKey(log = {}) {
@@ -106,7 +107,7 @@ export function routineExerciseNeedsWeightIncrease(item = {}, logs = []) {
 
   const loggedSet = lastItem.sets[item.sets.length - 1];
   if (!loggedSet || !isWorkingSet(loggedSet)) return false;
-  if (item.baselineId && item.baselineId !== lastItem.baselineId) return false;
+  if (personalBestContext(item) !== personalBestContext(lastItem)) return false;
 
   if (caps.common !== null) {
     return loggedRepValue(loggedSet) >= caps.common;

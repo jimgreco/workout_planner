@@ -4,6 +4,19 @@ import { bestPersonalBestSet, buildProgress, getExerciseHistory } from '../progr
 import { cleanSetup } from '../equipmentSetups.js';
 import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
 
+describe('unloaded barbell', () => {
+  it('counts an explicit zero plates as a 45 lb bar, while leaving blank loads unknown', () => {
+    expect(effectiveWeight('0', 'bar_double')).toBe(45);
+    expect(effectiveWeight('', 'bar_double')).toBe(0);
+    expect(bestPersonalBestSet([{ reps: '10', weight: '0' }], 'bar_double')).toMatchObject({ weightValue: 45 });
+    const history = getExerciseHistory('press', [{
+      id: 'bar', date: '2026-09-26', status: 'finished',
+      exerciseItems: [{ exerciseId: 'press', weightType: 'bar_double', sets: [{ reps: '10', weight: '0' }] }],
+    }]);
+    expect(history[0].volume).toBe(450);
+  });
+});
+
 describe('Smith + 2x', () => {
   it('adds the confirmed machine resistance, including fractional or zero resistance and an unloaded bar', () => {
     expect(effectiveWeight('45', 'smith_double', 20)).toBe(110);
