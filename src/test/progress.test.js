@@ -210,3 +210,13 @@ it('excludes blanks, skipped sets and warmups and compares only the latest techn
   expect(result.totalVolume).toBe(1200);
   expect(bestPersonalBestSet(sample[1].exerciseItems[0].sets, 'weight').weightValue).toBe(150);
 });
+
+
+describe('RIR evidence labels', () => {
+  it.each([undefined, null, '', '  '])('does not label unknown RIR %s as failure', (rir) => {
+    expect(setLabel({ reps: '8', weight: '100', rir })).not.toContain('RIR');
+  });
+  it.each(['0', 0])('preserves an explicit zero RIR %s', (rir) => {
+    expect(setLabel({ reps: '8', weight: '100', rir })).toContain('RIR 0');
+  });
+});

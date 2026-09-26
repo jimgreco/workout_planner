@@ -6,7 +6,9 @@ export default function EquipmentSetupEditor({ profile, onSave, onCancel, onDele
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const valid = Boolean(draft.machine.trim()) && Object.keys(setupFields).every(key => draft[key].length <= 120);
+  const resistance = String(draft.smithBarWeight ?? '').trim();
+  const validResistance = resistance === '' || (Number.isFinite(Number(resistance)) && Number(resistance) >= 0 && Number(resistance) <= 500);
+  const valid = validResistance && Boolean(draft.machine.trim()) && Object.keys(setupFields).every(key => draft[key].length <= 120);
   async function save() {
     setSaving(true);
     setError('');
@@ -26,6 +28,10 @@ export default function EquipmentSetupEditor({ profile, onSave, onCancel, onDele
     {Object.entries(setupFields).map(([key, label]) => <label key={key}>{label}
       <input type="text" maxLength={120} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
     </label>)}
+    <label>Smith bar resistance (lb, optional)
+      <input type="number" min="0" max="500" step="any" placeholder="Unknown" value={draft.smithBarWeight ?? ''} onChange={event => setDraft({ ...draft, smithBarWeight: event.target.value })} />
+    </label>
+    <small>Use the machine's labeled unloaded resistance. Leave blank if unknown; 0 means confirmed zero resistance.</small>
     <small>Use a new setup when changing equipment or load conventions to keep comparisons separate. Past workouts keep their recorded settings.</small>
     {error && <p role="alert">{error}</p>}
     <button type="button" className="btn btn-primary" disabled={!valid || saving} onClick={save}>{saving ? 'Saving…' : 'Save setup'}</button>

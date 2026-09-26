@@ -14,7 +14,7 @@ const MUSCLE_GROUPS = new Set([
   'Forearms', 'Core', 'Quads', 'Hamstrings', 'Glutes',
   'Calves', 'Full Body', 'Cardio', 'Other',
 ]);
-const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'none']);
+const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'smith_double', 'none']);
 const SET_TYPES = new Set(['warmup', 'working', 'drop', 'failure']);
 const SUPERSET_GROUPS = new Set(['A', 'B', 'C', 'D']);
 const PROGRESSION_TYPES = new Set(['double_progression', 'linear_weight', 'linear_reps', 'none']);
@@ -158,10 +158,11 @@ function workoutSet(value, index) {
     if (!WEIGHT_TYPES.has(placeholderWeightType)) fail('set.placeholderWeightType is invalid');
     set.placeholderWeightType = placeholderWeightType;
   }
-  for (const field of ['rpe', 'rir']) {
-    const str = stringValue(value[field], `set.${field}`, { max: 8 });
-    if (str !== undefined) set[field] = str;
-  }
+  const rpe = stringValue(value.rpe, 'set.rpe', { max: 8 });
+  if (rpe !== undefined) set.rpe = rpe;
+  // Canonical unknown effort is null; the string '0' is an intentional answer.
+  const rir = stringValue(value.rir, 'set.rir', { max: 8 });
+  set.rir = rir?.trim() || null;
   const completion = stringValue(value.completion, 'set.completion', { max: 16 });
   if (completion !== undefined) {
     if (!['recorded', 'skipped', 'unrecorded'].includes(completion)) fail('set.completion is invalid');
@@ -183,9 +184,10 @@ function workoutSet(value, index) {
 
 function setupProfile(value) {
   assertObject(value, 'setupProfile');
-  assertAllowedKeys(value, new Set(['id','name','gym','machine','seat','grip','loadConvention']), 'setupProfile');
+  assertAllowedKeys(value, new Set(['id','name','gym','machine','seat','grip','loadConvention','smithBarWeight']), 'setupProfile');
   const result = { id: validateId(value.id, 'setupProfile.id') };
   for (const key of ['name','gym','machine','seat','grip','loadConvention']) result[key] = stringValue(value[key], `setupProfile.${key}`, { max: 120 }) ?? '';
+  if (value.smithBarWeight != null) result.smithBarWeight = optionalNumber(value.smithBarWeight, 'setupProfile.smithBarWeight', 0, 500);
   if (!result.machine && !result.gym && !result.name) fail('Equipment setup needs equipment or gym details');
   if (!result.name) result.name = [result.gym, result.machine].filter(Boolean).join(' · ').slice(0, 120);
   return result;

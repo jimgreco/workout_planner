@@ -475,6 +475,31 @@ describe('WorkoutBuilder', () => {
       expect(onChange.mock.calls[0][0][0].supersetGroup).toBe('A');
     });
 
+    it('keeps unknown RIR separate from zero through selection, clearing, and adding a set', () => {
+      const onChange = vi.fn();
+      let items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100', rir: null }] }];
+      const { rerender } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+      const picker = () => screen.getByLabelText(/reps left for set 1 of bench press/i);
+      expect(picker()).toHaveValue('');
+      fireEvent.change(picker(), { target: { value: '0' } });
+      items = onChange.mock.lastCall[0];
+      expect(items[0].sets[0].rir).toBe('0');
+      rerender(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+      expect(picker()).toHaveValue('0');
+      fireEvent.click(screen.getByText(/Add Set/i));
+      expect(onChange.mock.lastCall[0][0].sets[1].rir ?? null).toBeNull();
+      fireEvent.change(picker(), { target: { value: '' } });
+      items = onChange.mock.lastCall[0];
+      expect(items[0].sets[0].rir).toBeNull();
+      rerender(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} />);
+      expect(picker()).toHaveValue('');
+    });
+
+    it.each([undefined, '', '  ', null])('renders unanswered RIR %s as Not sure', (rir) => {
+      render(<WorkoutBuilder exercises={exercises} items={[{ ...oneItem[0], sets: [{ ...oneItem[0].sets[0], rir }] }]} onChange={() => {}} />);
+      expect(screen.getByLabelText(/reps left for set 1 of bench press/i)).toHaveValue('');
+    });
+
     it('tracks type, RPE, and RIR for a set while logging', () => {
       const onChange = vi.fn();
       const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '10', weight: '100' }] }];
@@ -599,5 +624,35 @@ describe('equipment setup editing', () => {
   it('hides setup editing in read-only workouts', () => {
     render(<WorkoutBuilder exercises={exercises} items={[item]} onChange={() => {}} readOnly />);
     expect(screen.queryByRole('button', { name: 'Edit setup' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Smith weight recording', () => {
+  it('offers the mode and explains a known or unknown total', () => {
+    const onChange = vi.fn();
+    const item = { ...oneItem[0], weightType: 'smith_double', sets: [{ reps: '10', weight: '45' }], setupProfile: { id: 'smith', machine: 'Smith', smithBarWeight: 20 } };
+    const { rerender } = render(<WorkoutBuilder exercises={exercises} items={[item]} onChange={onChange} />);
+    expect(screen.getByRole('option', { name: 'Smith + 2x' })).toBeInTheDocument();
+    expect(screen.getByText('Total 110 lbs')).toBeInTheDocument();
+    rerender(<WorkoutBuilder exercises={exercises} items={[{ ...item, setupProfile: undefined }]} onChange={onChange} />);
+    expect(screen.getByText('90 lb plates + unknown bar')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/weight type for bench press/i), { target: { value: 'smith_double' } });
+    expect(onChange.mock.calls.at(-1)[0][0].weightType).toBe('smith_double');
+  });
+  it('validates and saves machine resistance without rewriting history', async () => {
+    const onChange = vi.fn();
+    const profile = { id: 'smith', machine: 'Smith' };
+    const item = { ...oneItem[0], weightType: 'smith_double', setupProfile: profile };
+    const logs = [{ exerciseItems: [item] }];
+    render(<WorkoutBuilder exercises={exercises} items={[item]} logs={logs} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    const field = screen.getByLabelText('Smith bar resistance (lb, optional)');
+    fireEvent.change(field, { target: { value: '-1' } });
+    expect(screen.getByRole('button', { name: 'Save setup' })).toBeDisabled();
+    fireEvent.change(field, { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save setup' }));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)[0][0].setupProfile.smithBarWeight).toBe(20);
+    expect(logs[0].exerciseItems[0].setupProfile.smithBarWeight).toBeUndefined();
   });
 });

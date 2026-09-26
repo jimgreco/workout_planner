@@ -1,7 +1,8 @@
+import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
 import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
 import { exerciseSetups, setupLabel, removingSetup } from '../equipmentSetups.js';
 import { saveExercise, getExercises, getTemplates } from '../api.js';
-import { completionLabel } from '../setEvidence.js';
+import { completionLabel, normalizedRir } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
 import { personalBestLabel } from '../progress.js';
@@ -65,13 +66,10 @@ function supersetLabel(group) {
 
 function weightTypeLabel(weightType) {
   if (weightType === 'bar_double') return 'Bar + 2x';
+  if (weightType === 'smith_double') return 'Smith + 2x';
   if (weightType === 'double') return 'Weight (2x)';
   if (weightType === 'none') return 'No Weight';
   return 'Weight';
-}
-
-function formatWeightNumber(value) {
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
 }
 
 function blurActiveEditableElement() {
@@ -84,24 +82,6 @@ function blurActiveEditableElement() {
   ) {
     activeElement.blur();
   }
-}
-
-function contextualWeightPlaceholder(weight, sourceWeightType, targetWeightType) {
-  const raw = String(weight ?? '').trim();
-  if (!raw) return '';
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return raw;
-
-  const sourceType = sourceWeightType || targetWeightType || 'weight';
-  const targetType = targetWeightType || 'weight';
-  let total = value;
-  if (sourceType === 'double') total = value * 2;
-  if (sourceType === 'bar_double') total = (value * 2) + 45;
-
-  let contextualValue = total;
-  if (targetType === 'double') contextualValue = total / 2;
-  if (targetType === 'bar_double') contextualValue = Math.max(0, (total - 45) / 2);
-  return formatWeightNumber(contextualValue);
 }
 
 function repRange(value) {
@@ -329,6 +309,7 @@ export default function WorkoutBuilder({
   }
 
   function updateSet(itemIdx, setIdx, field, value, options = {}) {
+    if (field === 'rir') value = normalizedRir(value);
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       return {
@@ -570,6 +551,7 @@ export default function WorkoutBuilder({
                       placeholder="Depth, bench angle, machine setting…"
                       onChange={e => updateItem(idx, { techniqueNote: e.target.value })} />
                   </label>
+                  {item.weightType === 'smith_double' && <small>Enter plates on one side. Set Smith bar resistance in Equipment setup; leave it unknown until confirmed. Unknown resistance is excluded from total-load volume and PRs.</small>}
                   {item.baselineId && <small>New comparison baseline · {item.baselineId.slice(0, 10)}</small>}
                   {!readOnly && <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateItem(idx, { baselineId: `${new Date().toISOString().slice(0, 10)}_${crypto.randomUUID()}` })}>Start new technique baseline</button>}
                   <small>Use a new baseline after changing technique or equipment. Past workouts stay unchanged.</small>
@@ -683,6 +665,7 @@ export default function WorkoutBuilder({
                           <option value="weight">Weight</option>
                           <option value="double">Weight (2x)</option>
                           <option value="bar_double">Bar + 2x</option>
+                          <option value="smith_double">Smith + 2x</option>
                           <option value="none">No Weight</option>
                         </select>
                       ) : (
@@ -758,6 +741,7 @@ export default function WorkoutBuilder({
                               disabled={readOnly}
                               aria-label={`Weight for set ${si + 1} of ${ex.name}`}
 	                            />
+                            {item.weightType === 'smith_double' && <small>{smithWeightCaption(set.weight, item.setupProfile?.smithBarWeight)}</small>}
                           </div>
                         )}
                       </td>
@@ -858,7 +842,7 @@ export default function WorkoutBuilder({
                               />
                             </label>}
                             <label><span>Reps left</span>
-                              <select value={set.rir || ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
+                              <select value={normalizedRir(set.rir) ?? ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
                                 <option value="">Not sure</option>{['0','1','2','3','4','5','6','7','8','9','10'].map(v => <option key={v} value={v}>{v}</option>)}
                               </select>
                             </label>

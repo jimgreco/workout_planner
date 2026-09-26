@@ -36,6 +36,12 @@ struct ProgressDashboardView: View {
                             ProgressMetricCard(title: "PRs", value: "\(stats.pbCount)", subtitle: "in range", icon: "star.fill")
                         }
 
+                        if store.logs.finishedWorkoutLogs().contains(where: { $0.exerciseItems.contains(where: { $0.weightType == "smith_double" && validSmithBarWeight($0.setupProfile?.smithBarWeight) == nil }) }) {
+                            Text("Volume and PRs exclude Smith sets whose bar resistance is unknown; their working sets still count.")
+                                .font(.caption)
+                                .foregroundStyle(Theme.muted)
+                        }
+
                         if let best = stats.topExercises.first(where: { $0.bestSet != nil }) {
                             ProgressCallout(summary: best)
                         }
@@ -563,17 +569,18 @@ private struct ProgressRow: View {
 }
 
 func exerciseHistory(exerciseId: String, logs: [WorkoutLog]) -> [ExerciseHistoryEntry] {
-    let baseline = logs.finishedWorkoutLogs().flatMap { $0.exerciseItems }.first { $0.exerciseId == exerciseId }?.baselineId
+    let latestItem = logs.finishedWorkoutLogs().flatMap { $0.exerciseItems }.first { $0.exerciseId == exerciseId }
+    let baseline = latestItem?.baselineId
     return logs.finishedWorkoutLogs().compactMap { log in
         guard let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId }) else { return nil }
-        guard item.baselineId == baseline else { return nil }
+        guard item.baselineId == baseline, smithLoadContext(item) == smithLoadContext(latestItem) else { return nil }
         let best = item.sets.filter(isRecordedWorkingSet).compactMap { set -> ExerciseBestSet? in
             let reps = repBest(set)
             let score: Double
             if item.weightType == "none" {
                 score = reps
             } else {
-                score = estimatedOneRepMax(weight: effectiveWeight(set.weight, weightType: item.weightType), reps: reps)
+                score = estimatedOneRepMax(weight: effectiveWeight(set.weight, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight), reps: reps)
             }
             guard score > 0 else { return nil }
             return ExerciseBestSet(set: set, weightType: item.weightType, score: score, date: log.date)
@@ -673,7 +680,7 @@ private func strongestExerciseImprovement(exercises: [Exercise], logs: [WorkoutL
 
 func volumeForItem(_ item: ExerciseItem) -> Double {
     item.sets.filter(isRecordedWorkingSet).reduce(0) { total, set in
-        total + effectiveWeight(set.weight, weightType: item.weightType) * repTotal(set)
+        total + effectiveWeight(set.weight, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight) * repTotal(set)
     }
 }
 
@@ -694,12 +701,8 @@ func number(_ value: String?) -> Double {
     Double((value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 }
 
-func effectiveWeight(_ weight: String?, weightType: String?) -> Double {
-    let value = number(weight)
-    guard value > 0, weightType != "none" else { return 0 }
-    if weightType == "bar_double" { return (value * 2) + 45 }
-    if weightType == "double" { return value * 2 }
-    return value
+func effectiveWeight(_ weight: String?, weightType: String?, smithBarWeight: Double? = nil) -> Double {
+    effectiveRecordedWeight(weight, weightType: weightType, smithBarWeight: smithBarWeight) ?? 0
 }
 
 func estimatedOneRepMax(weight: Double, reps: String?) -> Double {
@@ -722,7 +725,7 @@ func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool = false) ->
     let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
     guard weightType != "none" else { return "\(typePrefix)\(reps) \(unit)\(effortSuffix)" }
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
-    let suffix = weightType == "bar_double" ? " (bar + 2x)" : weightType == "double" ? " (2x)" : ""
+    let suffix = weightType == "smith_double" ? " (Smith + 2x)" : weightType == "bar_double" ? " (bar + 2x)" : weightType == "double" ? " (2x)" : ""
     return "\(typePrefix)\(reps) x \(weight)\(suffix)\(effortSuffix)"
 }
 

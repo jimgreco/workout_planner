@@ -129,9 +129,55 @@ struct WorkoutSet: Codable, Equatable {
         self.restDuration = restDuration
         self.restTargetSeconds = restTargetSeconds
         self.rpe = rpe
-        self.rir = rir
+        self.rir = Self.normalizedRir(rir)
         self.setType = setType
         self.completion = completion
+    }
+
+    static func normalizedRir(_ value: String?) -> String? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case reps
+        case repsLeft
+        case repsRight
+        case repMode
+        case weight
+        case placeholderReps
+        case placeholderRepsLeft
+        case placeholderRepsRight
+        case placeholderWeight
+        case placeholderWeightType
+        case restStartTime
+        case restDuration
+        case restTargetSeconds
+        case rpe
+        case rir
+        case completion
+        case setType
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(reps, forKey: .reps)
+        try container.encodeIfPresent(repsLeft, forKey: .repsLeft)
+        try container.encodeIfPresent(repsRight, forKey: .repsRight)
+        try container.encodeIfPresent(repMode, forKey: .repMode)
+        try container.encodeIfPresent(weight, forKey: .weight)
+        try container.encodeIfPresent(placeholderReps, forKey: .placeholderReps)
+        try container.encodeIfPresent(placeholderRepsLeft, forKey: .placeholderRepsLeft)
+        try container.encodeIfPresent(placeholderRepsRight, forKey: .placeholderRepsRight)
+        try container.encodeIfPresent(placeholderWeight, forKey: .placeholderWeight)
+        try container.encodeIfPresent(placeholderWeightType, forKey: .placeholderWeightType)
+        try container.encodeIfPresent(restStartTime, forKey: .restStartTime)
+        try container.encodeIfPresent(restDuration, forKey: .restDuration)
+        try container.encodeIfPresent(restTargetSeconds, forKey: .restTargetSeconds)
+        try container.encodeIfPresent(rpe, forKey: .rpe)
+        try container.encode(Self.normalizedRir(rir), forKey: .rir)
+        try container.encodeIfPresent(completion, forKey: .completion)
+        try container.encodeIfPresent(setType, forKey: .setType)
     }
 }
 
@@ -143,6 +189,7 @@ struct EquipmentSetup: Codable, Identifiable, Equatable {
     var seat = ""
     var grip = ""
     var loadConvention = ""
+    var smithBarWeight: Double?
 
     var displayName: String {
         let parts = [gym, machine].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
@@ -151,7 +198,8 @@ struct EquipmentSetup: Codable, Identifiable, Equatable {
 
     var isValid: Bool {
         !machine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        [gym, machine, seat, grip, loadConvention].allSatisfy { $0.count <= 120 }
+        [gym, machine, seat, grip, loadConvention].allSatisfy { $0.count <= 120 } &&
+        (smithBarWeight == nil || validSmithBarWeight(smithBarWeight) != nil)
     }
 
     var cleaned: EquipmentSetup {
@@ -572,7 +620,7 @@ struct WorkoutSettings: Codable, Equatable {
     }
 }
 
-private let workoutWeightTypes: Set<String> = ["weight", "double", "bar_double", "none"]
+private let workoutWeightTypes: Set<String> = ["weight", "double", "bar_double", "smith_double", "none"]
 
 private func workoutLogSortKey(_ log: WorkoutLog) -> String {
     log.endTime ?? log.startTime ?? "\(log.date)T00:00:00"
@@ -1403,12 +1451,27 @@ private func personalBestNumberLabel(_ value: Double) -> String {
     value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
 }
 
-private func effectivePersonalBestWeight(_ weight: String?, weightType: String?) -> Double {
-    let value = personalBestNumber(weight)
-    guard value > 0, weightType != "none" else { return 0 }
-    if weightType == "bar_double" { return (value * 2) + 45 }
+func validSmithBarWeight(_ value: Double?) -> Double? {
+    guard let value, value.isFinite, value >= 0, value <= 500 else { return nil }
+    return value
+}
+
+func effectiveRecordedWeight(_ weight: String?, weightType: String?, smithBarWeight: Double? = nil) -> Double? {
+    let raw = (weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !raw.isEmpty, let value = Double(raw), value.isFinite, value >= 0, weightType != "none" else { return 0 }
+    if weightType == "smith_double" {
+        guard let resistance = validSmithBarWeight(smithBarWeight) else { return nil }
+        return value * 2 + resistance
+    }
+    guard value > 0 else { return 0 }
+    if weightType == "bar_double" { return value * 2 + 45 }
     if weightType == "double" { return value * 2 }
     return value
+}
+
+func smithLoadContext(_ item: ExerciseItem?) -> String {
+    guard item?.weightType == "smith_double" else { return "other" }
+    return "smith:" + (validSmithBarWeight(item?.setupProfile?.smithBarWeight).map { String($0) } ?? "unknown")
 }
 
 private func personalBestTextLabel(_ value: String?) -> String? {
@@ -1429,10 +1492,10 @@ func personalBestLabel(_ best: PersonalBest?, usesTime: Bool = false) -> String?
     return "\(weight) lbs"
 }
 
-func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "weight") -> PersonalBestCandidate? {
+func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "weight", smithBarWeight: Double? = nil) -> PersonalBestCandidate? {
     sets.reduce(PersonalBestCandidate?.none) { current, set in
         guard isRecordedWorkingSet(set) else { return current }
-        let weight = effectivePersonalBestWeight(set.weight, weightType: weightType)
+        let weight = effectiveRecordedWeight(set.weight, weightType: weightType, smithBarWeight: smithBarWeight) ?? 0
         guard weight > 0 else { return current }
         let reps = personalBestNumber(set.reps)
         if current == nil || weight > current!.weightValue || (weight == current!.weightValue && reps > current!.repsValue) {
@@ -1508,10 +1571,14 @@ func formatProgressionNumber(_ value: Double) -> String {
 }
 
 func reservesCalculatedWeightCaption(weightType: String?) -> Bool {
-    weightType == "double" || weightType == "bar_double"
+    weightType == "double" || weightType == "bar_double" || weightType == "smith_double"
 }
 
-func calculatedWeightTotal(weight: String?, weightType: String?) -> Double? {
+func calculatedWeightTotal(weight: String?, weightType: String?, smithBarWeight: Double? = nil) -> Double? {
+    if weightType == "smith_double" {
+        guard let raw = weight, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return effectiveRecordedWeight(raw, weightType: weightType, smithBarWeight: smithBarWeight)
+    }
     let value = Double((weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     guard value > 0 else { return nil }
     switch weightType {
@@ -1524,8 +1591,12 @@ func calculatedWeightTotal(weight: String?, weightType: String?) -> Double? {
     }
 }
 
-func calculatedWeightCaption(weight: String?, weightType: String?) -> String? {
-    guard let total = calculatedWeightTotal(weight: weight, weightType: weightType) else { return nil }
+func calculatedWeightCaption(weight: String?, weightType: String?, smithBarWeight: Double? = nil) -> String? {
+    if weightType == "smith_double", validSmithBarWeight(smithBarWeight) == nil,
+       let value = Double((weight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)), value.isFinite, value >= 0 {
+        return "\(formatProgressionNumber(value * 2)) lb plates + unknown bar"
+    }
+    guard let total = calculatedWeightTotal(weight: weight, weightType: weightType, smithBarWeight: smithBarWeight) else { return nil }
     return "Total \(formatProgressionNumber(total)) lbs"
 }
 
@@ -1536,6 +1607,7 @@ func contextualWeightPlaceholder(weight: String?, sourceWeightType: String?, tar
 
     let sourceType = sourceWeightType ?? targetWeightType ?? "weight"
     let targetType = targetWeightType ?? "weight"
+    if sourceType == "smith_double" || targetType == "smith_double" { return sourceType == targetType ? raw : nil }
     let total: Double
     switch sourceType {
     case "double":

@@ -730,7 +730,7 @@ export default function WorkoutLog({
       let currentExercises = [...exercises];
       for (const item of items) {
         if (item.baselineId) continue;
-        const candidate = bestPersonalBestSet(item.sets, item.weightType);
+        const candidate = bestPersonalBestSet(item.sets, item.weightType, item.setupProfile?.smithBarWeight);
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
         if (!ex || !isPersonalBestImprovement(candidate, ex.personalBest)) continue;
         const personalBest = personalBestPayload(candidate, date);

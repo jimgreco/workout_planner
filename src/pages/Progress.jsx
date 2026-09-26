@@ -1,3 +1,4 @@
+import { smithBarWeight } from '../weight.js';
 import { useState } from 'react';
 import { BarChart3, CalendarDays, Dumbbell, Flame, Star, Trophy, TrendingUp } from 'lucide-react';
 import { buildProgress, formatVolume, setLabel } from '../progress.js';
@@ -224,6 +225,7 @@ export default function Progress({ logs, exercises }) {
             <StatCard icon={<Star size={18} />} label="PRs" value={progress.pbCount} detail="in range" />
           </div>
 
+          {progress.logs.some(log => log.exerciseItems?.some(item => item.weightType === 'smith_double' && smithBarWeight(item.setupProfile?.smithBarWeight) === null)) && <p className="muted">Volume and PRs exclude Smith sets whose bar resistance is unknown; their working sets still count.</p>}
           <LatestBest items={progress.topExercises} />
 
           <TrendSummary metrics={progress.trends} improvement={progress.strongestImprovement} />

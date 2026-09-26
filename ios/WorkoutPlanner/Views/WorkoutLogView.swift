@@ -580,7 +580,7 @@ struct WorkoutLogView: View {
             var pbExercises: [String] = []
 
             for item in items where item.baselineId == nil {
-                let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType)
+                let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight)
                 guard var exercise = store.exercise(id: item.exerciseId),
                       isPersonalBestImprovement(candidate, over: exercise.personalBest),
                       let candidate
@@ -1080,7 +1080,7 @@ struct WorkoutLogView: View {
             items[itemIndex].sets[setIndex].rpe = ""
         case .rir:
             guard items[itemIndex].sets[setIndex].rir?.isEmpty == false else { return }
-            items[itemIndex].sets[setIndex].rir = ""
+            items[itemIndex].sets[setIndex].rir = nil
         }
         hasPendingBuilderCommit = true
     }
@@ -1347,6 +1347,7 @@ struct WorkoutLogView: View {
         let weight = (context.set.weight?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
             ?? liveWeightPlaceholder(for: context)
         guard let weight else { return nil }
+        if context.item.weightType == "smith_double" { return "\(weight) each + Smith" }
         if context.item.weightType == "bar_double" { return "\(weight) + bar" }
         return context.item.weightType == "double" ? "\(weight) each" : "\(weight) lb"
     }
@@ -1354,7 +1355,7 @@ struct WorkoutLogView: View {
     private func liveWeightCaption(for context: WorkoutLiveSetContext) -> String? {
         guard context.item.weightType != "none" else { return nil }
         let weight = liveCleaned(context.set.weight) ?? liveWeightPlaceholder(for: context)
-        return calculatedWeightCaption(weight: weight, weightType: context.item.weightType)
+        return calculatedWeightCaption(weight: weight, weightType: context.item.weightType, smithBarWeight: context.item.setupProfile?.smithBarWeight)
     }
 
     private func liveWeightLastLabel(for context: WorkoutLiveSetContext) -> String? {
@@ -1383,6 +1384,7 @@ struct WorkoutLogView: View {
         switch weightType ?? "weight" {
         case "double": return "2x"
         case "bar_double": return "Bar"
+        case "smith_double": return "Smith"
         case "none": return "None"
         default: return "1x"
         }
@@ -1585,6 +1587,7 @@ private let liveWeightTypeOptions: [(label: String, value: String)] = [
     ("Weight", "weight"),
     ("2x weight", "double"),
     ("Bar + 2x", "bar_double"),
+    ("Smith + 2x", "smith_double"),
     ("No weight", "none"),
 ]
 
@@ -1997,7 +2000,7 @@ private struct WorkoutLiveActivityCard: View {
         let repRange = quickRepRange(for: context.exercise)
         let weightBinding = weightValueBinding(set, context: context)
         let weightSeed = showsWeight ? weightSeedValue(for: context) : nil
-        let weightCaption = showsWeight ? calculatedWeightCaption(weight: formatProgressionNumber(weightBinding.wrappedValue), weightType: context.item.weightType) : nil
+        let weightCaption = showsWeight ? calculatedWeightCaption(weight: formatProgressionNumber(weightBinding.wrappedValue), weightType: context.item.weightType, smithBarWeight: context.item.setupProfile?.smithBarWeight) : nil
 
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: liveGridSpacing) {
@@ -2459,7 +2462,13 @@ private struct WorkoutLiveActivityCard: View {
     }
 
     private func repsLeftMenu(set: Binding<WorkoutSet>) -> some View {
-        let rir = stringBinding(set, \.rir)
+        let rir = Binding<String>(
+            get: { WorkoutSet.normalizedRir(set.wrappedValue.rir) ?? "" },
+            set: { value in
+                set.wrappedValue.rir = WorkoutSet.normalizedRir(value)
+                onTextChanged()
+            }
+        )
         return Menu {
             Button("Not sure") { rir.wrappedValue = "" }
             ForEach(0...10, id: \.self) { value in
@@ -2515,6 +2524,7 @@ private struct WorkoutLiveActivityCard: View {
         switch weightType ?? "weight" {
         case "double": return "2x"
         case "bar_double": return "Bar"
+        case "smith_double": return "Smith"
         case "none": return "None"
         default: return "1x"
         }
@@ -2628,6 +2638,7 @@ private struct WorkoutLiveActivityCard: View {
     private func weightLabel(for context: WorkoutLiveSetContext) -> String? {
         guard context.item.weightType != "none" else { return nil }
         guard let weight = cleaned(context.set.weight) ?? weightPlaceholder(for: context) else { return nil }
+        if context.item.weightType == "smith_double" { return "\(weight) lb each + Smith" }
         if context.item.weightType == "bar_double" { return "\(weight) lb each + bar" }
         return context.item.weightType == "double" ? "\(weight) lb each" : "\(weight) lb"
     }
@@ -2644,6 +2655,7 @@ private struct WorkoutLiveActivityCard: View {
         switch type {
         case "double": return "2x weight"
         case "bar_double": return "Bar + 2x"
+        case "smith_double": return "Smith + 2x"
         case "none": return "No weight"
         default: return "Weight"
         }

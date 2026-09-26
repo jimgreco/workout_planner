@@ -8,3 +8,10 @@ export function isWorkingSet(set = {}) {
 export function completionLabel(set = {}) {
   return set.completion || (hasRecordedReps(set) ? 'recorded' : 'unrecorded');
 }
+
+// Unknown effort is distinct from an explicitly recorded zero reps remaining.
+export function normalizedRir(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text === '' ? null : text;
+}

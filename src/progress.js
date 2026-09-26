@@ -1,4 +1,5 @@
-import { isWorkingSet } from './setEvidence.js';
+import { effectiveWeight, smithLoadContext } from './weight.js';
+import { isWorkingSet, normalizedRir } from './setEvidence.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseDay(day) {
@@ -8,14 +9,6 @@ function parseDay(day) {
 function numeric(value) {
   const parsed = Number.parseFloat(String(value ?? '').trim());
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function effectiveWeight(weight, weightType = 'weight') {
-  const value = numeric(weight);
-  if (value <= 0 || weightType === 'none') return 0;
-  if (weightType === 'bar_double') return (value * 2) + 45;
-  if (weightType === 'double') return value * 2;
-  return value;
 }
 
 function setRepTotal(set) {
@@ -31,8 +24,8 @@ function setRepBest(set) {
   return Math.max(numeric(set.reps), numeric(set.repsLeft), numeric(set.repsRight));
 }
 
-function setVolume(set, weightType) {
-  return effectiveWeight(set.weight, weightType) * setRepTotal(set);
+function setVolume(set, weightType, barWeight) {
+  return (effectiveWeight(set.weight, weightType, barWeight) ?? 0) * setRepTotal(set);
 }
 
 function formatNumber(value) {
@@ -69,11 +62,11 @@ export function personalBestLabel(personalBest, usesTime = false) {
   return numeric(personalBest.reps) > 0 ? `${weight} x ${reps} ${usesTime ? 'secs' : 'reps'}` : weight;
 }
 
-export function bestPersonalBestSet(sets = [], weightType = 'weight') {
+export function bestPersonalBestSet(sets = [], weightType = 'weight', barWeight) {
   return sets.reduce((best, set) => {
     if (!isWorkingSet(set)) return best;
-    const weightValue = effectiveWeight(set.weight, weightType);
-    if (weightValue <= 0) return best;
+    const weightValue = effectiveWeight(set.weight, weightType, barWeight);
+    if (weightValue === null || weightValue <= 0) return best;
     const repsValue = setRepBest(set);
     if (!best || weightValue > best.weightValue || (weightValue === best.weightValue && repsValue > best.repsValue)) {
       return {
@@ -115,12 +108,12 @@ export function setLabel(set, weightType = 'weight', usesTime = false) {
     : '';
   const effort = [
     set.rpe ? `RPE ${set.rpe}` : '',
-    set.rir ? `RIR ${set.rir}` : '',
+    normalizedRir(set.rir) !== null ? `RIR ${normalizedRir(set.rir)}` : '',
   ].filter(Boolean).join(' · ');
   const effortSuffix = effort ? ` · ${effort}` : '';
   if (weightType === 'none') return `${typePrefix}${reps} ${unit}${effortSuffix}`;
   const weight = set.weight ? `${formatWeight(set.weight)} lb` : '—';
-  const suffix = weightType === 'bar_double' ? ' (bar + 2x)' : weightType === 'double' ? ' (2x)' : '';
+  const suffix = weightType === 'smith_double' ? ' (Smith + 2x)' : weightType === 'bar_double' ? ' (bar + 2x)' : weightType === 'double' ? ' (2x)' : '';
   return `${typePrefix}${reps} x ${weight}${suffix}${effortSuffix}`;
 }
 
@@ -132,15 +125,17 @@ export function estimateOneRepMax(weight, reps) {
 }
 
 export function getExerciseHistory(exerciseId, logs = []) {
-  const baseline = finishedLogs(logs).flatMap(log => log.exerciseItems || []).find(item => item.exerciseId === exerciseId)?.baselineId;
+  const latestItem = finishedLogs(logs).flatMap(log => log.exerciseItems || []).find(item => item.exerciseId === exerciseId);
+  const baseline = latestItem?.baselineId;
   return finishedLogs(logs)
     .map((log) => {
       const item = (log.exerciseItems || []).find((entry) => entry.exerciseId === exerciseId);
-      if (!item || (item.baselineId || null) !== (baseline || null)) return null;
+      if (!item || (item.baselineId || null) !== (baseline || null) || smithLoadContext(item) !== smithLoadContext(latestItem)) return null;
       const sets = (item.sets || []).filter(isWorkingSet);
-      const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
+      const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType, item.setupProfile?.smithBarWeight), 0);
       const bestSet = sets.reduce((best, set) => {
-        const weight = effectiveWeight(set.weight, item.weightType);
+        const weight = effectiveWeight(set.weight, item.weightType, item.setupProfile?.smithBarWeight);
+        if (weight === null) return best;
         const reps = numeric(set.reps);
         const score = item.weightType === 'none'
           ? reps
@@ -228,7 +223,7 @@ function summarizeLogsForTrend(logs, exerciseById) {
     for (const item of log.exerciseItems || []) {
       const itemSets = (item.sets || []).filter(isWorkingSet);
       sets += itemSets.length;
-      volume += itemSets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
+      volume += itemSets.reduce((sum, set) => sum + setVolume(set, item.weightType, item.setupProfile?.smithBarWeight), 0);
       if (!exerciseById.has(item.exerciseId)) exerciseById.set(item.exerciseId, { id: item.exerciseId, name: 'Unknown', muscleGroup: 'Other' });
     }
   }
@@ -311,7 +306,7 @@ export function buildProgress(logs = [], exercises = [], rangeDays = '90') {
       const muscleGroup = exercise?.muscleGroup || 'Other';
       const sets = (item.sets || []).filter(isWorkingSet);
       const setCount = sets.length;
-      const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType), 0);
+      const volume = sets.reduce((sum, set) => sum + setVolume(set, item.weightType, item.setupProfile?.smithBarWeight), 0);
       totalVolume += volume;
       totalSets += setCount;
       weekStats.volume += volume;

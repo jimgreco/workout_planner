@@ -18,6 +18,8 @@ export function setupDraft(profile = {}) {
 export function cleanSetup(draft) {
   const profile = { id: draft.id || crypto.randomUUID() };
   for (const key of Object.keys(setupFields)) profile[key] = (draft[key] || '').trim();
+  const rawResistance = String(draft.smithBarWeight ?? '').trim();
+  if (rawResistance !== '') profile.smithBarWeight = Number(rawResistance);
   // Retain a derived name for older app versions and exports.
   return { ...profile, name: setupLabel(profile).slice(0, 120) };
 }

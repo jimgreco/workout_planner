@@ -1,5 +1,5 @@
 import { isWorkingSet } from './setEvidence.js';
-const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'none']);
+const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'smith_double', 'none']);
 
 function logSortKey(log = {}) {
   return log.endTime || log.startTime || (log.date ? `${log.date}T00:00:00` : '');

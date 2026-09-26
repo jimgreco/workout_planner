@@ -189,7 +189,7 @@ test('validates dated phases and optional schedule without losing evidence field
   assert.throws(()=>validateProgram({...program,phases:[{...program.phases[0],setsPerExercise:0}]},'program'));
 });
 test('workouts retain prescription and named equipment setup in validated exports', () => {
-  const item={exerciseId:'press',weightType:'weight',sets:[{reps:'8',weight:'60'}],setupProfile:{id:'gym-a',name:'City press',gym:'City',machine:'Hammer',seat:'3',grip:'Neutral',loadConvention:'Per side'}};
+  const item={exerciseId:'press',weightType:'weight',sets:[{reps:'8',weight:'60',rir:null}],setupProfile:{id:'gym-a',name:'City press',gym:'City',machine:'Hammer',seat:'3',grip:'Neutral',loadConvention:'Per side'}};
   const original={id:'log',name:'Upper',date:'2026-09-21',exerciseItems:[item],prescription:{templateId:'routine',templateName:'Upper',programId:'build',programName:'Build',phaseName:'Calibration',day:'2026-09-21',optional:false,exerciseItems:[item],targetRir:3}};
   const clean=validateLog(original,'log');assert.deepEqual(clean.prescription,original.prescription);assert.deepEqual(clean.exerciseItems[0].setupProfile,item.setupProfile);
   assert.throws(()=>validateLog({...original,prescription:{...original.prescription,templateId:''}},'log'));
@@ -261,5 +261,35 @@ test('program occurrence edits round-trip and reject malformed operations', () =
   assert.deepEqual(validateImport({data:{programs:[p]}}).programs[0].scheduleEdits,p.scheduleEdits);
   for (const edits of [[{...p.scheduleEdits[0],type:'swap'}],[{...p.scheduleEdits[0],type:'invalid'}],[{...p.scheduleEdits[0],date:'invalid'}],[...p.scheduleEdits,...p.scheduleEdits],Array(501).fill(p.scheduleEdits[0])]) {
     assert.throws(()=>validateProgram({...p,scheduleEdits:edits},'p'),ValidationError);
+  }
+});
+
+
+test('round-trips unknown RIR as null and preserves explicit zero in logs, templates, and imports', () => {
+  for (const [input, expected] of [[undefined, null], [null, null], ['', null], ['  ', null], ['0', '0'], [' 2 ', '2']]) {
+    const exerciseItems = [{ exerciseId: 'ex-1', sets: [{ reps: '8', weight: '100', ...(input === undefined ? {} : { rir: input }) }] }];
+    const log = validateLog({ id: 'log-rir', name: 'Push', date: '2026-09-18', exerciseItems }, 'log-rir');
+    const template = validateTemplate({ id: 'template-rir', name: 'Push', exerciseItems }, 'template-rir');
+    const imported = validateImport({ data: JSON.parse(JSON.stringify({ logs: [log], templates: [template] })) });
+    for (const entry of [log, template, imported.logs[0], imported.templates[0]]) {
+      assert.equal(entry.exerciseItems[0].sets[0].rir, expected);
+      assert.equal(JSON.parse(JSON.stringify(entry)).exerciseItems[0].sets[0].rir, expected);
+    }
+  }
+});
+
+test('Smith mode and machine resistance round-trip through workouts, prescriptions, routines and imports', () => {
+  for (const resistance of [undefined, null, 0, 20, 17.5]) {
+    const setup = { id: 'smith-setup', machine: 'Smith', ...(resistance !== undefined ? { smithBarWeight: resistance } : {}) };
+    const item = { exerciseId: 'smith', weightType: 'smith_double', setupProfile: setup, sets: [{ reps: '10', weight: '45', placeholderWeightType: 'smith_double' }] };
+    const routine = validateTemplate({ name: 'Smith routine', exerciseItems: [item] }, 'routine');
+    const log = validateLog({ name: 'Smith workout', date: '2026-09-25', exerciseItems: [item], prescription: { templateId: 'routine', templateName: 'Smith routine', day: '2026-09-25', optional: false, exerciseItems: [item] } }, 'log');
+    const imported = validateImport({ data: { exercises: [], templates: [routine], logs: [log] } });
+    assert.equal(imported.logs[0].exerciseItems[0].weightType, 'smith_double');
+    assert.equal(imported.logs[0].prescription.exerciseItems[0].setupProfile.smithBarWeight, resistance ?? undefined);
+    assert.equal(imported.templates[0].exerciseItems[0].setupProfile.smithBarWeight, resistance ?? undefined);
+  }
+  for (const resistance of [-1, 501, Infinity, 'unknown']) {
+    assert.throws(() => validateExercise({ name: 'Smith', equipmentSetups: [{ id: 's', machine: 'Smith', smithBarWeight: resistance }] }, 'smith'), ValidationError);
   }
 });

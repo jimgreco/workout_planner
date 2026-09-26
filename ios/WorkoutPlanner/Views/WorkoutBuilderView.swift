@@ -556,9 +556,10 @@ private struct ExerciseSetsCard: View {
                     Text("Weight").tag("weight")
                     Text("2x").tag("double")
                     Text("Bar + 2x").tag("bar_double")
+                    Text("Smith + 2x").tag("smith_double")
                     Text("None").tag("none")
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
             }
 
             if !readOnly {
@@ -889,6 +890,7 @@ private struct ExerciseSetsCard: View {
         switch item.weightType {
         case "double": return "2x Weight"
         case "bar_double": return "Bar + 2x"
+        case "smith_double": return "Smith + 2x"
         case "none": return ""
         default: return "Weight"
         }
@@ -1358,7 +1360,7 @@ private struct ExerciseSetsCard: View {
                         focusedField: $focusedField,
                         isActive: active,
                         isDisabled: readOnly,
-                        caption: calculatedWeightCaption(weight: item.sets[setIndex].weight, weightType: item.weightType),
+                        caption: calculatedWeightCaption(weight: item.sets[setIndex].weight, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight),
                         reservesCaptionSpace: reservesCalculatedWeightCaption(weightType: item.weightType)
                     )
                     .frame(maxWidth: .infinity)
@@ -1436,8 +1438,8 @@ private struct ExerciseSetsCard: View {
                     effortField(
                         label: "RIR",
                         value: Binding(
-                            get: { item.sets[setIndex].rir ?? "" },
-                            set: { item.sets[setIndex].rir = $0; onTextChanged?() }
+                            get: { WorkoutSet.normalizedRir(item.sets[setIndex].rir) ?? "" },
+                            set: { item.sets[setIndex].rir = WorkoutSet.normalizedRir($0); onTextChanged?() }
                         ),
                         focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .numberPad
@@ -1539,8 +1541,8 @@ private struct ExerciseSetsCard: View {
                     effortField(
                         label: "RIR",
                         value: Binding(
-                            get: { item.sets[setIndex].rir ?? "" },
-                            set: { item.sets[setIndex].rir = $0; onTextChanged?() }
+                            get: { WorkoutSet.normalizedRir(item.sets[setIndex].rir) ?? "" },
+                            set: { item.sets[setIndex].rir = WorkoutSet.normalizedRir($0); onTextChanged?() }
                         ),
                         focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .numberPad
@@ -1628,7 +1630,7 @@ private struct ExerciseSetsCard: View {
                 focusedField: $focusedField,
                 isActive: active,
                 isDisabled: readOnly,
-                caption: calculatedWeightCaption(weight: item.sets[setIndex].weight, weightType: item.weightType),
+                caption: calculatedWeightCaption(weight: item.sets[setIndex].weight, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight),
                 reservesCaptionSpace: reservesCalculatedWeightCaption(weightType: item.weightType)
             )
         }
@@ -2086,6 +2088,11 @@ struct EquipmentSetupPicker: View {
             } else {
                 fullSetupPicker
             }
+            if item.weightType == "smith_double" {
+                Text("Enter plates on one side. Set the machine's unloaded resistance in Equipment setup. Leave it unknown until confirmed; unknown totals are excluded from volume and PRs.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+            }
         }
         .sheet(item: $draft) { profile in
             EquipmentSetupEditor(profile: profile, onDelete: editingExisting ? {
@@ -2189,6 +2196,7 @@ struct EquipmentSetupPicker: View {
 struct EquipmentSetupEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: EquipmentSetup
+    @State private var smithBarWeightText: String
     @State private var saving = false
     @State private var error: String?
     let onSave: (EquipmentSetup) async throws -> Void
@@ -2199,8 +2207,13 @@ struct EquipmentSetupEditor: View {
         var editable = profile
         if editable.machine.isEmpty && editable.gym.isEmpty { editable.machine = editable.name }
         _draft = State(initialValue: editable)
+        _smithBarWeightText = State(initialValue: editable.smithBarWeight.map(formatProgressionNumber) ?? "")
         self.onSave = onSave
         self.onDelete = onDelete
+    }
+
+    private var validResistance: Bool {
+        smithBarWeightText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || validSmithBarWeight(Double(smithBarWeightText)) != nil
     }
 
     var body: some View {
@@ -2214,6 +2227,10 @@ struct EquipmentSetupEditor: View {
                     TextField("Seat / bench setting", text: $draft.seat)
                     TextField("Grip / attachment", text: $draft.grip)
                     TextField("Load convention: per hand, total, stack", text: $draft.loadConvention)
+                    TextField("Smith bar resistance (lb, optional)", text: $smithBarWeightText)
+                        .keyboardType(.decimalPad)
+                    Text("Use the machine's labeled unloaded resistance. Blank means unknown; 0 means confirmed zero resistance.")
+                        .font(.caption)
                 }
                 Section {
                     Text("Use a new setup when changing equipment or load conventions to keep comparisons separate. Past workouts keep their recorded settings.")
@@ -2246,11 +2263,14 @@ struct EquipmentSetupEditor: View {
                     Button(saving ? "Saving…" : "Save setup") {
                         saving = true
                         Task {
-                            do { try await onSave(draft.cleaned); dismiss() }
+                            do {
+                                draft.smithBarWeight = Double(smithBarWeightText.trimmingCharacters(in: .whitespacesAndNewlines))
+                                try await onSave(draft.cleaned); dismiss()
+                            }
                             catch { self.error = error.localizedDescription }
                             saving = false
                         }
-                    }.disabled(saving || !draft.isValid)
+                    }.disabled(saving || !draft.isValid || !validResistance)
                 }
             }
             .interactiveDismissDisabled(saving)
