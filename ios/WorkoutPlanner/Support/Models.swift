@@ -1497,7 +1497,7 @@ func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "w
         guard isRecordedWorkingSet(set) else { return current }
         let weight = effectiveRecordedWeight(set.weight, weightType: weightType, smithBarWeight: smithBarWeight) ?? 0
         guard weight > 0 else { return current }
-        let reps = personalBestNumber(set.reps)
+        let reps = [set.reps, set.repsLeft, set.repsRight].map(personalBestNumber).max() ?? 0
         if current == nil || weight > current!.weightValue || (weight == current!.weightValue && reps > current!.repsValue) {
             return PersonalBestCandidate(
                 weight: personalBestNumberLabel(weight),
@@ -1521,6 +1521,95 @@ func isPersonalBestImprovement(_ candidate: PersonalBestCandidate?, over current
 
 func personalBestPayload(_ candidate: PersonalBestCandidate, date: String) -> PersonalBest {
     PersonalBest(weight: candidate.weight, date: date, reps: candidate.reps)
+}
+
+func hasPersonalBestContext(_ item: ExerciseItem) -> Bool {
+    !(item.baselineId ?? "").isEmpty || !(item.setupProfile?.id ?? "").isEmpty || item.weightType == "smith_double"
+}
+
+// Array keys avoid collisions between user-owned IDs and context separators.
+func personalBestContext(_ item: ExerciseItem) -> [String] {
+    [item.exerciseId, item.baselineId ?? "", item.setupProfile?.id ?? "", item.weightType ?? "weight", smithLoadContext(item)]
+}
+
+private func personalBestLogPrecedes(_ a: WorkoutLog, _ b: WorkoutLog) -> Bool {
+    let aKey = a.startTime ?? a.endTime ?? "\(a.date)T00:00:00"
+    let bKey = b.startTime ?? b.endTime ?? "\(b.date)T00:00:00"
+    return aKey == bKey ? a.id < b.id : aKey < bKey
+}
+
+private func recordedPersonalBest(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBest? {
+    let context = personalBestContext(item)
+    var best: PersonalBest?
+    for log in logs.filter({ $0.status == "finished" }).sorted(by: personalBestLogPrecedes) {
+        for previous in log.exerciseItems where personalBestContext(previous) == context {
+            let candidate = bestPersonalBestCandidate(from: previous.sets, weightType: previous.weightType, smithBarWeight: previous.setupProfile?.smithBarWeight)
+            if isPersonalBestImprovement(candidate, over: best), let candidate {
+                best = personalBestPayload(candidate, date: log.date)
+            }
+        }
+    }
+    return best
+}
+
+func personalBestForItem(_ item: ExerciseItem, logs: [WorkoutLog], legacyBest: PersonalBest?) -> PersonalBest? {
+    hasPersonalBestContext(item) ? recordedPersonalBest(item, logs: logs) : legacyBest
+}
+
+func latestPersonalBest(_ exercise: Exercise, logs: [WorkoutLog]) -> (best: PersonalBest?, contextual: Bool) {
+    let item = logs.filter { $0.status == "finished" }.sorted(by: personalBestLogPrecedes).reversed()
+        .flatMap { $0.exerciseItems }.first { $0.exerciseId == exercise.id }
+    guard let item else { return (exercise.personalBest, false) }
+    return (personalBestForItem(item, logs: logs, legacyBest: exercise.personalBest), hasPersonalBestContext(item))
+}
+
+// Reconstruct contextual badges before filtering by date. Saved sets and setup
+// snapshots remain unchanged, and corrections/deletions update the result.
+func logsWithPersonalBests(_ logs: [WorkoutLog]) -> [WorkoutLog] {
+    var bests: [[String]: PersonalBest] = [:]
+    var badges: [String: [String]] = [:]
+    for log in logs.filter({ $0.status == "finished" }).sorted(by: personalBestLogPrecedes) {
+        var ids = (log.pbExerciseIds ?? []).filter { id in
+            log.exerciseItems.contains { $0.exerciseId == id && !hasPersonalBestContext($0) }
+        }
+        for item in log.exerciseItems where hasPersonalBestContext(item) {
+            let key = personalBestContext(item)
+            let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight)
+            if isPersonalBestImprovement(candidate, over: bests[key]), let candidate {
+                if !ids.contains(item.exerciseId) { ids.append(item.exerciseId) }
+                bests[key] = personalBestPayload(candidate, date: log.date)
+            }
+        }
+        badges[log.id] = ids
+    }
+    return logs.map { log in
+        guard let ids = badges[log.id] else { return log }
+        var result = log
+        result.pbExerciseIds = ids
+        result.hasPB = !ids.isEmpty
+        return result
+    }
+}
+
+func personalBestIdsForWorkout(_ log: WorkoutLog, logs: [WorkoutLog], exercises: [Exercise]) -> [String] {
+    let prior = logs.filter { $0.id != log.id && personalBestLogPrecedes($0, log) }
+    let editing = logs.contains { $0.id == log.id && $0.status == "finished" }
+    var ids: [String] = []
+    for item in log.exerciseItems {
+        let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight)
+        var best = recordedPersonalBest(item, logs: prior)
+        if !hasPersonalBestContext(item) {
+            let legacy = exercises.first(where: { $0.id == item.exerciseId })?.personalBest
+            if !editing {
+                best = legacy // Preserve explicit Reset PB for general records.
+            } else if let legacy, let date = legacy.date, date < log.date {
+                let legacyCandidate = PersonalBestCandidate(weight: legacy.weight, reps: legacy.reps, weightValue: personalBestNumber(legacy.weight), repsValue: personalBestNumber(legacy.reps))
+                if isPersonalBestImprovement(legacyCandidate, over: best) { best = legacy }
+            }
+        }
+        if isPersonalBestImprovement(candidate, over: best), !ids.contains(item.exerciseId) { ids.append(item.exerciseId) }
+    }
+    return ids
 }
 
 func setTypeLabel(_ type: String?) -> String {

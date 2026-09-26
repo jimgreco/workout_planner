@@ -70,8 +70,8 @@ export function bestPersonalBestSet(sets = [], weightType = 'weight', barWeight)
     const repsValue = setRepBest(set);
     if (!best || weightValue > best.weightValue || (weightValue === best.weightValue && repsValue > best.repsValue)) {
       return {
-        weight: formatNumber(weightValue),
-        reps: repsValue > 0 ? formatNumber(repsValue) : undefined,
+        weight: String(weightValue),
+        reps: repsValue > 0 ? String(repsValue) : undefined,
         weightValue,
         repsValue,
       };
@@ -96,6 +96,88 @@ export function personalBestPayload(candidate, date) {
     ...(candidate.reps ? { reps: candidate.reps } : {}),
     date,
   };
+}
+
+// Contextual records are derived from immutable workout setup snapshots. The
+// exercise-level PB remains the manually editable record for unscoped workouts.
+export function hasPersonalBestContext(item) {
+  return Boolean(item.baselineId || item.setupProfile?.id || item.weightType === 'smith_double');
+}
+
+export function personalBestContext(item) {
+  return JSON.stringify([item.exerciseId, item.baselineId || '', item.setupProfile?.id || '', item.weightType || 'weight', smithLoadContext(item)]);
+}
+
+function comparePersonalBestLogs(a, b) {
+  const key = log => log.startTime || log.endTime || `${log.date}T00:00:00`;
+  return key(a).localeCompare(key(b)) || a.id.localeCompare(b.id);
+}
+
+function recordedPersonalBest(item, logs) {
+  const context = personalBestContext(item);
+  let best;
+  for (const log of logs.filter(log => log.status === 'finished').sort(comparePersonalBestLogs)) {
+    for (const previous of log.exerciseItems || []) {
+      if (personalBestContext(previous) !== context) continue;
+      const candidate = bestPersonalBestSet(previous.sets, previous.weightType, previous.setupProfile?.smithBarWeight);
+      if (isPersonalBestImprovement(candidate, best)) best = personalBestPayload(candidate, log.date);
+    }
+  }
+  return best;
+}
+
+export function personalBestForItem(item, logs = [], legacyBest) {
+  return hasPersonalBestContext(item) ? recordedPersonalBest(item, logs) : legacyBest;
+}
+
+export function latestPersonalBest(exercise, logs = []) {
+  const item = logs.filter(log => log.status === 'finished').sort(comparePersonalBestLogs).reverse()
+    .flatMap(log => log.exerciseItems || []).find(item => item.exerciseId === exercise.id);
+  return { best: item ? personalBestForItem(item, logs, exercise.personalBest) : exercise.personalBest,
+    contextual: Boolean(item && hasPersonalBestContext(item)) };
+}
+
+// Repair missing contextual badges on read, using all history before any UI
+// date filtering. This also handles corrections/deletions without rewriting sets.
+export function logsWithPersonalBests(logs = []) {
+  const bests = new Map();
+  const badges = new Map();
+  for (const log of logs.filter(log => log.status === 'finished').sort(comparePersonalBestLogs)) {
+    const items = log.exerciseItems || [];
+    const ids = new Set((log.pbExerciseIds || []).filter(id => items.some(item => item.exerciseId === id && !hasPersonalBestContext(item))));
+    for (const item of items.filter(hasPersonalBestContext)) {
+      const key = personalBestContext(item);
+      const candidate = bestPersonalBestSet(item.sets, item.weightType, item.setupProfile?.smithBarWeight);
+      if (isPersonalBestImprovement(candidate, bests.get(key))) {
+        ids.add(item.exerciseId);
+        bests.set(key, personalBestPayload(candidate, log.date));
+      }
+    }
+    badges.set(log.id, [...ids]);
+  }
+  return logs.map(log => badges.has(log.id) ? { ...log, pbExerciseIds: badges.get(log.id), hasPB: badges.get(log.id).length > 0 } : log);
+}
+
+export function personalBestIdsForWorkout(log, logs = [], exercises = []) {
+  const prior = logs.filter(previous => previous.id !== log.id && comparePersonalBestLogs(previous, log) < 0);
+  const editing = logs.some(previous => previous.id === log.id && previous.status === 'finished');
+  const ids = new Set();
+  for (const item of log.exerciseItems || []) {
+    const candidate = bestPersonalBestSet(item.sets, item.weightType, item.setupProfile?.smithBarWeight);
+    let best = recordedPersonalBest(item, prior);
+    if (!hasPersonalBestContext(item)) {
+      const legacy = exercises.find(exercise => exercise.id === item.exerciseId)?.personalBest;
+      // The current exercise PB may have been set by this workout (or a later
+      // one). It cannot be used to erase this workout's historical achievement.
+      if (!editing) best = legacy; // Preserve the explicit Reset PB action for general records.
+      else if (legacy?.date && legacy.date < log.date) {
+        const legacyCandidate = { weightValue: numeric(legacy.weight), repsValue: numeric(legacy.reps) };
+        if (isPersonalBestImprovement(legacyCandidate, best)) best = legacy;
+      }
+    }
+    if (isPersonalBestImprovement(candidate, best)) ids.add(item.exerciseId);
+  }
+  return [...ids];
 }
 
 export function setLabel(set, weightType = 'weight', usesTime = false) {
@@ -287,7 +369,7 @@ function strongestExerciseImprovement(exercises, scopedLogs) {
 }
 
 export function buildProgress(logs = [], exercises = [], rangeDays = '90') {
-  const allFinished = finishedLogs(logs);
+  const allFinished = finishedLogs(logsWithPersonalBests(logs));
   const scopedLogs = allFinished.filter((log) => inRange(log, rangeDays));
   const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
 

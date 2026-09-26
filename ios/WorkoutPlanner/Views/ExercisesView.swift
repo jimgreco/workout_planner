@@ -254,9 +254,10 @@ private struct ExerciseRow: View {
         if exercise.usesTime == true {
             Badge(text: "Time based")
         }
-        if let best = personalBestLabel(exercise.personalBest, usesTime: exercise.usesTime == true) {
-            Button(action: onPB) {
-                Badge(text: best, icon: "star.fill", accent: true)
+        let record = latestPersonalBest(exercise, logs: store.logs)
+        if let best = personalBestLabel(record.best, usesTime: exercise.usesTime == true) {
+            Button(action: record.contextual ? onDetail : onPB) {
+                Badge(text: (record.contextual ? "Setup PB: " : "") + best, icon: "star.fill", accent: true)
             }
         }
     }

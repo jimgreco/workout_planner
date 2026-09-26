@@ -14,6 +14,8 @@ import {
   isPersonalBestImprovement,
   personalBestLabel,
   personalBestPayload,
+  personalBestIdsForWorkout,
+  hasPersonalBestContext,
 } from '../progress.js';
 
 /**
@@ -722,22 +724,20 @@ export default function WorkoutLog({
     setSaving(true);
 
     try {
-      const endTime = isEditing.current ? (editingLog?.endTime || new Date().toISOString()) : new Date().toISOString();
+      const endTime = isEditing.current ? editingLog?.endTime : new Date().toISOString();
 
       // Check for personal bests
-      const pbExerciseIds = [];
+      const pbExerciseIds = personalBestIdsForWorkout({ id: workoutId, date, startTime, endTime, exerciseItems: items }, logs, exercises);
       const pbExercises = [];
       let currentExercises = [...exercises];
       for (const item of items) {
-        if (item.baselineId) continue;
         const candidate = bestPersonalBestSet(item.sets, item.weightType, item.setupProfile?.smithBarWeight);
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
-        if (!ex || !isPersonalBestImprovement(candidate, ex.personalBest)) continue;
+        if (!ex || !candidate) continue;
         const personalBest = personalBestPayload(candidate, date);
-        if (personalBest) {
-          pbExerciseIds.push(item.exerciseId);
-          pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest, ex.usesTime)}`);
-          // Update the exercise's PB
+        if (pbExerciseIds.includes(item.exerciseId)) pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest, ex.usesTime)}`);
+        if (!hasPersonalBestContext(item) && isPersonalBestImprovement(candidate, ex.personalBest)) {
+          // Keep the manually editable, unscoped PB separate from setup records.
           const updated = await saveExercise({
             ...ex,
             personalBest,

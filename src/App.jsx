@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import './index.css';
 import { 
   Dumbbell,
@@ -49,7 +49,7 @@ import Calendar from './pages/Calendar.jsx';
 import Progress from './pages/Progress.jsx';
 import Logo from './components/Logo.jsx';
 import Modal from './components/Modal.jsx';
-import { personalBestLabel } from './progress.js';
+import { personalBestLabel, logsWithPersonalBests } from './progress.js';
 
 const PAGES = [
   { id: 'log',       label: 'Train',            icon: Dumbbell },
@@ -209,7 +209,8 @@ export default function App() {
   const [gyms, setGyms] = useState([]);
   const [exercises, setExercises] = useState([]);
   const [templates, setTemplates] = useState([]);
-  const [logs, setLogs]           = useState([]);
+  const [rawLogs, setLogs]        = useState([]);
+  const logs = useMemo(() => logsWithPersonalBests(rawLogs), [rawLogs]);
   const [programs, setPrograms]   = useState([]);
   const [settings, setSettings]   = useState({ defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false });
   const [pendingTemplate, setPendingTemplate] = useState(null);

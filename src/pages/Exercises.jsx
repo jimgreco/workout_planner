@@ -5,7 +5,7 @@ import Modal from '../components/Modal.jsx';
 import EquipmentAlternatives from '../components/EquipmentAlternatives.jsx';
 import { saveExercise, deleteExercise } from '../api.js';
 import { cleanExerciseForm, emptyExercise } from '../exerciseForm.js';
-import { formatVolume, getExerciseHistory, personalBestLabel, setLabel, summarizeExercise } from '../progress.js';
+import { formatVolume, getExerciseHistory, personalBestLabel, latestPersonalBest, setLabel, summarizeExercise } from '../progress.js';
 
 const MUSCLE_GROUPS = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
@@ -314,15 +314,17 @@ export default function Exercises({ gyms = [], exercises, logs = [], templates =
             <p>{search ? 'No exercises match your search.' : 'No exercises yet. Add one to get started!'}</p>
           </div>
         )}
-        {filtered.map((ex) => (
+        {filtered.map((ex) => {
+          const { best, contextual } = latestPersonalBest(ex, logs);
+          return (
           <div key={ex.id} className="exercise-item exercise-with-setups">
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="ex-name">{ex.name}</div>
               <div className="ex-meta">
                 <span className="badge">{ex.muscleGroup}</span>
-                {ex.personalBest && (
-                  <span className="pb-badge" onClick={() => openPB(ex)} title="Click to edit PB">
-                    <Star size={12} fill="currentColor" /> {personalBestLabel(ex.personalBest, ex.usesTime)}
+                {best && (
+                  <span className="pb-badge" onClick={() => contextual ? setDetailExercise(ex) : openPB(ex)} title={contextual ? "PB for latest setup" : "Click to edit PB"}>
+                    <Star size={12} fill="currentColor" /> {contextual ? 'Setup PB: ' : ''}{personalBestLabel(best, ex.usesTime)}
                   </span>
                 )}
                 {ex.isUnilateral && <span className="badge">Single side</span>}
@@ -351,7 +353,8 @@ export default function Exercises({ gyms = [], exercises, logs = [], templates =
             </div>
             <ExerciseSetups exercise={ex} logs={logs} templates={templates} onUpdate={onUpdate} />
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {(modal === 'add' || modal === 'edit') && (

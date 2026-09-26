@@ -575,21 +575,23 @@ struct WorkoutLogView: View {
         defer { isSaving = false }
 
         do {
-            let endTime = isEditing ? nil : ISO8601DateFormatter().string(from: Date())
-            var pbExerciseIds: [String] = []
+            let endTime = isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : ISO8601DateFormatter().string(from: Date())
+            let record = WorkoutLog(id: workoutId, name: name, date: DateHelpers.dayString(from: date), exerciseItems: items, startTime: startTime, endTime: endTime)
+            let pbExerciseIds = personalBestIdsForWorkout(record, logs: store.logs, exercises: store.exercises)
             var pbExercises: [String] = []
 
-            for item in items where item.baselineId == nil {
+            for item in items {
                 let candidate = bestPersonalBestCandidate(from: item.sets, weightType: item.weightType, smithBarWeight: item.setupProfile?.smithBarWeight)
-                guard var exercise = store.exercise(id: item.exerciseId),
-                      isPersonalBestImprovement(candidate, over: exercise.personalBest),
-                      let candidate
+                guard var exercise = store.exercise(id: item.exerciseId), let candidate
                 else { continue }
                 let personalBest = personalBestPayload(candidate, date: DateHelpers.dayString(from: date))
-                pbExerciseIds.append(item.exerciseId)
-                pbExercises.append("\(exercise.name) - \(personalBestLabel(personalBest, usesTime: exercise.usesTime == true) ?? candidate.weight)")
-                exercise.personalBest = personalBest
-                try await store.saveExercise(exercise)
+                if pbExerciseIds.contains(item.exerciseId) {
+                    pbExercises.append("\(exercise.name) - \(personalBestLabel(personalBest, usesTime: exercise.usesTime == true) ?? candidate.weight)")
+                }
+                if !hasPersonalBestContext(item), isPersonalBestImprovement(candidate, over: exercise.personalBest) {
+                    exercise.personalBest = personalBest
+                    try await store.saveExercise(exercise)
+                }
             }
 
             let log = WorkoutLog(
@@ -1272,7 +1274,7 @@ struct WorkoutLogView: View {
             weightBaseline: liveWeightPlaceholder(for: context).flatMap { Double($0) },
             interactionRevision: appliedLiveActivityInteractionRevision,
             setType: store.settings.advancedMode ? setTypeLabel(context.set.setType) : "",
-            personalBest: personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true),
+            personalBest: personalBestLabel(personalBestForItem(context.item, logs: store.logs, legacyBest: context.exercise.personalBest), usesTime: context.exercise.usesTime == true),
             needsWeightIncrease: routineExerciseNeedsWeightIncrease(weightIncreaseContext.item, logs: store.logs),
             completedSets: completed,
             totalSets: total,
@@ -1939,8 +1941,8 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
 
-            if context.item.baselineId == nil, let personalBest = personalBestLabel(context.exercise.personalBest, usesTime: context.exercise.usesTime == true) {
-                Label("PB \(personalBest)", systemImage: "star.fill")
+            if let personalBest = personalBestLabel(personalBestForItem(context.item, logs: logs, legacyBest: context.exercise.personalBest), usesTime: context.exercise.usesTime == true) {
+                Label("\(hasPersonalBestContext(context.item) ? "Setup PB" : "PB") \(personalBest)", systemImage: "star.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.accent)
                     .lineLimit(2)

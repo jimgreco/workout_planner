@@ -521,7 +521,7 @@ private struct ExerciseSetsCard: View {
         exercise.isUnilateral == true && !planningMode
     }
     private var canResetPersonalBest: Bool {
-        !readOnly && !planningMode && exercise.personalBest != nil && onResetPersonalBest != nil
+        !hasPersonalBestContext(item) && !readOnly && !planningMode && exercise.personalBest != nil && onResetPersonalBest != nil
     }
     private var canEditExercise: Bool {
         !readOnly && onEditExercise != nil
@@ -686,9 +686,9 @@ private struct ExerciseSetsCard: View {
                         .accessibilityLabel("\(exercise.name): increase weight next time")
                 }
             }
-            if let pb = personalBestLabel(exercise.personalBest, usesTime: exercise.usesTime == true) {
+            if let pb = personalBestLabel(personalBestForItem(item, logs: logs, legacyBest: exercise.personalBest), usesTime: exercise.usesTime == true) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("PB: \(pb)")
+                    Text("\(hasPersonalBestContext(item) ? "Setup PB" : "PB"): \(pb)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(2)

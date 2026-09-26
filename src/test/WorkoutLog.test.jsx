@@ -5,6 +5,8 @@ import { saveLog, saveExercise } from '../api.js';
 
 vi.mock('../api.js', () => ({
   getEquipment: vi.fn(() => []),
+  getTemplates: vi.fn(() => []),
+  getExercises: vi.fn(() => []),
   saveLog: vi.fn(async (log) => [log]),
   deleteLog: vi.fn(async () => []),
   saveExercise: vi.fn(async (exercise) => [exercise]),
@@ -317,5 +319,33 @@ describe('WorkoutLog', () => {
       placeholderRepsLeft: '8',
       placeholderRepsRight: '9',
     });
+  });
+});
+
+describe('saving contextual personal bests', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('repairs the missing badge when saving a baseline workout without overwriting the general PB', async () => {
+    const entry = { exerciseId: 'bench', baselineId: 'new-technique', weightType: 'weight', sets: [{ reps: '8', weight: '100' }] };
+    const saved = { id: 'baseline-log', name: 'Baseline session', date: todayKey(), status: 'finished', exerciseItems: [entry], hasPB: false, pbExerciseIds: [] };
+    const onClearEditing = vi.fn();
+    render(<WorkoutLog exercises={[{ ...exercises[0], personalBest: { weight: '300', reps: '5' } }]} templates={[]} logs={[saved]} programs={[]} editingLog={saved} settings={settings} onLogsChanged={() => {}} onExercisesChanged={() => {}} onClearEditing={onClearEditing} />);
+    expect(await screen.findByText(/Setup PB: 100 lbs x 8 reps/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(onClearEditing).toHaveBeenCalled());
+    expect(saveLog.mock.lastCall[0]).toMatchObject({ hasPB: true, pbExerciseIds: ['bench'], exerciseItems: [entry] });
+    expect(saveExercise).not.toHaveBeenCalled();
+  });
+
+  it('keeps an existing general PB badge after a later higher record', async () => {
+    const entry = { exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '8', weight: '100' }] };
+    const saved = { id: 'old-record', name: 'Old session', date: '2026-09-18', status: 'finished', exerciseItems: [entry], hasPB: true, pbExerciseIds: ['bench'] };
+    const later = { ...saved, id: 'later', date: '2026-09-20', exerciseItems: [{ ...entry, sets: [{ reps: '8', weight: '120' }] }] };
+    const onClearEditing = vi.fn();
+    render(<WorkoutLog exercises={[{ ...exercises[0], personalBest: { weight: '120', reps: '8', date: '2026-09-20' } }]} templates={[]} logs={[saved, later]} programs={[]} editingLog={saved} settings={settings} onLogsChanged={() => {}} onExercisesChanged={() => {}} onClearEditing={onClearEditing} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(onClearEditing).toHaveBeenCalled());
+    expect(saveLog.mock.lastCall[0]).toMatchObject({ hasPB: true, pbExerciseIds: ['bench'] });
+    expect(saveExercise).not.toHaveBeenCalled();
   });
 });

@@ -126,7 +126,7 @@ private struct ProgressStats {
     let strongestImprovement: ExerciseImprovement?
 
     init(logs: [WorkoutLog], exercises: [Exercise], range: ProgressRange) {
-        let finished = logs.finishedWorkoutLogs()
+        let finished = logsWithPersonalBests(logs).finishedWorkoutLogs()
         let exerciseById = Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, $0) })
         let scoped = finished.filter { log in
             guard let days = range.days else { return true }

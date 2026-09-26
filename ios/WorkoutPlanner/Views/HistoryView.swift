@@ -10,7 +10,7 @@ struct HistoryView: View {
     @State private var selectedDate: String?
 
     private var finishedLogs: [WorkoutLog] {
-        store.logs
+        store.personalBestLogs
             .filter { $0.status == "finished" }
             .sorted { lhs, rhs in
                 if lhs.date == rhs.date { return (lhs.endTime ?? "") > (rhs.endTime ?? "") }

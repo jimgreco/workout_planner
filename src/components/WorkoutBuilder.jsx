@@ -5,7 +5,7 @@ import { saveExercise, getExercises, getTemplates } from '../api.js';
 import { completionLabel, normalizedRir } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
-import { personalBestLabel } from '../progress.js';
+import { personalBestLabel, personalBestForItem, hasPersonalBestContext } from '../progress.js';
 import { routineExerciseNeedsWeightIncrease } from '../workoutHistory.js';
 
 /**
@@ -451,6 +451,7 @@ export default function WorkoutBuilder({
         const compactRepsRange = repRange(compactRepsValue);
         const compactUsesRange = Boolean(compactRepsRange);
         const needsWeightIncrease = routineExerciseNeedsWeightIncrease(item, logs);
+        const best = personalBestForItem(item, logs, ex.personalBest);
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
           + (!readOnly && !planningMode ? 1 : 0)
@@ -471,10 +472,10 @@ export default function WorkoutBuilder({
                       <Target size={12} aria-hidden="true" /> Add weight
                     </span>
                   )}
-                  {!item.baselineId && ex.personalBest?.weight && (
+                  {best?.weight && (
                     <span className="pb-label">
-                      • PB: {personalBestLabel(ex.personalBest, ex.usesTime)}
-                      {onResetPersonalBest && !planningMode && !readOnly && (
+                      • {hasPersonalBestContext(item) ? 'Setup PB' : 'PB'}: {personalBestLabel(best, ex.usesTime)}
+                      {!hasPersonalBestContext(item) && onResetPersonalBest && !planningMode && !readOnly && (
                         <button
                           type="button"
                           className="pb-reset-btn"

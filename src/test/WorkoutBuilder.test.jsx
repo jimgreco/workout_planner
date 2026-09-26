@@ -656,3 +656,17 @@ describe('Smith weight recording', () => {
     expect(logs[0].exerciseItems[0].setupProfile.smithBarWeight).toBeUndefined();
   });
 });
+
+describe('contextual personal best display', () => {
+  it('shows the setup record and hides unrelated general PB/reset controls', () => {
+    const item = { exerciseId: 'ex1', baselineId: 'technique-a', weightType: 'weight', sets: [{ reps: '8', weight: '100' }] };
+    const withPB = [{ ...exercises[0], personalBest: { weight: '300', reps: '5' } }];
+    const logs = [{ id: 'record', date: '2026-09-18', status: 'finished', exerciseItems: [item] }];
+    const { rerender } = render(<WorkoutBuilder exercises={withPB} items={[item]} logs={logs} onChange={() => {}} onResetPersonalBest={() => {}} />);
+    expect(screen.getByText(/Setup PB: 100 lbs x 8 reps/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reset pb/i })).not.toBeInTheDocument();
+    rerender(<WorkoutBuilder exercises={withPB} items={[{ ...item, baselineId: 'technique-b' }]} logs={logs} onChange={() => {}} />);
+    expect(screen.queryByText(/Setup PB:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/300 lbs/)).not.toBeInTheDocument();
+  });
+});

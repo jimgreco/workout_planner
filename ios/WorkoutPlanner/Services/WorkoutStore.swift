@@ -10,6 +10,7 @@ final class WorkoutStore: ObservableObject {
     @Published var exercises: [Exercise] = []
     @Published var templates: [WorkoutTemplate] = []
     @Published var logs: [WorkoutLog] = []
+    var personalBestLogs: [WorkoutLog] { logsWithPersonalBests(logs) }
     @Published var equipment: [GymEquipment] = GymEquipment.preloaded
     @Published var gyms: [Gym] = []
     @Published var programs: [TrainingProgram] = []
