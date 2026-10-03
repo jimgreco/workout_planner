@@ -266,3 +266,14 @@ hash. It then removes only external `depends_on` entries and requires every
 resulting hash to match live. Internal dependencies and all other configuration
 remain unchanged; full effective-environment comparison still runs. Resolved
 configuration stays in process memory/stdin and is never written or logged.
+
+## Private build-context exclusions
+
+Exclude root/nested `.env*`, private PEM/key files, `.ssh`, and `.aws` from Docker
+contexts, including backend/public subfolders. Existing host files are preserved.
+The verify job injects synthetic sentinels only into a disposable clean Git
+archive, then asserts their absence in the frontend source stage, backend image,
+and final prebuilt frontend. Public assets are taken only from that isolated
+frontend build. The trap cleans its temporary archive and inspection container;
+collisions fail without overwriting any source file. The fixture unit tests
+verify orchestration safety; real exclusion proof comes from the Docker CI run.

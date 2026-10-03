@@ -57,6 +57,22 @@ jobs:
       - name: Test isolated deployment command plan
         run: python3 scripts/test-safe-compose-release.py
 
+      - name: Verify private files are excluded from production images
+        run: |
+          set -euo pipefail
+          mkdir -p output/ci
+          python3 scripts/test-docker-context-fixtures.py
+          bash scripts/check-docker-context.sh workouts 2>&1 | tee output/ci/docker-context.log
+
+      - name: Upload Docker context diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-context-diagnostics
+          path: output/ci/docker-context.log
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Check release hardening config
         run: |
           set -euo pipefail

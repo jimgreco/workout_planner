@@ -163,3 +163,8 @@ Missing live override files are a release blocker, not permission to replace the
 Compose 2.26.1 may hash `--no-deps` releases without external dependency edges.
 The release helper accepts only the exact scoped hash after a lossless full JSON
 roundtrip; preserve internal app dependencies and the effective-environment guard.
+
+Docker contexts must exclude root/nested `.env*`, PEM/key files, `.ssh`, and `.aws`,
+including backend and public-asset subdirectories. CI runs the synthetic fixture
+check against the frontend source stage, backend image, and production prebuilt
+frontend, using only a disposable clean Git archive.
