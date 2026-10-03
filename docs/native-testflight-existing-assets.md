@@ -20,3 +20,5 @@ Tests use synthetic in-memory responses and temporary files. They neither read r
 ## Authentication and scope
 
 Use only this app's existing configured credentials. Do not create profiles, certificates, capabilities, testers, public links, or API access, copy another app's secrets, accept new terms, change groups, submit App Store metadata, or submit for App Store review. If Apple requests any such action, stop the affected release and report that exact prerequisite. No server deployment is part of this native workflow change.
+
+If upload succeeds but Apple processing verification stops, run the manual **Verify existing TestFlight build** workflow with the exact uploaded build number and full original source SHA. It authenticates with this app’s existing API configuration and makes GET requests only; it has no signing or upload step. It verifies source ancestry/count and the same pinned app, audience, internal-only processing and group availability. Do not rerun the upload to check processing.
