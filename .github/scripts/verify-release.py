@@ -137,6 +137,14 @@ def inspect_package(ipa, sha, build, policy=POLICY):
         return paths
 
 
+def signing_certificate(app, directory):
+    # Optional long-option values must use '='; a separate prefix is treated
+    # by codesign as another input file. These are public certificates only.
+    prefix = str(Path(directory) / 'signing-cert-')
+    run('codesign', '-d', '--extract-certificates=' + prefix, str(app))
+    return Path(prefix + '0').read_bytes()
+
+
 def artifact(ipa, sha, build, policy=POLICY):
     paths = inspect_package(ipa, sha, build, policy)
     with tempfile.TemporaryDirectory(prefix='verify-native-') as directory:
@@ -146,9 +154,7 @@ def artifact(ipa, sha, build, policy=POLICY):
             target = next(p for p in policy['profiles'].values() if p['bundleId'] == bundle)
             verify_profile(decode(app / 'embedded.mobileprovision'), target, policy=policy)
             run('codesign', '--verify', '--deep', '--strict', str(app))
-            prefix = str(Path(directory) / 'signing-cert-')
-            run('codesign', '-d', '--extract-certificates', prefix, str(app))
-            check(hashlib.sha256(Path(prefix + '0').read_bytes()).hexdigest() == policy['certificateSha256'], 'Artifact signing identity differs.')
+            check(hashlib.sha256(signing_certificate(app, directory)).hexdigest() == policy['certificateSha256'], 'Artifact signing identity differs.')
             e = plistlib.loads(run('codesign', '-d', '--entitlements', ':-', str(app)))
             check(e.get('application-identifier') == policy['teamId'] + '.' + bundle
                   and e.get('com.apple.developer.team-identifier') == policy['teamId']
