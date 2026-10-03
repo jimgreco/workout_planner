@@ -123,8 +123,9 @@ export function releaseIdentity(build, sha) {
 export async function preflight(client, build, sha, p = policy) {
   releaseIdentity(build, sha);
   const scope = await audience(client, p), builds = await iosBuilds(client, p);
-  check(builds.every(b => b.type === 'builds' && /^[1-9][0-9]*$/.test(b.attributes?.version)
-    && BigInt(b.attributes.version) < BigInt(build)), 'iOS build number is reused, not newer, or cannot be compared.');
+  const rejected = builds.filter(b => b.type !== 'builds' || !/^[1-9][0-9]*$/.test(b.attributes?.version)
+    || BigInt(b.attributes.version) >= BigInt(build));
+  check(!rejected.length, 'iOS build preflight rejected existing metadata: ' + JSON.stringify(rejected.slice(0, 10).map(b => ({ type: b.type, build: b.attributes?.version, marketingVersion: b.marketingVersion }))) + `; total rejected=${rejected.length}.`);
   return { ...scope, sha, build: String(build), checkedAt: new Date().toISOString(), existingIOSBuilds: builds.length };
 }
 export async function verifyUploaded(client, build, sha, p = policy) {
