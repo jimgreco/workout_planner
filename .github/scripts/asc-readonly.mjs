@@ -122,7 +122,10 @@ export function releaseIdentity(build, sha) {
 }
 export async function preflight(client, build, sha, p = policy) {
   releaseIdentity(build, sha);
-  const scope = await audience(client, p), builds = await iosBuilds(client, p);
+  const scope = await audience(client, p);
+  // Apple's build identity is scoped by app, platform and marketing-version train.
+  // Historical 1.0 releases used eight-digit numbers; newer trains use Git counts.
+  const builds = (await iosBuilds(client, p)).filter(b => b.marketingVersion === p.marketingVersion);
   const rejected = builds.filter(b => b.type !== 'builds' || !/^[1-9][0-9]*$/.test(b.attributes?.version)
     || BigInt(b.attributes.version) >= BigInt(build));
   check(!rejected.length, 'iOS build preflight rejected existing metadata: ' + JSON.stringify(rejected.slice(0, 10).map(b => ({ type: b.type, build: b.attributes?.version, marketingVersion: b.marketingVersion }))) + `; total rejected=${rejected.length}.`);
@@ -130,7 +133,7 @@ export async function preflight(client, build, sha, p = policy) {
 }
 export async function verifyUploaded(client, build, sha, p = policy) {
   releaseIdentity(build, sha); await audience(client, p);
-  const matches = (await iosBuilds(client, p)).filter(b => b.attributes?.version === String(build));
+  const matches = (await iosBuilds(client, p)).filter(b => b.marketingVersion === p.marketingVersion && b.attributes?.version === String(build));
   check(matches.length <= 1, 'Uploaded build identity is ambiguous.');
   if (!matches.length || matches[0].attributes.processingState === 'PROCESSING') return null;
   const b = matches[0];
