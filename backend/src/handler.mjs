@@ -19,6 +19,7 @@
  */
 
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -338,15 +339,19 @@ async function verifyRequestUser(event) {
 }
 
 async function queryCollection(PK, prefix) {
-  const result = await db.send(new QueryCommand({
-    TableName: TABLE,
-    KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
-    ExpressionAttributeValues: {
-      ':pk': PK,
-      ':prefix': `${prefix}#`,
-    },
-  }));
-  return result.Items ?? [];
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const result = await db.send(new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+      ExpressionAttributeValues: { ':pk': PK, ':prefix': `${prefix}#` },
+      ExclusiveStartKey,
+    }));
+    items.push(...(result.Items ?? []));
+    ExclusiveStartKey = result.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
 }
 
 async function getAccountMetadata(PK) {
@@ -382,16 +387,22 @@ async function queryAllUserItems(PK) {
   return items;
 }
 
-async function batchDelete(items) {
-  for (let i = 0; i < items.length; i += 25) {
-    await db.send(new BatchWriteCommand({
-      RequestItems: {
-        [TABLE]: items.slice(i, i + 25).map(({ PK, SK }) => ({
-          DeleteRequest: { Key: { PK, SK } },
-        })),
-      },
-    }));
+async function writeBatch(requests) {
+  for (let i = 0; i < requests.length; i += 25) {
+    let pending = requests.slice(i, i + 25);
+    for (let attempt = 0; pending.length; attempt += 1) {
+      const result = await db.send(new BatchWriteCommand({ RequestItems: { [TABLE]: pending } }));
+      pending = result.UnprocessedItems?.[TABLE] ?? [];
+      if (!pending.length) break;
+      // A successful HTTP response can still leave writes unprocessed.
+      if (attempt >= 5) throw new Error('DynamoDB batch did not complete');
+      await delay(Math.min(50 * 2 ** attempt, 800) + Math.floor(Math.random() * 50));
+    }
   }
+}
+
+async function batchDelete(items) {
+  await writeBatch(items.map(({ PK, SK }) => ({ DeleteRequest: { Key: { PK, SK } } })));
 }
 
 function deletionItems(items) {
@@ -476,15 +487,7 @@ async function seedDefaultExercises(PK, library) {
     const id = randomUUID();
     return { PK, SK: `EXERCISE#${id}`, id, ...ex, equipmentAlternatives: ex.equipmentAlternatives.filter((ref) => library.some((item) => item.id === ref.equipmentId)) };
   });
-  for (let i = 0; i < items.length; i += 25) {
-    await db.send(new BatchWriteCommand({
-      RequestItems: {
-        [TABLE]: items.slice(i, i + 25).map((item) => ({
-          PutRequest: { Item: item },
-        })),
-      },
-    }));
-  }
+  await writeBatch(items.map(item => ({ PutRequest: { Item: item } })));
   return items;
 }
 
@@ -655,7 +658,7 @@ function duplicateSafeItems(existingItems, imported) {
 async function writeImportedCollection(PK, prefix, items) {
   for (const body of items) {
     const SK = `${prefix}#${body.id}`;
-    const versioned = await itemWithRevision(PK, SK, body, undefined);
+    const { item: versioned } = await itemWithRevision(PK, SK, body, undefined);
     await db.send(new PutCommand({
       TableName: TABLE,
       Item: { PK, SK, ...versioned },
@@ -838,29 +841,32 @@ async function putAccountTombstone(PK, now) {
   }));
 }
 
+function revisionConflict(existing, expectedRevision) {
+  return new ValidationError('Resource was updated elsewhere. Reload and try again.', {
+    cause: 'conflict',
+    details: { conflict: {
+      expectedRevision,
+      actualRevision: existing?.revision ?? 0,
+      remote: existing ? strip(existing) : null,
+    } },
+  });
+}
+
 async function itemWithRevision(PK, SK, body, expectedRevision) {
   const result = await db.send(new GetCommand({
     TableName: TABLE,
     Key: { PK, SK },
+    ConsistentRead: true,
   }));
   const existing = result.Item;
   if (expectedRevision !== undefined && (existing?.revision ?? 0) !== expectedRevision) {
-    throw new ValidationError('Resource was updated elsewhere. Reload and try again.', {
-      cause: 'conflict',
-      details: {
-        conflict: {
-          expectedRevision,
-          actualRevision: existing?.revision ?? 0,
-          remote: existing ? strip(existing) : null,
-        },
-      },
-    });
+    throw revisionConflict(existing, expectedRevision);
   }
   const now = new Date().toISOString();
   const deletedEquipmentSetupIds = SK.startsWith('EXERCISE#')
     ? [...new Set([...(existing?.deletedEquipmentSetupIds || []), ...(body.deletedEquipmentSetupIds || [])])]
     : [];
-  return {
+  return { existing, item: {
     ...body,
     ...(SK.startsWith('PROGRAM#') && body.scheduleEdits === undefined && existing?.scheduleEdits ? { scheduleEdits: existing.scheduleEdits } : {}),
     ...(SK.startsWith('LOG#') && existing?.prescription ? { prescription: existing.prescription } : {}),
@@ -873,7 +879,7 @@ async function itemWithRevision(PK, SK, body, expectedRevision) {
     } : {}),
     updatedAt: now,
     revision: (Number.isInteger(existing?.revision) ? existing.revision : 0) + 1,
-  };
+  } };
 }
 
 function supportFeedbackItem(item) {
@@ -1251,9 +1257,21 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
       if (!gym.Item) throw new ValidationError('Choose a gym saved in your account.');
     }
     const SK = `${prefix}#${id}`;
-    const versioned = await itemWithRevision(PK, SK, body, rawBody.expectedRevision);
+    const { item: versioned, existing } = await itemWithRevision(PK, SK, body, rawBody.expectedRevision);
     const item = { PK, SK, ...versioned };
-    await db.send(new PutCommand({ TableName: TABLE, Item: item }));
+    // Compare at the write boundary; a preceding read alone cannot prevent lost updates.
+    const condition = existing
+      ? existing.revision === undefined
+        ? { ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(revision)' }
+        : { ConditionExpression: 'revision = :previousRevision', ExpressionAttributeValues: { ':previousRevision': existing.revision } }
+      : { ConditionExpression: 'attribute_not_exists(PK)' };
+    try {
+      await db.send(new PutCommand({ TableName: TABLE, Item: item, ...condition }));
+    } catch (error) {
+      if (error.name !== 'ConditionalCheckFailedException') throw error;
+      const current = await db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK }, ConsistentRead: true }));
+      throw revisionConflict(current.Item, rawBody.expectedRevision ?? existing?.revision ?? 0);
+    }
     return ok(strip(item));
   }
 

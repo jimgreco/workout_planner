@@ -43,7 +43,13 @@ function fakeDb(seed = []) {
       }
       if (command instanceof PutCommand) {
         const item = command.input.Item;
-        if (command.input.ConditionExpression && items.has(`${item.PK}|${item.SK}`)) throw Object.assign(new Error('Condition failed'), { name: 'ConditionalCheckFailedException' });
+        const condition = command.input.ConditionExpression;
+        const current = items.get(`${item.PK}|${item.SK}`);
+        const satisfied = !condition
+          || (condition === 'attribute_not_exists(PK)' && !current)
+          || (condition === 'attribute_exists(PK) AND attribute_not_exists(revision)' && current && current.revision === undefined)
+          || (condition === 'revision = :previousRevision' && current?.revision === command.input.ExpressionAttributeValues[':previousRevision']);
+        if (!satisfied) throw Object.assign(new Error('Condition failed'), { name: 'ConditionalCheckFailedException' });
         items.set(`${item.PK}|${item.SK}`, item);
         return {};
       }
@@ -854,4 +860,96 @@ test('account deletion revokes stored Apple tokens before deleting data and inva
   assert.equal(revoked, true);
   assert.deepEqual([...db.items.keys()], [`${PK}|ACCOUNT`]);
   assert.equal((await handler(event('GET', '/logs', undefined, headers))).statusCode, 401);
+});
+
+test('concurrent saves with the same revision allow one winner and return the winning value as conflict', async () => {
+  const PK = 'USER#dev-user-local';
+  const db = fakeDb([{ PK, SK: 'LOG#race', id: 'race', name: 'Original', date: '2026-10-03', exerciseItems: [], status: 'active', revision: 1 }]);
+  const send = db.send.bind(db);
+  let reads = 0;
+  let releaseReads;
+  const bothRead = new Promise(resolve => { releaseReads = resolve; });
+  db.send = async command => {
+    if (command instanceof GetCommand && command.input.Key.SK === 'LOG#race' && reads < 2) {
+      const snapshot = structuredClone(await send(command));
+      if (++reads === 2) releaseReads();
+      await bothRead;
+      return snapshot;
+    }
+    return send(command);
+  };
+  __setTestDb(db);
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+  const results = await Promise.all(['First', 'Second'].map(name => handler(event('PUT', '/logs/race', {
+    name, date: '2026-10-03', exerciseItems: [], status: 'active', expectedRevision: 1,
+  }, headers))));
+  assert.deepEqual(results.map(result => result.statusCode).sort(), [200, 409]);
+  const saved = JSON.parse(results.find(result => result.statusCode === 200).body);
+  const conflict = JSON.parse(results.find(result => result.statusCode === 409).body).conflict;
+  assert.equal(db.items.get(`${PK}|LOG#race`).name, saved.name);
+  assert.equal(conflict.remote.name, saved.name);
+  assert.equal(conflict.actualRevision, 2);
+});
+
+test('collection reads follow every DynamoDB page before returning sorted history', async () => {
+  const PK = 'USER#dev-user-local';
+  const calls = [];
+  __setTestDb({ async send(command) {
+    assert.ok(command instanceof QueryCommand);
+    calls.push(command.input);
+    const page = command.input.ExclusiveStartKey?.SK;
+    if (!page) return { Items: [{ PK, SK: 'LOG#a', id: 'a', date: '2026-10-01' }], LastEvaluatedKey: { PK, SK: 'LOG#a' } };
+    if (page === 'LOG#a') return { Items: [], LastEvaluatedKey: { PK, SK: 'LOG#b' } };
+    return { Items: [{ PK, SK: 'LOG#c', id: 'c', date: '2026-10-03' }] };
+  } });
+  const result = await handler(event('GET', '/logs?limit=1', undefined, { Authorization: 'Bearer dev-bypass-token' }));
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body).map(item => item.id), ['c']);
+  assert.ok(result.headers['X-Next-Cursor']);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(input => input.ExpressionAttributeValues[':pk'] === PK && input.ExpressionAttributeValues[':prefix'] === 'LOG#'));
+});
+
+test('account deletion retries only unprocessed DynamoDB requests before reporting success', async () => {
+  const PK = 'USER#dev-user-local';
+  const db = fakeDb([{ PK, SK: 'LOG#private', id: 'private' }, { PK, SK: 'EXERCISE#press', id: 'press' }]);
+  const send = db.send.bind(db);
+  const batches = [];
+  db.send = async command => {
+    if (command instanceof BatchWriteCommand) {
+      const requests = command.input.RequestItems[process.env.TABLE_NAME];
+      batches.push(requests);
+      if (batches.length === 1) {
+        await send(new BatchWriteCommand({ RequestItems: { [process.env.TABLE_NAME]: requests.slice(1) } }));
+        return { UnprocessedItems: { [process.env.TABLE_NAME]: requests.slice(0, 1) } };
+      }
+    }
+    return send(command);
+  };
+  __setTestDb(db);
+  const result = await handler(event('DELETE', '/account', undefined, { Authorization: 'Bearer dev-bypass-token' }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(batches.length, 2);
+  assert.deepEqual(batches[1], batches[0].slice(0, 1));
+  assert.deepEqual([...db.items.values()].map(item => item.SK), ['ACCOUNT']);
+});
+
+test('exhausted batch retries cannot report account deletion as complete', async () => {
+  const PK = 'USER#dev-user-local';
+  const db = fakeDb([{ PK, SK: 'LOG#private', id: 'private' }]);
+  const send = db.send.bind(db);
+  let attempts = 0;
+  db.send = async command => {
+    if (command instanceof BatchWriteCommand) {
+      attempts += 1;
+      return { UnprocessedItems: command.input.RequestItems };
+    }
+    return send(command);
+  };
+  __setTestDb(db);
+  const result = await handler(event('DELETE', '/account', undefined, { Authorization: 'Bearer dev-bypass-token' }));
+  assert.equal(result.statusCode, 500);
+  assert.equal(attempts, 6);
+  assert.ok(db.items.has(`${PK}|LOG#private`));
+  assert.equal(db.items.has(`${PK}|ACCOUNT`), false);
 });
