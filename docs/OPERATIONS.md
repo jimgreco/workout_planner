@@ -251,3 +251,10 @@ This client upgrade requires sign-in again. Unowned legacy queues stay preserved
 and quarantined, and users must not clear browser storage or uninstall before
 recovery. Never downgrade clients into the old unowned storage model as a recovery
 shortcut; preserve account-bound clients while investigating server issues.
+
+Optional CI deployment requires an already verified `EC2_SSH_KNOWN_HOSTS` secret
+and fails closed when it is absent. It never obtains fresh trust with
+`ssh-keyscan`. The coordinator may instead use the existing pinned local SSH
+connection for the authorized, serialized release; configuring new trust is
+a separate action. Base-image environment changes also fail the equality guard
+and require review instead of automatically changing effective app settings.
