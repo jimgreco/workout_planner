@@ -22,7 +22,8 @@ def check(ok, message):
 
 def run(*args):
     result = subprocess.run(args, capture_output=True)
-    check(result.returncode == 0, 'Local release verification command failed; command output withheld.')
+    detail = result.stderr.decode(errors='replace')[:2000] if args[0] in ('codesign', 'ditto') else 'command output withheld'
+    check(result.returncode == 0, 'Local verification failed (' + ' '.join(args[:2]) + ', exit ' + str(result.returncode) + '): ' + detail)
     return result.stdout
 
 
