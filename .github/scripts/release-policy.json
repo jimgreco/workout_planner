@@ -1,0 +1,55 @@
+{
+  "app": "workouts",
+  "appId": "6770769722",
+  "bundleId": "com.workoutplanner.ios",
+  "teamId": "V6JPQCD336",
+  "certificateSha256": "7fb57dbf0cd7923f9ba97d8801824de79e1ba235dbe78d4a821f8195c30f0bf8",
+  "certificateSha1": "963A7A5107DB8D4C141371C285F71CCAE84A5452",
+  "testerEmailSha256": "a46343858cf3e5e2fda6339f7063190f295ece10dea50979932e69ec57ea4baa",
+  "groups": [
+    {
+      "id": "853ed696-8d15-4610-8d9f-c905caabce36",
+      "name": "Family",
+      "internal": true,
+      "testers": 1,
+      "automatic": true
+    }
+  ],
+  "profiles": {
+    "app": {
+      "uuid": "5e82eee3-28a7-4b31-aae0-04ed40d6f26a",
+      "name": "Forge App Store 34663364359",
+      "bundleId": "com.workoutplanner.ios",
+      "groups": [
+        "group.com.workoutplanner.ios"
+      ],
+      "appleSignin": [
+        "Default"
+      ],
+      "push": null
+    },
+    "extension": {
+      "uuid": "15bf4da6-e405-4ebb-8f10-af01d76ead5e",
+      "name": "Forge Live Activity App Store 34663364359",
+      "bundleId": "com.workoutplanner.ios.LiveActivity",
+      "groups": [
+        "group.com.workoutplanner.ios"
+      ],
+      "appleSignin": [],
+      "push": null
+    }
+  },
+  "marketingVersion": "1.2",
+  "apiOrigin": "https://repmixburn.com/api",
+  "infoPlists": [
+    "ios/WorkoutPlanner/Info.plist",
+    "ios/WorkoutPlannerLiveActivity/Info.plist"
+  ],
+  "configuredPlistKeys": [
+    "API_BASE_URL",
+    "GOOGLE_IOS_CLIENT_ID",
+    "GIT_COMMIT_HASH",
+    "CFBundleURLTypes",
+    "ITSAppUsesNonExemptEncryption"
+  ]
+}
