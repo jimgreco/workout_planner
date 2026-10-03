@@ -31,3 +31,16 @@ test('rejects a tampered app session', async () => {
   const tampered = `${parts[0]}.${parts[1]}.tampered-signature`;
   await assert.rejects(() => verifyAppSession(tampered));
 });
+
+test('production rejects the development session secret even when bypass is misconfigured', async () => {
+  const env = { ...process.env };
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.LOCAL_AUTH_BYPASS = 'true';
+    delete process.env.APP_SESSION_SECRET;
+    await assert.rejects(() => createAppSession({ sub: 'synthetic-user' }), /APP_SESSION_SECRET/);
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key];
+    Object.assign(process.env, env);
+  }
+});

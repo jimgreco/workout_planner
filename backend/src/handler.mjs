@@ -32,7 +32,7 @@ import {
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { OAuth2Client } from 'google-auth-library';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify, errors as joseErrors } from 'jose';
 import { emailAliasPk, normalizeEmail, isVerifiedEmail, resolveAccountUser } from './account-linking.mjs';
 import { encryptAppleToken, exchangeAppleCode, revokeAppleTokens } from './apple-tokens.mjs';
 import { DEFAULT_EQUIPMENT, equipmentLibraryId } from './default-equipment.mjs';
@@ -81,7 +81,8 @@ const SK_PREFIX = {
 
 const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeconds: 0, advancedMode: false };
 const ADMIN_SCAN_LIMIT = 1000;
-const IS_LOCAL = process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test';
+const IS_LOCAL = process.env.NODE_ENV !== 'production'
+    && (process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test');
 const DEV_BYPASS_TOKEN = 'dev-bypass-token';
 const DEV_USER_SUB = 'dev-user-local';
 const SERVICE_NAME = 'workout-planner-api';
@@ -320,7 +321,12 @@ async function verifyRequestSession(event) {
   if (IS_LOCAL && token === DEV_BYPASS_TOKEN) {
     return { sub: DEV_USER_SUB, provider: 'demo', name: 'Dev User', email: 'dev@localhost', picture: '' };
   }
-  return verifyAppSession(token);
+  try {
+    return await verifyAppSession(token);
+  } catch (error) {
+    if (error instanceof joseErrors.JOSEError) throw new Error('Invalid session');
+    throw error;
+  }
 }
 
 async function verifyOptionalRequestSession(event) {

@@ -7,7 +7,8 @@ const SESSION_AUDIENCE = 'workout-planner-app';
 const LOCAL_SESSION_SECRET = 'local-workout-planner-session-secret-change-me';
 
 function isLocalRuntime() {
-  return process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test';
+  return process.env.NODE_ENV !== 'production'
+    && (process.env.LOCAL_AUTH_BYPASS === 'true' || process.env.NODE_ENV === 'test');
 }
 
 function sessionSecret() {
