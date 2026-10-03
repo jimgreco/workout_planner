@@ -44,9 +44,12 @@ private struct APIErrorResponse: Decodable {
     let requestId: String?
 }
 
+@MainActor
 struct WorkoutAPI {
     let baseURL: URL
     let tokenProvider: () async throws -> String
+    let checkSession: () throws -> Void
+    var urlSession: URLSession = .shared
 
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -178,7 +181,9 @@ struct WorkoutAPI {
     }
 
     private func perform(_ method: String, path: String, body: Data?) async throws -> Data {
+        try checkSession()
         let token = try await tokenProvider()
+        try checkSession()
         let url = baseURL.appending(path: path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -188,7 +193,15 @@ struct WorkoutAPI {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch {
+            try checkSession()
+            throw error
+        }
+        try checkSession()
         guard let http = response as? HTTPURLResponse else { throw WorkoutAPIError.invalidResponse }
         if http.statusCode == 401 { throw WorkoutAPIError.unauthorized }
         if http.statusCode == 204 { return Data("null".utf8) }

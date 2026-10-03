@@ -23,9 +23,11 @@ import {
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 vi.mock('../auth.js', () => ({
   getStoredCredential:  vi.fn(() => 'fake-token'),
+  getSessionEpoch:      vi.fn(() => 'test-session'),
+  getSessionSnapshot:   vi.fn(() => ({ user: { sub: 'test-owner' }, credential: 'fake-token', epoch: 'test-session' })),
   DEV_BYPASS:           false,
   // other exports used elsewhere
-  getStoredUser:        vi.fn(() => null),
+  getStoredUser:        vi.fn(() => ({ sub: 'test-owner' })),
   storeUser:            vi.fn(),
   clearStoredUser:      vi.fn(),
   storeCredential:      vi.fn(),
@@ -70,6 +72,7 @@ const PROGRAM = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
   resetData();
   vi.clearAllMocks();
 });

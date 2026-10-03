@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct PendingWorkoutStart: Equatable {
     var template: WorkoutTemplate
@@ -29,20 +30,39 @@ final class WorkoutStore: ObservableObject {
     @Published var isUsingOfflineSnapshot = false
 
     private let auth: AuthManager
+    private let offlineDefaults: UserDefaults
+    private let urlSession: URLSession
+    private let snapshotFolder: URL?
+    private var storeGeneration = UUID()
+    private var pendingResourceQueue: PendingResourceQueue { .init(ownerID: auth.user?.sub, defaults: offlineDefaults) }
+    private var pendingLogQueue: PendingWorkoutLogQueue { .init(ownerID: auth.user?.sub, defaults: offlineDefaults) }
+    private var pendingConflictQueue: PendingSyncConflictQueue { .init(ownerID: auth.user?.sub, defaults: offlineDefaults) }
+    private var snapshotStore: OfflineDataSnapshotStore { .init(ownerID: auth.user?.sub, directory: snapshotFolder) }
     private var pendingRetryTask: Task<Void, Never>?
     private var isFlushingPendingChanges = false
     private var api: WorkoutAPI? {
-        guard let baseURL = AppConfiguration.apiBaseURL else { return nil }
-        return WorkoutAPI(baseURL: baseURL) { [auth] in
-            try await auth.freshIDToken()
+        guard let baseURL = AppConfiguration.apiBaseURL, auth.user != nil else { return nil }
+        let generation = auth.sessionGeneration
+        let storeGeneration = self.storeGeneration
+        let check = { [weak self, auth] in
+            try auth.checkSession(generation)
+            guard let self, self.storeGeneration == storeGeneration else { throw CancellationError() }
         }
+        return WorkoutAPI(baseURL: baseURL, tokenProvider: { [auth] in
+            try check()
+            let token = try await auth.freshIDToken()
+            try check()
+            return token
+        }, checkSession: check, urlSession: urlSession)
     }
 
-    init(auth: AuthManager) {
+    init(auth: AuthManager, offlineDefaults: UserDefaults = .standard, urlSession: URLSession = .shared, snapshotFolder: URL? = nil) {
         self.auth = auth
-        syncConflicts = PendingSyncConflictQueue.all
-        pendingSyncCount = PendingWorkoutLogQueue.count + PendingResourceQueue.count
-        pendingConflictCount = syncConflicts.count
+        self.offlineDefaults = offlineDefaults
+        self.urlSession = urlSession
+        self.snapshotFolder = snapshotFolder
+        auth.accountDidChange = { [weak self] in self?.reset() }
+        refreshPendingSyncCount()
     }
 
     var usesLocalData: Bool {
@@ -63,6 +83,9 @@ final class WorkoutStore: ObservableObject {
     }
 
     var syncDetailText: String? {
+        if ["forge.pendingWorkoutLogSaves.v1", "forge.pendingResourceChanges.v1", "forge.pendingConflicts.v1"].contains(where: { offlineDefaults.object(forKey: $0) != nil }) {
+            return "Older offline changes are preserved on this device. Contact support to verify their account before recovery; do not remove the app."
+        }
         if let syncIssueMessage {
             return syncIssueMessage
         }
@@ -80,6 +103,9 @@ final class WorkoutStore: ObservableObject {
     }
 
     func reset() {
+        storeGeneration = UUID()
+        isLoading = false
+        syncIssueMessage = nil
         exercises = []
         templates = []
         logs = []
@@ -92,20 +118,20 @@ final class WorkoutStore: ObservableObject {
         editingLog = nil
         errorMessage = nil
         isUsingOfflineSnapshot = false
-        PendingWorkoutLogQueue.clear()
-        PendingResourceQueue.clear()
-        PendingSyncConflictQueue.clear()
-        OfflineDataSnapshotStore.clear()
         refreshPendingSyncCount()
         stopPendingSyncRetryLoop()
     }
 
     func loadData() async {
+        guard auth.user != nil else { reset(); return }
+        let generation = storeGeneration
         isLoading = true
         errorMessage = nil
         defer {
-            isLoading = false
-            refreshPendingSyncCount()
+            if generation == storeGeneration {
+                isLoading = false
+                refreshPendingSyncCount()
+            }
         }
 
         if usesLocalData {
@@ -121,10 +147,13 @@ final class WorkoutStore: ObservableObject {
         let hadOfflineSnapshot = loadOfflineSnapshot(markOffline: false)
         do {
             try await loadCloudData(using: api)
+            try api.checkSession()
         } catch WorkoutAPIError.unauthorized {
+            guard (try? api.checkSession()) != nil else { return }
             auth.signOut()
             errorMessage = WorkoutAPIError.unauthorized.localizedDescription
         } catch {
+            guard (try? api.checkSession()) != nil else { return }
             if isCancellationError(error) { return }
             if isNetworkAvailabilityError(error),
                (hadOfflineSnapshot || loadOfflineSnapshot(markOffline: true)) {
@@ -145,7 +174,9 @@ final class WorkoutStore: ObservableObject {
         if usesLocalData { saved = item }
         else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
-            saved = try await api.saveEquipment(item)
+            let received = try await api.saveEquipment(item)
+            try api.checkSession()
+            saved = received
         }
         equipment = (equipment.filter { $0.id != saved.id } + [saved]).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         for gymIndex in gyms.indices {
@@ -166,6 +197,7 @@ final class WorkoutStore: ObservableObject {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
             try await api.deleteEquipment(id)
+            try api.checkSession()
         }
         equipment.removeAll { $0.id == id }
         persistOfflineSnapshot()
@@ -181,7 +213,9 @@ final class WorkoutStore: ObservableObject {
         if usesLocalData { saved = gym }
         else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
-            saved = try await api.saveGym(gym)
+            let received = try await api.saveGym(gym)
+            try api.checkSession()
+            saved = received
         }
         gyms = (gyms.filter { $0.id != saved.id } + [saved]).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         persistOfflineSnapshot()
@@ -197,6 +231,7 @@ final class WorkoutStore: ObservableObject {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
             try await api.deleteGym(id)
+            try api.checkSession()
         }
         gyms.removeAll { $0.id == id }
         persistOfflineSnapshot()
@@ -208,7 +243,9 @@ final class WorkoutStore: ObservableObject {
             return
         }
         guard let api else { throw WorkoutAPIError.missingConfiguration }
-        settings = try await api.saveSettings(value)
+        let received = try await api.saveSettings(value)
+        try api.checkSession()
+        settings = received
         isUsingOfflineSnapshot = false
         persistOfflineSnapshot()
     }
@@ -225,18 +262,23 @@ final class WorkoutStore: ObservableObject {
             saved = exercise
         } else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingResourceQueue.upsertExercise(exercise)
+            let sentChange = pendingResourceQueue.all.first { $0.id == exercise.id && $0.resource == .exercises }!
             do {
-                saved = try await api.saveExercise(exercise)
-                PendingResourceQueue.remove(.exercises, id: exercise.id)
-                PendingSyncConflictQueue.remove(.exercises, id: exercise.id)
+                let received = try await api.saveExercise(exercise)
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
+                saved = received
+                pendingResourceQueue.remove(.exercises, id: exercise.id)
+                pendingConflictQueue.remove(.exercises, id: exercise.id)
             } catch {
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .exercises, operation: .put, itemId: exercise.id, local: .exercise(exercise), error: error) {
-                    PendingResourceQueue.upsertExercise(exercise)
                     saved = exercise
                 } else {
                     guard isNetworkAvailabilityError(error) else { throw error }
-                    PendingResourceQueue.upsertExercise(exercise)
                     saved = exercise
                 }
                 refreshPendingSyncCount()
@@ -251,13 +293,18 @@ final class WorkoutStore: ObservableObject {
     func deleteExercise(_ id: String) async throws {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingResourceQueue.delete(.exercises, id: id)
+            let sentChange = pendingResourceQueue.all.first { $0.id == id && $0.resource == .exercises }!
             do {
                 try await api.deleteExercise(id)
-                PendingResourceQueue.remove(.exercises, id: id)
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
+                pendingResourceQueue.remove(.exercises, id: id)
             } catch {
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
-                PendingResourceQueue.delete(.exercises, id: id)
             }
         }
         exercises.removeAll { $0.id == id }
@@ -271,18 +318,23 @@ final class WorkoutStore: ObservableObject {
             saved = template
         } else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingResourceQueue.upsertTemplate(template)
+            let sentChange = pendingResourceQueue.all.first { $0.id == template.id && $0.resource == .templates }!
             do {
-                saved = try await api.saveTemplate(template)
-                PendingResourceQueue.remove(.templates, id: template.id)
-                PendingSyncConflictQueue.remove(.templates, id: template.id)
+                let received = try await api.saveTemplate(template)
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
+                saved = received
+                pendingResourceQueue.remove(.templates, id: template.id)
+                pendingConflictQueue.remove(.templates, id: template.id)
             } catch {
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .templates, operation: .put, itemId: template.id, local: .template(template), error: error) {
-                    PendingResourceQueue.upsertTemplate(template)
                     saved = template
                 } else {
                     guard isNetworkAvailabilityError(error) else { throw error }
-                    PendingResourceQueue.upsertTemplate(template)
                     saved = template
                 }
                 refreshPendingSyncCount()
@@ -297,13 +349,18 @@ final class WorkoutStore: ObservableObject {
     func deleteTemplate(_ id: String) async throws {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingResourceQueue.delete(.templates, id: id)
+            let sentChange = pendingResourceQueue.all.first { $0.id == id && $0.resource == .templates }!
             do {
                 try await api.deleteTemplate(id)
-                PendingResourceQueue.remove(.templates, id: id)
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
+                pendingResourceQueue.remove(.templates, id: id)
             } catch {
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
-                PendingResourceQueue.delete(.templates, id: id)
             }
         }
         templates.removeAll { $0.id == id }
@@ -317,18 +374,23 @@ final class WorkoutStore: ObservableObject {
             saved = program
         } else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingResourceQueue.upsertProgram(program)
+            let sentChange = pendingResourceQueue.all.first { $0.id == program.id && $0.resource == .programs }!
             do {
-                saved = try await api.saveProgram(program)
-                PendingResourceQueue.remove(.programs, id: program.id)
-                PendingSyncConflictQueue.remove(.programs, id: program.id)
+                let received = try await api.saveProgram(program)
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
+                saved = received
+                pendingResourceQueue.remove(.programs, id: program.id)
+                pendingConflictQueue.remove(.programs, id: program.id)
             } catch {
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .programs, operation: .put, itemId: program.id, local: .program(program), error: error) {
-                    PendingResourceQueue.upsertProgram(program)
                     saved = program
                 } else {
                     guard isNetworkAvailabilityError(error) else { throw error }
-                    PendingResourceQueue.upsertProgram(program)
                     saved = program
                 }
                 refreshPendingSyncCount()
@@ -343,13 +405,18 @@ final class WorkoutStore: ObservableObject {
     func deleteProgram(_ id: String) async throws {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingResourceQueue.delete(.programs, id: id)
+            let sentChange = pendingResourceQueue.all.first { $0.id == id && $0.resource == .programs }!
             do {
                 try await api.deleteProgram(id)
-                PendingResourceQueue.remove(.programs, id: id)
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
+                pendingResourceQueue.remove(.programs, id: id)
             } catch {
+                try api.checkSession()
+                guard pendingResourceQueue.all.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
-                PendingResourceQueue.delete(.programs, id: id)
             }
         }
         programs.removeAll { $0.id == id }
@@ -364,18 +431,23 @@ final class WorkoutStore: ObservableObject {
             saved = log
         } else {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingLogQueue.upsert(log)
+            let sentChange = pendingLogQueue.changes.first { $0.id == log.id }!
             do {
-                saved = try await api.saveLog(log)
-                PendingWorkoutLogQueue.remove(log.id)
-                PendingSyncConflictQueue.remove(.logs, id: log.id)
+                let received = try await api.saveLog(log)
+                try api.checkSession()
+                guard pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
+                saved = received
+                pendingLogQueue.remove(log.id)
+                pendingConflictQueue.remove(.logs, id: log.id)
             } catch {
+                try api.checkSession()
+                guard pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 if rememberConflict(resource: .logs, operation: .put, itemId: log.id, local: .log(log), error: error) {
-                    PendingWorkoutLogQueue.upsert(log)
                     saved = log
                 } else {
                     guard isNetworkAvailabilityError(error) else { throw error }
-                    PendingWorkoutLogQueue.upsert(log)
                     saved = log
                 }
                 refreshPendingSyncCount()
@@ -390,13 +462,18 @@ final class WorkoutStore: ObservableObject {
     func deleteLog(_ id: String) async throws {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
+            pendingLogQueue.delete(id)
+            let sentChange = pendingLogQueue.changes.first { $0.id == id }!
             do {
                 try await api.deleteLog(id)
-                PendingWorkoutLogQueue.remove(id)
+                try api.checkSession()
+                guard pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
+                pendingLogQueue.remove(id)
             } catch {
+                try api.checkSession()
+                guard pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
                 guard isNetworkAvailabilityError(error) else { throw error }
-                PendingWorkoutLogQueue.delete(id)
             }
         }
         refreshPendingSyncCount()
@@ -422,6 +499,7 @@ final class WorkoutStore: ObservableObject {
     }
 
     func resolveSyncConflict(_ conflict: SyncConflictItem, keeping resolution: SyncConflictResolution) async {
+        guard pendingConflictQueue.all.contains(conflict) else { return }
         guard !usesLocalData else { return }
         guard let api else {
             errorMessage = "API configuration is missing. Install a build configured for Rep, Mix, Burn production."
@@ -434,15 +512,18 @@ final class WorkoutStore: ObservableObject {
                 applyRemoteConflictValue(conflict)
             case .local:
                 try await saveLocalConflictValue(conflict, using: api)
+                try api.checkSession()
             }
             removePendingChange(for: conflict)
-            PendingSyncConflictQueue.remove(conflict.resource, id: conflict.itemId)
+            pendingConflictQueue.remove(conflict.resource, id: conflict.itemId)
             persistOfflineSnapshot()
             refreshPendingSyncCount()
         } catch WorkoutAPIError.unauthorized {
+            guard (try? api.checkSession()) != nil else { return }
             auth.signOut()
             errorMessage = WorkoutAPIError.unauthorized.localizedDescription
         } catch {
+            guard (try? api.checkSession()) != nil else { return }
             syncIssueMessage = "Could not resolve sync conflict: \(error.localizedDescription)"
             errorMessage = syncIssueMessage
             refreshPendingSyncCount()
@@ -479,6 +560,7 @@ final class WorkoutStore: ObservableObject {
         if usesLocalData { return }
         guard let api else { throw WorkoutAPIError.missingConfiguration }
         try await api.submitFeedback(message: message, build: AppConfiguration.buildLabel)
+        try api.checkSession()
     }
 
     func exportData() async throws -> Data {
@@ -544,7 +626,9 @@ final class WorkoutStore: ObservableObject {
         }
         guard let api else { throw WorkoutAPIError.missingConfiguration }
         let result = try await api.importData(payload, mode: mode)
+        try api.checkSession()
         await loadData()
+        try api.checkSession()
         return result
     }
 
@@ -690,7 +774,13 @@ final class WorkoutStore: ObservableObject {
         if !usesLocalData {
             guard let api else { throw WorkoutAPIError.missingConfiguration }
             appleRevocationRequired = try await api.deleteAccount()
+            try api.checkSession()
         }
+        pendingLogQueue.clear()
+        pendingResourceQueue.clear()
+        pendingConflictQueue.clear()
+        snapshotStore.clear()
+        auth.invalidateSessionWork()
         reset()
         return appleRevocationRequired
     }
@@ -765,8 +855,8 @@ final class WorkoutStore: ObservableObject {
     }
 
     private func refreshPendingSyncCount() {
-        syncConflicts = PendingSyncConflictQueue.all
-        pendingSyncCount = PendingWorkoutLogQueue.count + PendingResourceQueue.count
+        syncConflicts = pendingConflictQueue.all
+        pendingSyncCount = pendingLogQueue.count + pendingResourceQueue.count
         pendingConflictCount = syncConflicts.count
         if usesLocalData {
             stopPendingSyncRetryLoop()
@@ -807,51 +897,72 @@ final class WorkoutStore: ObservableObject {
         isUsingOfflineSnapshot = false
 
         do {
-            equipment = try await api.fetchEquipment()
+            let received = try await api.fetchEquipment()
+            try api.checkSession()
+            equipment = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "equipment library", failures: &failures, firstError: &firstError)
         }
 
         do {
-            exercises = mergePendingExercises(try await api.fetchExercises()).sortedByName()
+            let received = mergePendingExercises(try await api.fetchExercises()).sortedByName()
+            try api.checkSession()
+            exercises = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "exercise library", failures: &failures, firstError: &firstError)
         }
 
         do {
-            templates = mergePendingTemplates(try await api.fetchTemplates()).sortedByName()
+            let received = mergePendingTemplates(try await api.fetchTemplates()).sortedByName()
+            try api.checkSession()
+            templates = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "routines", failures: &failures, firstError: &firstError)
         }
 
         do {
-            logs = mergePendingLogs(try await api.fetchLogs())
+            let received = mergePendingLogs(try await api.fetchLogs())
+            try api.checkSession()
+            logs = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "workout history", failures: &failures, firstError: &firstError)
         }
 
         do {
-            programs = mergePendingPrograms(try await api.fetchPrograms()).sortedForDisplay()
+            let received = mergePendingPrograms(try await api.fetchPrograms()).sortedForDisplay()
+            try api.checkSession()
+            programs = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "programs", failures: &failures, firstError: &firstError)
         }
 
         do {
-            gyms = try await api.fetchGyms().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            let received = try await api.fetchGyms().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            try api.checkSession()
+            gyms = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "gyms", failures: &failures, firstError: &firstError)
         }
 
         do {
-            settings = try await api.fetchSettings()
+            let received = try await api.fetchSettings()
+            try api.checkSession()
+            settings = received
             loadedSections += 1
         } catch {
+            try api.checkSession()
             try recordLoadFailure(error, label: "settings", failures: &failures, firstError: &firstError)
         }
 
@@ -867,12 +978,13 @@ final class WorkoutStore: ObservableObject {
         refreshPendingSyncCount()
         persistOfflineSnapshot()
         await flushPendingChanges(using: api)
+        try api.checkSession()
         persistOfflineSnapshot()
     }
 
     @discardableResult
     private func loadOfflineSnapshot(markOffline: Bool) -> Bool {
-        guard let snapshot = OfflineDataSnapshotStore.load(for: auth.user?.sub) else { return false }
+        guard let snapshot = snapshotStore.load(for: auth.user?.sub) else { return false }
         exercises = mergePendingExercises(snapshot.exercises).sortedByName()
         templates = mergePendingTemplates(snapshot.templates).sortedByName()
         logs = mergePendingLogs(snapshot.logs)
@@ -887,7 +999,7 @@ final class WorkoutStore: ObservableObject {
 
     private func persistOfflineSnapshot() {
         guard !usesLocalData, let userID = auth.user?.sub else { return }
-        OfflineDataSnapshotStore.save(.init(
+        snapshotStore.save(.init(
             userID: userID,
             capturedAt: ISO8601DateFormatter().string(from: Date()),
             exercises: exercises,
@@ -966,7 +1078,7 @@ final class WorkoutStore: ObservableObject {
             requestId: apiError.requestID,
             createdAt: ISO8601DateFormatter().string(from: Date())
         )
-        PendingSyncConflictQueue.upsert(item)
+        pendingConflictQueue.upsert(item)
         syncIssueMessage = "\(resource.label) changed in the cloud. Review sync conflicts."
         return true
     }
@@ -993,23 +1105,27 @@ final class WorkoutStore: ObservableObject {
             guard var exercise = conflict.local?.exercise else { return }
             exercise.revision = expectedRevision
             let saved = try await api.saveExercise(exercise)
+            try api.checkSession()
             upsert(saved, in: &exercises)
             exercises = exercises.sortedByName()
         case .templates:
             guard var template = conflict.local?.template else { return }
             template.revision = expectedRevision
             let saved = try await api.saveTemplate(template)
+            try api.checkSession()
             upsert(saved, in: &templates)
             templates = templates.sortedByName()
         case .logs:
             guard var log = conflict.local?.log else { return }
             log.revision = expectedRevision
             let saved = try await api.saveLog(log)
+            try api.checkSession()
             upsert(saved, in: &logs)
         case .programs:
             guard var program = conflict.local?.program else { return }
             program.revision = expectedRevision
             let saved = try await api.saveProgram(program)
+            try api.checkSession()
             upsert(saved, in: &programs)
             programs = programs.sortedForDisplay()
         }
@@ -1049,15 +1165,15 @@ final class WorkoutStore: ObservableObject {
 
     private func removePendingChange(for conflict: SyncConflictItem) {
         if conflict.resource == .logs {
-            PendingWorkoutLogQueue.remove(conflict.itemId)
+            pendingLogQueue.remove(conflict.itemId)
         } else if let resource = PendingResourceKind(conflict.resource) {
-            PendingResourceQueue.remove(resource, id: conflict.itemId)
+            pendingResourceQueue.remove(resource, id: conflict.itemId)
         }
     }
 
     private func mergePendingExercises(_ cloudExercises: [Exercise]) -> [Exercise] {
         var merged = Dictionary(uniqueKeysWithValues: cloudExercises.map { ($0.id, $0) })
-        for pending in PendingResourceQueue.all where pending.resource == .exercises {
+        for pending in pendingResourceQueue.all where pending.resource == .exercises {
             if pending.operation == .delete {
                 merged.removeValue(forKey: pending.id)
             } else if let exercise = pending.exercise {
@@ -1069,7 +1185,7 @@ final class WorkoutStore: ObservableObject {
 
     private func mergePendingTemplates(_ cloudTemplates: [WorkoutTemplate]) -> [WorkoutTemplate] {
         var merged = Dictionary(uniqueKeysWithValues: cloudTemplates.map { ($0.id, $0) })
-        for pending in PendingResourceQueue.all where pending.resource == .templates {
+        for pending in pendingResourceQueue.all where pending.resource == .templates {
             if pending.operation == .delete {
                 merged.removeValue(forKey: pending.id)
             } else if let template = pending.template {
@@ -1081,7 +1197,7 @@ final class WorkoutStore: ObservableObject {
 
     private func mergePendingPrograms(_ cloudPrograms: [TrainingProgram]) -> [TrainingProgram] {
         var merged = Dictionary(uniqueKeysWithValues: cloudPrograms.map { ($0.id, $0) })
-        for pending in PendingResourceQueue.all where pending.resource == .programs {
+        for pending in pendingResourceQueue.all where pending.resource == .programs {
             if pending.operation == .delete {
                 merged.removeValue(forKey: pending.id)
             } else if let program = pending.program {
@@ -1093,7 +1209,7 @@ final class WorkoutStore: ObservableObject {
 
     private func mergePendingLogs(_ cloudLogs: [WorkoutLog]) -> [WorkoutLog] {
         var merged = Dictionary(uniqueKeysWithValues: cloudLogs.map { ($0.id, $0) })
-        for pending in PendingWorkoutLogQueue.changes {
+        for pending in pendingLogQueue.changes {
             if pending.operation == .delete {
                 merged.removeValue(forKey: pending.id)
             } else if let log = pending.log {
@@ -1107,60 +1223,71 @@ final class WorkoutStore: ObservableObject {
         guard !isFlushingPendingChanges else { return }
         isFlushingPendingChanges = true
         defer { isFlushingPendingChanges = false }
+        guard (try? api.checkSession()) != nil else { return }
         await flushPendingResources(using: api)
+        guard (try? api.checkSession()) != nil else { return }
         await flushPendingLogs(using: api)
     }
 
     private func flushPendingResources(using api: WorkoutAPI) async {
-        let pending = PendingResourceQueue.all
+        let pending = pendingResourceQueue.all
         guard !pending.isEmpty else {
             refreshPendingSyncCount()
             return
         }
 
         for change in pending {
-            guard PendingResourceQueue.all.contains(change) else { continue }
+            guard (try? api.checkSession()) != nil else { return }
+            guard pendingResourceQueue.all.contains(change) else { continue }
             do {
                 switch (change.resource, change.operation) {
                 case (.exercises, .delete):
                     try await api.deleteExercise(change.id)
-                    guard PendingResourceQueue.all.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingResourceQueue.all.contains(change) else { continue }
                     exercises.removeAll { $0.id == change.id }
                 case (.exercises, .put):
                     guard let exercise = change.exercise else { break }
                     let saved = try await api.saveExercise(exercise)
-                    guard PendingResourceQueue.all.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingResourceQueue.all.contains(change) else { continue }
                     upsert(saved, in: &exercises)
-                    PendingSyncConflictQueue.remove(.exercises, id: change.id)
+                    pendingConflictQueue.remove(.exercises, id: change.id)
                 case (.templates, .delete):
                     try await api.deleteTemplate(change.id)
-                    guard PendingResourceQueue.all.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingResourceQueue.all.contains(change) else { continue }
                     templates.removeAll { $0.id == change.id }
                 case (.templates, .put):
                     guard let template = change.template else { break }
                     let saved = try await api.saveTemplate(template)
-                    guard PendingResourceQueue.all.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingResourceQueue.all.contains(change) else { continue }
                     upsert(saved, in: &templates)
-                    PendingSyncConflictQueue.remove(.templates, id: change.id)
+                    pendingConflictQueue.remove(.templates, id: change.id)
                 case (.programs, .delete):
                     try await api.deleteProgram(change.id)
-                    guard PendingResourceQueue.all.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingResourceQueue.all.contains(change) else { continue }
                     programs.removeAll { $0.id == change.id }
                 case (.programs, .put):
                     guard let program = change.program else { break }
                     let saved = try await api.saveProgram(program)
-                    guard PendingResourceQueue.all.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingResourceQueue.all.contains(change) else { continue }
                     upsert(saved, in: &programs)
-                    PendingSyncConflictQueue.remove(.programs, id: change.id)
+                    pendingConflictQueue.remove(.programs, id: change.id)
                 }
-                PendingResourceQueue.remove(change.resource, id: change.id)
+                pendingResourceQueue.remove(change.resource, id: change.id)
             } catch WorkoutAPIError.unauthorized {
+                guard (try? api.checkSession()) != nil else { return }
                 auth.signOut()
                 errorMessage = WorkoutAPIError.unauthorized.localizedDescription
                 break
             } catch {
-                if isCancellationError(error) { break }
-                guard PendingResourceQueue.all.contains(change) else { continue }
+                guard (try? api.checkSession()) != nil else { return }
+                if isCancellationError(error) { return }
+                guard pendingResourceQueue.all.contains(change) else { continue }
                 if rememberConflict(change, error: error) {
                     syncIssueMessage = "A pending library change changed in the cloud. Review sync conflicts."
                 } else if !isNetworkAvailabilityError(error) {
@@ -1178,33 +1305,38 @@ final class WorkoutStore: ObservableObject {
     }
 
     private func flushPendingLogs(using api: WorkoutAPI) async {
-        let pending = PendingWorkoutLogQueue.changes
+        let pending = pendingLogQueue.changes
         guard !pending.isEmpty else {
             refreshPendingSyncCount()
             return
         }
 
         for change in pending {
-            guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
+            guard (try? api.checkSession()) != nil else { return }
+            guard pendingLogQueue.changes.contains(change) else { continue }
             do {
                 if change.operation == .delete {
                     try await api.deleteLog(change.id)
-                    guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingLogQueue.changes.contains(change) else { continue }
                     logs.removeAll { $0.id == change.id }
                 } else if let log = change.log {
                     let saved = try await api.saveLog(log)
-                    guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
+                    try api.checkSession()
+                    guard pendingLogQueue.changes.contains(change) else { continue }
                     upsert(saved, in: &logs)
-                    PendingSyncConflictQueue.remove(.logs, id: change.id)
+                    pendingConflictQueue.remove(.logs, id: change.id)
                 }
-                PendingWorkoutLogQueue.remove(change.id)
+                pendingLogQueue.remove(change.id)
             } catch WorkoutAPIError.unauthorized {
+                guard (try? api.checkSession()) != nil else { return }
                 auth.signOut()
                 errorMessage = WorkoutAPIError.unauthorized.localizedDescription
                 break
             } catch {
-                if isCancellationError(error) { break }
-                guard PendingWorkoutLogQueue.changes.contains(change) else { continue }
+                guard (try? api.checkSession()) != nil else { return }
+                if isCancellationError(error) { return }
+                guard pendingLogQueue.changes.contains(change) else { continue }
                 if rememberConflict(change, error: error) {
                     syncIssueMessage = "A pending workout changed in the cloud. Review sync conflicts."
                 } else if !isNetworkAvailabilityError(error) {
@@ -1240,43 +1372,48 @@ private struct OfflineDataSnapshot: Codable {
     var settings: WorkoutSettings
 }
 
-private enum OfflineDataSnapshotStore {
-    private static let folderName = "Forge"
-    private static let fileName = "offline-data-snapshot.json"
-
-    static func load(for userID: String?) -> OfflineDataSnapshot? {
-        guard let userID,
-              let data = try? Data(contentsOf: fileURL),
-              let snapshot = try? JSONDecoder().decode(OfflineDataSnapshot.self, from: data),
-              snapshot.userID == userID
-        else { return nil }
-        return snapshot
+private struct OfflineDataSnapshotStore {
+    let ownerID: String?
+    let directory: URL?
+    private var folderURL: URL {
+        directory ?? (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory).appendingPathComponent("Forge", isDirectory: true)
     }
-
-    static func save(_ snapshot: OfflineDataSnapshot) {
+    private var fileURL: URL {
+        folderURL.appendingPathComponent(AccountOfflineKey.key("offline-data-snapshot.v2", ownerID: ownerID) + ".json")
+    }
+    func load(for userID: String?) -> OfflineDataSnapshot? {
+        guard let userID, userID == ownerID else { return nil }
+        for url in [fileURL, folderURL.appendingPathComponent("offline-data-snapshot.json")] {
+            if let data = try? Data(contentsOf: url),
+               let snapshot = try? JSONDecoder().decode(OfflineDataSnapshot.self, from: data),
+               snapshot.userID == userID { return snapshot }
+        }
+        return nil
+    }
+    func save(_ snapshot: OfflineDataSnapshot) {
+        guard snapshot.userID == ownerID else { return }
         do {
             try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(snapshot)
-            try data.write(to: fileURL, options: [.atomic])
-        } catch {
-            #if DEBUG
-            print("Could not save offline data snapshot: \(error.localizedDescription)")
-            #endif
+            try JSONEncoder().encode(snapshot).write(to: fileURL, options: [.atomic])
+        } catch { /* Pending writes remain durable in the separate account queue. */ }
+    }
+    func clear() {
+        guard let ownerID else { return }
+        try? FileManager.default.removeItem(at: fileURL)
+        let legacy = folderURL.appendingPathComponent("offline-data-snapshot.json")
+        if let data = try? Data(contentsOf: legacy),
+           let snapshot = try? JSONDecoder().decode(OfflineDataSnapshot.self, from: data), snapshot.userID == ownerID {
+            try? FileManager.default.removeItem(at: legacy)
         }
     }
+}
 
-    static func clear() {
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-
-    private static var folderURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent(folderName, isDirectory: true)
-    }
-
-    private static var fileURL: URL {
-        folderURL.appendingPathComponent(fileName)
+private enum AccountOfflineKey {
+    static func key(_ prefix: String, ownerID: String?) -> String {
+        // Hex UTF-8 is injective, filesystem-safe and never uses profile emails.
+        let suffix = ownerID.map { Data($0.utf8).map { String(format: "%02x", $0) }.joined() } ?? "signed-out"
+        return prefix + "." + suffix
     }
 }
 
@@ -1320,6 +1457,7 @@ private enum PendingResourceOperation: String, Codable {
 }
 
 private struct PendingResourceChange: Codable, Identifiable, Equatable {
+    var changeID: UUID = UUID()
     var resource: PendingResourceKind
     var operation: PendingResourceOperation
     var id: String
@@ -1329,69 +1467,76 @@ private struct PendingResourceChange: Codable, Identifiable, Equatable {
 }
 
 private struct PendingWorkoutLogChange: Codable, Identifiable, Equatable {
+    var changeID: UUID = UUID()
     var operation: PendingResourceOperation
     var id: String
     var log: WorkoutLog?
 }
 
-private enum PendingResourceQueue {
-    private static let key = "forge.pendingResourceChanges.v1"
+private struct PendingResourceQueue {
+    let ownerID: String?
+    let defaults: UserDefaults
+    private var key: String { AccountOfflineKey.key("forge.pendingResourceChanges.v2", ownerID: ownerID) }
 
-    static var all: [PendingResourceChange] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+    var all: [PendingResourceChange] {
+        guard ownerID != nil, let data = defaults.data(forKey: key) else { return [] }
         return (try? JSONDecoder().decode([PendingResourceChange].self, from: data)) ?? []
     }
 
-    static var count: Int {
+    var count: Int {
         all.count
     }
 
-    static func upsertExercise(_ exercise: Exercise) {
+    func upsertExercise(_ exercise: Exercise) {
         upsert(.init(resource: .exercises, operation: .put, id: exercise.id, exercise: exercise, template: nil, program: nil))
     }
 
-    static func upsertTemplate(_ template: WorkoutTemplate) {
+    func upsertTemplate(_ template: WorkoutTemplate) {
         upsert(.init(resource: .templates, operation: .put, id: template.id, exercise: nil, template: template, program: nil))
     }
 
-    static func upsertProgram(_ program: TrainingProgram) {
+    func upsertProgram(_ program: TrainingProgram) {
         upsert(.init(resource: .programs, operation: .put, id: program.id, exercise: nil, template: nil, program: program))
     }
 
-    static func delete(_ resource: PendingResourceKind, id: String) {
+    func delete(_ resource: PendingResourceKind, id: String) {
         upsert(.init(resource: resource, operation: .delete, id: id, exercise: nil, template: nil, program: nil))
     }
 
-    static func remove(_ resource: PendingResourceKind, id: String) {
+    func remove(_ resource: PendingResourceKind, id: String) {
         save(all.filter { !($0.resource == resource && $0.id == id) })
     }
 
-    static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+    func clear() {
+        guard ownerID != nil else { return }
+        defaults.removeObject(forKey: key)
     }
 
-    private static func upsert(_ change: PendingResourceChange) {
+    private func upsert(_ change: PendingResourceChange) {
         var changes = all.filter { !($0.resource == change.resource && $0.id == change.id) }
         changes.append(change)
         save(changes)
     }
 
-    private static func save(_ changes: [PendingResourceChange]) {
+    private func save(_ changes: [PendingResourceChange]) {
+        guard ownerID != nil else { return }
         guard !changes.isEmpty else {
             clear()
             return
         }
         if let data = try? JSONEncoder().encode(changes) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 }
 
-private enum PendingWorkoutLogQueue {
-    private static let key = "forge.pendingWorkoutLogSaves.v1"
+private struct PendingWorkoutLogQueue {
+    let ownerID: String?
+    let defaults: UserDefaults
+    private var key: String { AccountOfflineKey.key("forge.pendingWorkoutLogSaves.v2", ownerID: ownerID) }
 
-    static var changes: [PendingWorkoutLogChange] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+    var changes: [PendingWorkoutLogChange] {
+        guard ownerID != nil, let data = defaults.data(forKey: key) else { return [] }
         if let changes = try? JSONDecoder().decode([PendingWorkoutLogChange].self, from: data) {
             return changes
         }
@@ -1399,75 +1544,81 @@ private enum PendingWorkoutLogQueue {
         return legacyLogs.map { .init(operation: .put, id: $0.id, log: $0) }
     }
 
-    static var count: Int {
+    var count: Int {
         changes.count
     }
 
-    static func upsert(_ log: WorkoutLog) {
+    func upsert(_ log: WorkoutLog) {
         var next = changes.filter { $0.id != log.id }
         next.append(.init(operation: .put, id: log.id, log: log))
         save(next)
     }
 
-    static func delete(_ id: String) {
+    func delete(_ id: String) {
         var next = changes.filter { $0.id != id }
         next.append(.init(operation: .delete, id: id, log: nil))
         save(next)
     }
 
-    static func remove(_ id: String) {
+    func remove(_ id: String) {
         save(changes.filter { $0.id != id })
     }
 
-    static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+    func clear() {
+        guard ownerID != nil else { return }
+        defaults.removeObject(forKey: key)
     }
 
-    private static func save(_ changes: [PendingWorkoutLogChange]) {
+    private func save(_ changes: [PendingWorkoutLogChange]) {
+        guard ownerID != nil else { return }
         guard !changes.isEmpty else {
             clear()
             return
         }
         if let data = try? JSONEncoder().encode(changes) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 }
 
-private enum PendingSyncConflictQueue {
-    private static let key = "forge.pendingConflicts.v1"
+private struct PendingSyncConflictQueue {
+    let ownerID: String?
+    let defaults: UserDefaults
+    private var key: String { AccountOfflineKey.key("forge.pendingConflicts.v2", ownerID: ownerID) }
 
-    static var all: [SyncConflictItem] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+    var all: [SyncConflictItem] {
+        guard ownerID != nil, let data = defaults.data(forKey: key) else { return [] }
         return ((try? JSONDecoder().decode([SyncConflictItem].self, from: data)) ?? [])
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    static var count: Int {
+    var count: Int {
         all.count
     }
 
-    static func upsert(_ conflict: SyncConflictItem) {
+    func upsert(_ conflict: SyncConflictItem) {
         var conflicts = all.filter { !($0.resource == conflict.resource && $0.itemId == conflict.itemId) }
         conflicts.append(conflict)
         save(conflicts)
     }
 
-    static func remove(_ resource: SyncConflictResource, id: String) {
+    func remove(_ resource: SyncConflictResource, id: String) {
         save(all.filter { !($0.resource == resource && $0.itemId == id) })
     }
 
-    static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+    func clear() {
+        guard ownerID != nil else { return }
+        defaults.removeObject(forKey: key)
     }
 
-    private static func save(_ conflicts: [SyncConflictItem]) {
+    private func save(_ conflicts: [SyncConflictItem]) {
+        guard ownerID != nil else { return }
         guard !conflicts.isEmpty else {
             clear()
             return
         }
         if let data = try? JSONEncoder().encode(conflicts) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 }

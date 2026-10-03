@@ -41,7 +41,20 @@ private struct AppleProfilePayload: Encodable {
 
 @MainActor
 final class AuthManager: ObservableObject {
-    @Published var user: UserProfile?
+    @Published var user: UserProfile? {
+        didSet { if oldValue?.sub != user?.sub { invalidateSessionWork() } }
+    }
+    private(set) var sessionGeneration = UUID()
+    var accountDidChange: (() -> Void)?
+
+    func invalidateSessionWork() {
+        sessionGeneration = UUID()
+        accountDidChange?()
+    }
+
+    func checkSession(_ generation: UUID) throws {
+        guard generation == sessionGeneration else { throw CancellationError() }
+    }
     @Published var isRestoring = true
     @Published var authError: String?
     @Published var isDemoMode = false
@@ -55,7 +68,9 @@ final class AuthManager: ObservableObject {
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let self, let session = AppleSessionStore.loadApple() else { return }
+                    let generation = self.sessionGeneration
                     let credential = await self.appleCredentialState(for: session.userID)
+                    guard generation == self.sessionGeneration else { return }
                     if credential.error == nil && credential.state != .authorized {
                         self.signOut()
                     }
@@ -68,6 +83,8 @@ final class AuthManager: ObservableObject {
     }
 
     func restore() async {
+        invalidateSessionWork()
+        let generation = sessionGeneration
         let storedProvider = AppleSessionStore.storedProvider()
 
         if storedProvider == .apple {
@@ -82,7 +99,9 @@ final class AuthManager: ObservableObject {
         if AppConfiguration.isGoogleConfigured {
             do {
                 let gidUser = try await restorePreviousSignIn()
+                try checkSession(generation)
                 let sessionProfile = try await ensureGoogleSession(for: gidUser)
+                try checkSession(generation)
                 let restoredProfile = sessionProfile ?? profile(from: gidUser)
                 user = restoredProfile
                 currentProvider = .google
@@ -90,9 +109,10 @@ final class AuthManager: ObservableObject {
                 AppleSessionStore.storeProvider(.google)
                 CachedUserProfileStore.save(restoredProfile)
             } catch {
+                guard generation == sessionGeneration else { return }
                 if storedProvider == .google,
-                   AppSessionStore.validToken() != nil,
-                   let cachedUser = CachedUserProfileStore.load() {
+                   let cachedUser = CachedUserProfileStore.load(),
+                   AppSessionStore.validToken(for: cachedUser.sub) != nil {
                     user = cachedUser
                     currentProvider = .google
                     isDemoMode = false
@@ -107,6 +127,8 @@ final class AuthManager: ObservableObject {
     }
 
     func signIn() async {
+        invalidateSessionWork()
+        let generation = sessionGeneration
         authError = nil
         guard AppConfiguration.isGoogleConfigured else {
             authError = "Add the iOS Google client ID in ios/project.yml, then regenerate the project."
@@ -129,7 +151,9 @@ final class AuthManager: ObservableObject {
                     }
                 }
             }
+            try checkSession(generation)
             let signedInProfile = try await ensureGoogleSession(for: result.user) ?? profile(from: result.user)
+            try checkSession(generation)
             user = signedInProfile
             currentProvider = .google
             isDemoMode = false
@@ -137,11 +161,14 @@ final class AuthManager: ObservableObject {
             AppleSessionStore.storeProvider(.google)
             CachedUserProfileStore.save(signedInProfile)
         } catch {
+            guard generation == sessionGeneration else { return }
             authError = error.localizedDescription
         }
     }
 
     func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        invalidateSessionWork()
+        let generation = sessionGeneration
         authError = nil
 
         switch result {
@@ -166,6 +193,7 @@ final class AuthManager: ObservableObject {
 
             do {
                 let response = try await exchangeAppleSession(identityToken: token, authorizationCode: authorizationCode, profile: profile)
+                try checkSession(generation)
                 let sessionProfile = response.user ?? profile
                 GIDSignIn.sharedInstance.signOut()
                 AppleSessionStore.saveApple(userID: credential.user, identityToken: token, profile: sessionProfile)
@@ -175,6 +203,7 @@ final class AuthManager: ObservableObject {
                 isDemoMode = false
                 CachedUserProfileStore.save(sessionProfile)
             } catch {
+                guard generation == sessionGeneration else { return }
                 authError = error.localizedDescription
             }
 
@@ -187,11 +216,13 @@ final class AuthManager: ObservableObject {
     }
 
     func handleAppleAccountLink(_ result: Result<ASAuthorization, Error>) async -> Bool {
+        invalidateSessionWork()
+        let generation = sessionGeneration
         authError = nil
 
         switch result {
         case let .success(authorization):
-            guard AppSessionStore.validToken() != nil else {
+            guard AppSessionStore.validToken(for: user?.sub) != nil else {
                 authError = "Session expired. Please sign in again."
                 return false
             }
@@ -214,6 +245,7 @@ final class AuthManager: ObservableObject {
 
             do {
                 let response = try await exchangeAppleSession(identityToken: token, authorizationCode: authorizationCode, profile: profile, linkToCurrentAccount: true)
+                try checkSession(generation)
                 user = response.user ?? user
                 if let user {
                     CachedUserProfileStore.save(user)
@@ -221,6 +253,7 @@ final class AuthManager: ObservableObject {
                 isDemoMode = false
                 return true
             } catch {
+                guard generation == sessionGeneration else { return false }
                 authError = error.localizedDescription
                 return false
             }
@@ -246,6 +279,7 @@ final class AuthManager: ObservableObject {
     }
 
     func signOut() {
+        invalidateSessionWork()
         GIDSignIn.sharedInstance.signOut()
         AppleSessionStore.clearAll()
         AppSessionStore.clear()
@@ -257,8 +291,9 @@ final class AuthManager: ObservableObject {
     }
 
     func freshIDToken() async throws -> String {
+        let generation = sessionGeneration
         if isDemoMode { return "dev-bypass-token" }
-        if let token = AppSessionStore.validToken() {
+        if let token = AppSessionStore.validToken(for: user?.sub) {
             return token
         }
         if currentProvider == .apple {
@@ -281,10 +316,11 @@ final class AuthManager: ObservableObject {
             }
         }
 
+        try checkSession(generation)
         guard let token = refreshed.idToken?.tokenString else {
             throw WorkoutAPIError.unauthorized
         }
-        return try await exchangeGoogleSession(idToken: token).token
+        return try await exchangeGoogleSession(idToken: token, expectedOwnerID: user?.sub).token
     }
 
     private func restorePreviousSignIn() async throws -> GIDGoogleUser {
@@ -303,6 +339,7 @@ final class AuthManager: ObservableObject {
 
     @discardableResult
     private func ensureGoogleSession(for gidUser: GIDGoogleUser) async throws -> UserProfile? {
+        let generation = sessionGeneration
         if AppConfiguration.apiBaseURL == nil { return nil }
         do {
             let refreshed: GIDGoogleUser = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
@@ -316,29 +353,33 @@ final class AuthManager: ObservableObject {
                     }
                 }
             }
+            try checkSession(generation)
             guard let token = refreshed.idToken?.tokenString else {
                 throw WorkoutAPIError.unauthorized
             }
             return try await exchangeGoogleSession(idToken: token).user
         } catch {
-            if AppSessionStore.validToken() != nil {
-                return nil
-            }
+            try checkSession(generation)
             throw error
         }
     }
 
     @discardableResult
-    private func exchangeGoogleSession(idToken: String) async throws -> AuthSessionResponse {
+    private func exchangeGoogleSession(idToken: String, expectedOwnerID: String? = nil) async throws -> AuthSessionResponse {
+        let generation = sessionGeneration
         let response: AuthSessionResponse = try await exchangeSession(
             path: "auth/google",
             body: GoogleAuthRequest(credential: idToken)
         )
-        AppSessionStore.save(token: response.token, expiresAt: response.expiresAt)
+        try checkSession(generation)
+        guard let ownerID = response.user?.sub, !ownerID.isEmpty else { throw WorkoutAPIError.invalidResponse }
+        if let expectedOwnerID, ownerID != expectedOwnerID { throw WorkoutAPIError.unauthorized }
+        AppSessionStore.save(token: response.token, expiresAt: response.expiresAt, userID: ownerID)
         return response
     }
 
     private func exchangeAppleSession(identityToken: String, authorizationCode: String, profile: UserProfile, linkToCurrentAccount: Bool = false) async throws -> AuthSessionResponse {
+        let generation = sessionGeneration
         let response: AuthSessionResponse = try await exchangeSession(
             path: "auth/apple",
             body: AppleAuthRequest(
@@ -348,7 +389,9 @@ final class AuthManager: ObservableObject {
             ),
             includeAuthorization: linkToCurrentAccount
         )
-        AppSessionStore.save(token: response.token, expiresAt: response.expiresAt)
+        try checkSession(generation)
+        guard let ownerID = response.user?.sub, !ownerID.isEmpty else { throw WorkoutAPIError.invalidResponse }
+        AppSessionStore.save(token: response.token, expiresAt: response.expiresAt, userID: ownerID)
         return response
     }
 
@@ -363,7 +406,7 @@ final class AuthManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if includeAuthorization {
-            guard let token = AppSessionStore.validToken() else { throw WorkoutAPIError.unauthorized }
+            guard let token = AppSessionStore.validToken(for: user?.sub) else { throw WorkoutAPIError.unauthorized }
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try JSONEncoder().encode(body)
@@ -389,13 +432,15 @@ final class AuthManager: ObservableObject {
     }
 
     private func restoreAppleSession() async -> Bool {
-        guard let session = AppleSessionStore.loadApple(), AppSessionStore.validToken() != nil else {
+        let generation = sessionGeneration
+        guard let session = AppleSessionStore.loadApple(), AppSessionStore.validToken(for: session.profile.sub) != nil else {
             AppleSessionStore.clearAll()
             AppSessionStore.clear()
             CachedUserProfileStore.clear()
             return false
         }
         let credential = await appleCredentialState(for: session.userID)
+        guard generation == sessionGeneration else { return false }
         guard credential.state == .authorized || credential.error != nil else {
             AppleSessionStore.clearAll()
             AppSessionStore.clear()
@@ -434,23 +479,33 @@ private enum AppSessionStore {
     private static let sessionExpiresAtKey = "wp.session.expiresAt"
     private static let expiryBuffer: TimeInterval = 5 * 60
 
-    static func save(token: String, expiresAt: String) {
-        saveKeychain(value: token, account: sessionTokenAccount)
-        UserDefaults.standard.set(expiresAt, forKey: sessionExpiresAtKey)
+    private struct BoundSession: Codable {
+        let token: String
+        let expiresAt: String
+        let userID: String
+    }
+    private static let boundSessionAccount = "app.boundSession.v2"
+
+    static func save(token: String, expiresAt: String, userID: String) {
+        let session = BoundSession(token: token, expiresAt: expiresAt, userID: userID)
+        guard let data = try? JSONEncoder().encode(session), let value = String(data: data, encoding: .utf8) else { return }
+        saveKeychain(value: value, account: boundSessionAccount)
     }
 
-    static func validToken() -> String? {
-        guard let token = loadKeychain(account: sessionTokenAccount),
-              let expiresAt = UserDefaults.standard.string(forKey: sessionExpiresAtKey),
-              let expiryDate = parseDate(expiresAt),
-              expiryDate.timeIntervalSinceNow > expiryBuffer
-        else { return nil }
-        return token
+    static func validToken(for userID: String?) -> String? {
+        guard let userID,
+              let value = loadKeychain(account: boundSessionAccount),
+              let session = try? JSONDecoder().decode(BoundSession.self, from: Data(value.utf8)),
+              session.userID == userID,
+              let expiryDate = parseDate(session.expiresAt),
+              expiryDate.timeIntervalSinceNow > expiryBuffer else { return nil }
+        return session.token
     }
 
     static func clear() {
         UserDefaults.standard.removeObject(forKey: sessionExpiresAtKey)
         deleteKeychain(account: sessionTokenAccount)
+        deleteKeychain(account: boundSessionAccount)
     }
 
     private static func parseDate(_ value: String) -> Date? {

@@ -1,9 +1,17 @@
 // Session management — stores the signed-in profile and app session token.
 // Provider ID tokens are exchanged once at /auth/* and are not reused for data calls.
 
-const AUTH_KEY       = 'wp_auth';
-const CRED_KEY       = 'wp_session_token';
-const CRED_EXP_KEY   = 'wp_session_exp';
+// One atomic record prevents another tab observing B's token with A's profile.
+export const SESSION_KEY = 'wp_session.v2';
+function readSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || {}; }
+  catch { return {}; }
+}
+function writeSession(session) { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); }
+export function getSessionEpoch() { return readSession().epoch || ''; }
+function advanceSessionEpoch() {
+  writeSession({ ...readSession(), epoch: crypto.randomUUID() });
+}
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -25,63 +33,55 @@ export const DEV_USER = {
 
 // ── User profile ───────────────────────────────────────────────────────────────
 /** @returns {{ sub: string, name: string, email: string, picture: string } | null} */
-export function getStoredUser() {
-  try { return JSON.parse(localStorage.getItem(AUTH_KEY)); }
-  catch { return null; }
-}
+export function getStoredUser() { return readSession().user || null; }
 
 export function storeUser(user) {
-  localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+  const session = readSession();
+  if (session.user?.sub === user?.sub) writeSession({ ...session, user });
+  else writeSession({ user, epoch: crypto.randomUUID() });
 }
 
 export function clearStoredUser() {
-  localStorage.removeItem(AUTH_KEY);
-  clearStoredCredential();
+  writeSession({ epoch: crypto.randomUUID() });
+  // Retire legacy credentials. They cannot establish a v2 account binding.
+  for (const key of ['wp_auth', 'wp_session_token', 'wp_session_exp', 'wp_session_epoch']) localStorage.removeItem(key);
 }
 
-// ── App session token ──────────────────────────────────────────────────────────
-/**
- * Persist the signed app session so api.js can attach it to every data request.
- */
 export function storeCredential(token, expiresAt) {
-  localStorage.setItem(CRED_KEY, token);
-  localStorage.setItem(CRED_EXP_KEY, expiresAt);
+  writeSession({ ...readSession(), token, expiresAt, epoch: crypto.randomUUID() });
 }
 
 export function storeSession(session) {
-  storeCredential(session.token, session.expiresAt);
-  if (session.user) storeUser(session.user);
+  writeSession({ user: session.user, token: session.token, expiresAt: session.expiresAt, epoch: crypto.randomUUID() });
 }
 
-/**
- * Returns the stored app session token if it is still valid (with a 5 minute
- * buffer), otherwise returns null so callers can trigger re-authentication.
- */
-export function getStoredCredential() {
-  if (DEV_BYPASS) return DEV_BYPASS_TOKEN;
-  const token = localStorage.getItem(CRED_KEY);
-  const expiresAt = localStorage.getItem(CRED_EXP_KEY);
-  if (!token || !expiresAt) return null;
-  const expiresMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresMs) || expiresMs - Date.now() <= EXPIRY_BUFFER_MS) {
-    clearStoredCredential();
-    return null;
-  }
-  return token;
+export function getSessionSnapshot() {
+  const session = readSession();
+  if (DEV_BYPASS) return { user: DEV_USER, credential: DEV_BYPASS_TOKEN, epoch: session.epoch || '' };
+  const expiresMs = Date.parse(session.expiresAt);
+  const credential = session.token && Number.isFinite(expiresMs) && expiresMs - Date.now() > EXPIRY_BUFFER_MS
+    ? session.token : null;
+  // Reading an expired session must not clear a newer session another tab wrote.
+  return { user: session.user || null, credential, epoch: session.epoch || '' };
 }
+
+export function getStoredCredential() { return getSessionSnapshot().credential; }
 
 export function clearStoredCredential() {
-  localStorage.removeItem(CRED_KEY);
-  localStorage.removeItem(CRED_EXP_KEY);
+  const { user, epoch } = readSession();
+  writeSession({ user, epoch });
 }
 
 export async function exchangeGoogleCredential(credential) {
+  advanceSessionEpoch();
+  const attempt = getSessionEpoch();
   const res = await fetch(`${BASE_URL}/auth/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ credential }),
   });
   const payload = await parseResponse(res);
+  if (getSessionEpoch() !== attempt) throw new Error('Sign-in was cancelled because the session changed.');
   storeSession(payload);
   return payload.user;
 }

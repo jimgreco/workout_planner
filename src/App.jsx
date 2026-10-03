@@ -35,6 +35,7 @@ import {
   deleteAccount as deleteAccountData,
   flushPendingChanges,
   pendingChangeCount,
+  hasQuarantinedPendingChanges,
   pendingConflictCount,
   getPendingConflicts,
   resolvePendingConflict,
@@ -240,6 +241,19 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, [user, loadRequest]);
+
+  useEffect(() => {
+    // Another tab changed credentials. Reload clears rendered data and editors
+    // without signing out the new shared session or erasing either account's work.
+    const onStorage = (event) => {
+      if (event.key === null || ['wp_session.v2', 'wp_auth', 'wp_session_epoch'].includes(event.key)) {
+        resetData();
+        window.location.reload();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // ── Auth callbacks ─────────────────────────────────────────────────────────
   const handleSignOut = useCallback(() => {
@@ -728,6 +742,11 @@ export default function App() {
         {isOffline && (
           <div className="app-notice warning">
             <span>Offline. Cloud saves are unavailable until your connection returns.</span>
+          </div>
+        )}
+        {hasQuarantinedPendingChanges() && (
+          <div className="app-notice warning">
+            <span>Older offline changes are preserved on this device but cannot sync until their account ownership is verified. Contact support before clearing browser data.</span>
           </div>
         )}
         {pendingSyncCount > 0 && (

@@ -8,7 +8,7 @@
  * so App.jsx can sign the user out without prop-drilling an error callback.
  */
 
-import { getStoredCredential, DEV_BYPASS } from './auth.js';
+import { getSessionSnapshot, clearStoredUser, DEV_BYPASS } from './auth.js';
 import { normalizeProgram } from './programs.js';
 import { DEFAULT_EQUIPMENT } from '../backend/src/default-equipment.mjs';
 
@@ -37,8 +37,44 @@ const DEFAULT_SETTINGS = { defaultSets: 4, defaultReps: 8, defaultRestTargetSeco
 const PENDING_LOG_QUEUE_KEY = 'forge.pendingLogSaves.v1';
 const PENDING_RESOURCE_QUEUE_KEY = 'forge.pendingResourceChanges.v1';
 const PENDING_CONFLICTS_KEY = 'forge.pendingConflicts.v1';
-let pendingLogFlush;
-let pendingResourceFlush;
+const pendingLogFlushes = new Map();
+const pendingResourceFlushes = new Map();
+let cacheGeneration = 0;
+let activeSession;
+
+export class AccountChangedError extends Error {
+  constructor() { super('The account changed. Pending work remains with its original account.'); this.name = 'AccountChangedError'; }
+}
+
+function clearCache() {
+  for (const key of Object.keys(cache)) cache[key] = null;
+  cacheGeneration += 1;
+}
+
+function context() {
+  const snapshot = getSessionSnapshot();
+  const owner = snapshot.user?.sub || null;
+  const session = JSON.stringify([owner, snapshot.epoch]);
+  if (session !== activeSession) { clearCache(); activeSession = session; }
+  return { owner, session, generation: cacheGeneration, credential: snapshot.credential };
+}
+
+function assertCurrent(captured) {
+  const current = context();
+  if (captured.session !== current.session || captured.generation !== current.generation) throw new AccountChangedError();
+}
+
+function queueKey(legacyKey, owner = context().owner) {
+  return owner ? `${legacyKey.replace(/\.v1$/, '.v2')}:${encodeURIComponent(owner)}` : null;
+}
+
+// v1 did not record ownership. Preserve its bytes without showing or replaying
+// health records to whichever account happens to sign in next.
+export function hasQuarantinedPendingChanges() {
+  return [PENDING_LOG_QUEUE_KEY, PENDING_RESOURCE_QUEUE_KEY, PENDING_CONFLICTS_KEY]
+    .some(key => storage()?.getItem(key) != null);
+}
+
 
 function withExpectedRevision(item) {
   if (!Number.isInteger(item.revision)) return item;
@@ -49,9 +85,11 @@ function storage() {
   return typeof window !== 'undefined' ? window.localStorage : undefined;
 }
 
-function readPendingLogQueue() {
+function readPendingLogQueue(owner = context().owner) {
   try {
-    const raw = storage()?.getItem(PENDING_LOG_QUEUE_KEY);
+    const key = queueKey(PENDING_LOG_QUEUE_KEY, owner);
+    if (!key) return [];
+    const raw = storage()?.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -59,9 +97,11 @@ function readPendingLogQueue() {
   }
 }
 
-function readPendingResourceQueue() {
+function readPendingResourceQueue(owner = context().owner) {
   try {
-    const raw = storage()?.getItem(PENDING_RESOURCE_QUEUE_KEY);
+    const key = queueKey(PENDING_RESOURCE_QUEUE_KEY, owner);
+    if (!key) return [];
+    const raw = storage()?.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -69,9 +109,11 @@ function readPendingResourceQueue() {
   }
 }
 
-function readPendingConflicts() {
+function readPendingConflicts(owner = context().owner) {
   try {
-    const raw = storage()?.getItem(PENDING_CONFLICTS_KEY);
+    const key = queueKey(PENDING_CONFLICTS_KEY, owner);
+    if (!key) return [];
+    const raw = storage()?.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -79,46 +121,51 @@ function readPendingConflicts() {
   }
 }
 
-function writePendingLogQueue(queue) {
+function writePendingLogQueue(queue, owner) {
+  if (!owner) throw new AuthError('Sign in before saving offline changes.');
   const next = queue.filter((entry) => entry?.id);
   if (next.length === 0) {
-    storage()?.removeItem(PENDING_LOG_QUEUE_KEY);
+    storage()?.removeItem(queueKey(PENDING_LOG_QUEUE_KEY, owner));
   } else {
-    storage()?.setItem(PENDING_LOG_QUEUE_KEY, JSON.stringify(next));
+    storage()?.setItem(queueKey(PENDING_LOG_QUEUE_KEY, owner), JSON.stringify(next));
   }
   dispatchSyncStatus();
 }
 
-function writePendingResourceQueue(queue) {
+function writePendingResourceQueue(queue, owner) {
+  if (!owner) throw new AuthError('Sign in before saving offline changes.');
   const next = queue.filter((entry) => entry?.resource && entry?.id && entry?.operation);
   if (next.length === 0) {
-    storage()?.removeItem(PENDING_RESOURCE_QUEUE_KEY);
+    storage()?.removeItem(queueKey(PENDING_RESOURCE_QUEUE_KEY, owner));
   } else {
-    storage()?.setItem(PENDING_RESOURCE_QUEUE_KEY, JSON.stringify(next));
+    storage()?.setItem(queueKey(PENDING_RESOURCE_QUEUE_KEY, owner), JSON.stringify(next));
   }
   dispatchSyncStatus();
 }
 
-function writePendingConflicts(conflicts) {
+function writePendingConflicts(conflicts, owner) {
+  if (!owner) throw new AuthError('Sign in before saving offline changes.');
   const next = conflicts.filter((entry) => entry?.id && entry?.resource);
   if (next.length === 0) {
-    storage()?.removeItem(PENDING_CONFLICTS_KEY);
+    storage()?.removeItem(queueKey(PENDING_CONFLICTS_KEY, owner));
   } else {
-    storage()?.setItem(PENDING_CONFLICTS_KEY, JSON.stringify(next));
+    storage()?.setItem(queueKey(PENDING_CONFLICTS_KEY, owner), JSON.stringify(next));
   }
   dispatchSyncStatus();
 }
 
 function dispatchSyncStatus(extra = {}) {
-  const pendingLogSaves = readPendingLogQueue().length;
-  const pendingResourceChanges = readPendingResourceQueue().length;
-  const pendingConflicts = readPendingConflicts().length;
+  const owner = context().owner;
+  const pendingLogSaves = readPendingLogQueue(owner).length;
+  const pendingResourceChanges = readPendingResourceQueue(owner).length;
+  const pendingConflicts = readPendingConflicts(owner).length;
   window.dispatchEvent(new CustomEvent('wp:sync-status', {
     detail: {
       pendingLogSaves,
       pendingResourceChanges,
       pendingConflicts,
       pendingChanges: pendingLogSaves + pendingResourceChanges,
+      quarantinedPendingChanges: hasQuarantinedPendingChanges(),
       ...extra,
     },
   }));
@@ -131,6 +178,7 @@ function stripLocalLogFields(log) {
   delete clean.syncError;
   delete clean.syncConflict;
   delete clean.operation;
+  delete clean.changeId;
   return clean;
 }
 
@@ -193,9 +241,9 @@ function upsertCached(resource, item) {
   return cache[resource];
 }
 
-function mergePendingLogs(logs) {
+function mergePendingLogs(logs, owner) {
   const byId = new Map(logs.map((log) => [log.id, log]));
-  for (const pending of readPendingLogQueue()) {
+  for (const pending of readPendingLogQueue(owner)) {
     if (pending.operation === 'delete') {
       byId.delete(pending.id);
     } else {
@@ -205,12 +253,12 @@ function mergePendingLogs(logs) {
   return [...byId.values()];
 }
 
-function mergePendingCollection(resource, items) {
+function mergePendingCollection(resource, items, owner) {
   const byId = new Map(items.map((item) => {
     const normalized = normalizeResourceItem(resource, item);
     return [normalized.id, normalized];
   }));
-  for (const pending of readPendingResourceQueue().filter((entry) => entry.resource === resource)) {
+  for (const pending of readPendingResourceQueue(owner).filter((entry) => entry.resource === resource)) {
     if (pending.operation === 'delete') {
       byId.delete(pending.id);
     } else if (pending.item) {
@@ -220,55 +268,57 @@ function mergePendingCollection(resource, items) {
   return [...byId.values()];
 }
 
-function queuePendingLogSave(log) {
+function queuePendingLogSave(log, owner) {
   const pending = pendingLogItem(log);
-  const queue = readPendingLogQueue().filter((entry) => entry.id !== pending.id);
-  queue.push({ ...stripLocalLogFields(pending), operation: 'put' });
-  writePendingLogQueue(queue);
+  const queue = readPendingLogQueue(owner).filter((entry) => entry.id !== pending.id);
+  queue.push({ ...stripLocalLogFields(pending), operation: 'put', changeId: crypto.randomUUID() });
+  writePendingLogQueue(queue, owner);
   return pending;
 }
 
-function queuePendingLogDelete(id) {
-  const queue = readPendingLogQueue().filter((entry) => entry.id !== id);
+function queuePendingLogDelete(id, owner) {
+  const queue = readPendingLogQueue(owner).filter((entry) => entry.id !== id);
   queue.push({
     id,
     operation: 'delete',
+    changeId: crypto.randomUUID(),
     pendingSyncAt: new Date().toISOString(),
   });
-  writePendingLogQueue(queue);
+  writePendingLogQueue(queue, owner);
 }
 
-function queuePendingResourceChange(resource, operation, itemOrId) {
+function queuePendingResourceChange(resource, operation, itemOrId, owner) {
   const id = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
   const item = typeof itemOrId === 'string' ? undefined : stripLocalResourceFields(itemOrId);
-  const queue = readPendingResourceQueue().filter((entry) => !(entry.resource === resource && entry.id === id));
+  const queue = readPendingResourceQueue(owner).filter((entry) => !(entry.resource === resource && entry.id === id));
   queue.push({
     resource,
     operation,
     id,
     item,
+    changeId: crypto.randomUUID(),
     pendingSyncAt: new Date().toISOString(),
   });
-  writePendingResourceQueue(queue);
+  writePendingResourceQueue(queue, owner);
 }
 
-function removePendingLogSave(id) {
-  writePendingLogQueue(readPendingLogQueue().filter((entry) => entry.id !== id));
+function removePendingLogSave(id, owner) {
+  writePendingLogQueue(readPendingLogQueue(owner).filter((entry) => entry.id !== id), owner);
 }
 
-function removePendingResourceChange(resource, id) {
-  writePendingResourceQueue(readPendingResourceQueue().filter((entry) => !(entry.resource === resource && entry.id === id)));
+function removePendingResourceChange(resource, id, owner) {
+  writePendingResourceQueue(readPendingResourceQueue(owner).filter((entry) => !(entry.resource === resource && entry.id === id)), owner);
 }
 
-function removePendingConflict(conflictId) {
-  writePendingConflicts(readPendingConflicts().filter((entry) => entry.id !== conflictId));
+function removePendingConflict(conflictId, owner) {
+  writePendingConflicts(readPendingConflicts(owner).filter((entry) => entry.id !== conflictId), owner);
 }
 
 function pendingConflictId(resource, id) {
   return `${resource}:${id}`;
 }
 
-function storePendingConflict(resource, operation, local, error) {
+function storePendingConflict(resource, operation, local, error, owner) {
   const id = local?.id;
   if (!id) return undefined;
   const conflictId = pendingConflictId(resource, id);
@@ -286,9 +336,9 @@ function storePendingConflict(resource, operation, local, error) {
     createdAt: new Date().toISOString(),
   };
   writePendingConflicts([
-    ...readPendingConflicts().filter((entry) => entry.id !== conflictId),
+    ...readPendingConflicts(owner).filter((entry) => entry.id !== conflictId),
     conflict,
-  ]);
+  ], owner);
   return conflict;
 }
 
@@ -312,55 +362,54 @@ export function getPendingConflicts() {
   return readPendingConflicts();
 }
 
-/** Clear the cache (called on sign-out). */
+/** Clear only memory on sign-out; durable work belongs to its original owner. */
 export function resetData() {
-  cache.gyms = null;
-  cache.equipment = null;
-  cache.exercises = null;
-  cache.templates = null;
-  cache.logs      = null;
-  cache.programs  = null;
-  cache.settings  = null;
-  writePendingLogQueue([]);
-  writePendingResourceQueue([]);
-  writePendingConflicts([]);
+  clearCache();
+  dispatchSyncStatus();
 }
 
 // ── HTTP helper ────────────────────────────────────────────────────────────────
-async function request(method, path, body) {
-  const credential = getStoredCredential();
-  if (!credential) {
+async function request(method, path, body, captured = context()) {
+  assertCurrent(captured);
+  const credential = captured.credential;
+  if (!captured.owner || !credential) {
     window.dispatchEvent(new CustomEvent('wp:auth-error'));
     throw new AuthError('Session expired — please sign in again');
   }
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${credential}`,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  if (res.status === 401) {
-    window.dispatchEvent(new CustomEvent('wp:auth-error'));
-    throw new AuthError('Session expired — please sign in again');
-  }
-
-  if (!res.ok) {
-    const { message, requestId, payload } = await responseError(res);
-    const error = new Error(message);
-    error.status = res.status;
-    error.requestId = requestId;
-    error.conflict = payload?.conflict;
-    window.dispatchEvent(new CustomEvent('wp:api-error', {
-      detail: { message, status: res.status, requestId, conflict: res.status === 409 },
-    }));
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    assertCurrent(captured);
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('wp:auth-error'));
+      throw new AuthError('Session expired — please sign in again');
+    }
+    if (!res.ok) {
+      const { message, requestId, payload } = await responseError(res);
+      assertCurrent(captured);
+      const error = new Error(message);
+      error.status = res.status;
+      error.requestId = requestId;
+      error.conflict = payload?.conflict;
+      window.dispatchEvent(new CustomEvent('wp:api-error', {
+        detail: { message, status: res.status, requestId, conflict: res.status === 409 },
+      }));
+      throw error;
+    }
+    const result = res.status === 204 ? null : await res.json();
+    assertCurrent(captured);
+    return result;
+  } catch (error) {
+    // A late 401, network failure or body decode must not mutate the new account.
+    assertCurrent(captured);
     throw error;
   }
-  if (res.status === 204) return null;
-  return res.json();
 }
 
 async function responseError(res) {
@@ -379,6 +428,7 @@ async function responseError(res) {
 // ── Bootstrap ──────────────────────────────────────────────────────────────────
 /** Fetch all collections + settings in parallel and populate the cache. */
 export async function initData() {
+  const captured = context();
   // In dev bypass mode with no real API configured, start with empty collections.
   if (DEV_BYPASS && !BASE_URL) {
     cache.gyms = [];
@@ -391,20 +441,21 @@ export async function initData() {
     return;
   }
   const [exercises, templates, logs, programs, settings, gyms, equipment] = await Promise.all([
-    request('GET', '/exercises'),
-    request('GET', '/templates'),
-    request('GET', '/logs'),
-    request('GET', '/programs'),
-    request('GET', '/settings'),
-    request('GET', '/gyms'),
-    request('GET', '/equipment'),
+    request('GET', '/exercises', undefined, captured),
+    request('GET', '/templates', undefined, captured),
+    request('GET', '/logs', undefined, captured),
+    request('GET', '/programs', undefined, captured),
+    request('GET', '/settings', undefined, captured),
+    request('GET', '/gyms', undefined, captured),
+    request('GET', '/equipment', undefined, captured),
   ]);
+  assertCurrent(captured);
   cache.gyms = gyms;
   cache.equipment = equipment;
-  cache.exercises = mergePendingCollection('exercises', exercises);
-  cache.templates = mergePendingCollection('templates', templates);
-  cache.logs      = mergePendingLogs(logs);
-  cache.programs  = mergePendingCollection('programs', programs).sort((a, b) => (
+  cache.exercises = mergePendingCollection('exercises', exercises, captured.owner);
+  cache.templates = mergePendingCollection('templates', templates, captured.owner);
+  cache.logs      = mergePendingLogs(logs, captured.owner);
+  cache.programs  = mergePendingCollection('programs', programs, captured.owner).sort((a, b) => (
     Number(Boolean(b.active)) - Number(Boolean(a.active))
     || a.name.localeCompare(b.name)
   ));
@@ -415,215 +466,173 @@ export async function initData() {
 function editedEquipmentCount(equipment = []) {
   return equipment.filter((item) => !DEFAULT_EQUIPMENT.some((entry) => entry.id === item.id && entry.name === item.name && entry.category === item.category && entry.details === item.details)).length;
 }
-export function getEquipment() { return [...(cache.equipment ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
+export function getEquipment() { context(); return [...(cache.equipment ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
 export async function saveEquipment(item) {
+  const captured = context();
   const body = { ...item, id: item.id || crypto.randomUUID() };
   if (getEquipment().some((entry) => entry.id !== body.id && entry.name.trim().toLowerCase() === body.name.trim().toLowerCase())) throw new Error('Equipment with that name already exists in your library.');
-  const saved = (DEV_BYPASS && !BASE_URL) ? body : await request('PUT', `/equipment/${body.id}`, withExpectedRevision(body));
+  const saved = (DEV_BYPASS && !BASE_URL) ? body : await request('PUT', `/equipment/${body.id}`, withExpectedRevision(body), captured);
+  assertCurrent(captured);
   cache.equipment = [...getEquipment().filter((entry) => entry.id !== saved.id), saved];
   cache.gyms = getGyms().map((gym) => ({ ...gym, equipment: gym.equipment.map((entry) => (entry.equipmentId ?? entry.id) === saved.id ? { ...entry, name: saved.name, category: saved.category } : entry) }));
   return getEquipment();
 }
 export async function deleteEquipment(id) {
+  const captured = context();
   if (getGyms().some((gym) => gym.equipment.some((item) => (item.equipmentId ?? item.id) === id)) || getExercises().some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.equipmentId === id))) throw new Error('Remove this equipment from gyms and exercises before deleting it.');
-  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/equipment/${id}`);
+  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/equipment/${id}`, undefined, captured);
+  assertCurrent(captured);
   cache.equipment = getEquipment().filter((entry) => entry.id !== id);
   return getEquipment();
 }
 
 // Gyms save online so a failed request leaves the editor and cached inventory intact.
-export function getGyms() { return [...(cache.gyms ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
+export function getGyms() { context(); return [...(cache.gyms ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
 export async function saveGym(gym) {
+  const captured = context();
   if (getExercises().some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.gymId === gym.id && !gym.equipment.some((item) => item.id === ref.equipmentId)))) {
     throw new Error('Remove exercise associations before removing equipment from this gym.');
   }
   const body = { ...gym, id: gym.id || crypto.randomUUID() };
-  const saved = (DEV_BYPASS && !BASE_URL) ? body : await request('PUT', `/gyms/${body.id}`, withExpectedRevision(body));
+  const saved = (DEV_BYPASS && !BASE_URL) ? body : await request('PUT', `/gyms/${body.id}`, withExpectedRevision(body), captured);
+  assertCurrent(captured);
   cache.gyms = [...getGyms().filter((item) => item.id !== saved.id), saved];
   return getGyms();
 }
 export async function deleteGym(id) {
+  const captured = context();
   if (getExercises().some((exercise) => exercise.equipmentAlternatives?.some((ref) => ref.gymId === id))) {
     throw new Error('Remove exercise equipment associations before deleting this gym.');
   }
   if (getTemplates().some((routine) => routine.gymId === id)) {
     throw new Error('Reassign or unassign routines using this gym before deleting it.');
   }
-  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/gyms/${id}`);
+  if (!(DEV_BYPASS && !BASE_URL)) await request('DELETE', `/gyms/${id}`, undefined, captured);
+  assertCurrent(captured);
   cache.gyms = getGyms().filter((gym) => gym.id !== id);
   return getGyms();
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-export function getSettings() { return { ...DEFAULT_SETTINGS, ...(cache.settings ?? {}) }; }
+export function getSettings() { context(); return { ...DEFAULT_SETTINGS, ...(cache.settings ?? {}) }; }
 
 export async function saveSettings(settings) {
-  const saved = (DEV_BYPASS && !BASE_URL) ? settings : await request('PUT', '/settings', settings);
+  const captured = context();
+  const saved = (DEV_BYPASS && !BASE_URL) ? settings : await request('PUT', '/settings', settings, captured);
+  assertCurrent(captured);
   cache.settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
   return cache.settings;
 }
 
 // ── Exercises ──────────────────────────────────────────────────────────────────
-export function getExercises() { return cache.exercises ?? []; }
+export function getExercises() { context(); return cache.exercises ?? []; }
+
+async function mutateQueued(resource, operation, item, captured) {
+  assertCurrent(captured);
+  const id = typeof item === 'string' ? item : item.id;
+  const isLog = resource === 'logs';
+  if (isLog) {
+    if (operation === 'delete') queuePendingLogDelete(id, captured.owner); else queuePendingLogSave(item, captured.owner);
+  } else queuePendingResourceChange(resource, operation, item, captured.owner);
+  const read = () => (isLog ? readPendingLogQueue : readPendingResourceQueue)(captured.owner);
+  const write = queue => (isLog ? writePendingLogQueue : writePendingResourceQueue)(queue, captured.owner);
+  const entry = read().find(value => value.id === id && (isLog || value.resource === resource));
+  const acknowledge = () => write(read().filter(value => !samePendingChange(value, entry)));
+  try {
+    const saved = await request(operation === 'delete' ? 'DELETE' : 'PUT', `/${resource}/${id}`,
+      operation === 'delete' ? undefined : withExpectedRevision(item), captured);
+    assertCurrent(captured);
+    if (!read().some(value => samePendingChange(value, entry))) return undefined;
+    acknowledge();
+    removePendingConflict(pendingConflictId(resource, id), captured.owner);
+    return saved;
+  } catch (error) {
+    assertCurrent(captured);
+    if (!read().some(value => samePendingChange(value, entry))) return undefined;
+    {
+      if (error.status === 409) storePendingConflict(resource, operation, typeof item === 'string' ? { id } : item, error, captured.owner);
+      else if (error.status >= 400 && error.status < 500) acknowledge();
+    }
+    if (!isNetworkError(error)) throw error;
+    return operation === 'delete' ? null : (isLog ? pendingLogItem(item) : pendingResourceItem(item));
+  }
+}
 
 export async function saveExercise(exercise) {
-  const id = exercise.id ?? crypto.randomUUID();
-  const item = { ...exercise, id };
-  let saved;
-  if (DEV_BYPASS && !BASE_URL) {
-    saved = item;
-  } else {
-    try {
-      saved = await request('PUT', `/exercises/${id}`, withExpectedRevision(item));
-      removePendingResourceChange('exercises', id);
-      removePendingConflict(pendingConflictId('exercises', id));
-    } catch (error) {
-      if (error.status === 409) storePendingConflict('exercises', 'put', item, error);
-      if (!isNetworkError(error)) throw error;
-      saved = pendingResourceItem(item);
-      queuePendingResourceChange('exercises', 'put', item);
-    }
-  }
-  upsertCached('exercises', saved);
-  return cache.exercises;
+  const captured = context();
+  const item = { ...exercise, id: exercise.id ?? crypto.randomUUID() };
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await mutateQueued('exercises', 'put', item, captured);
+  assertCurrent(captured);
+  if (saved) upsertCached('exercises', saved);
+  return getExercises();
 }
 
 export async function deleteExercise(id) {
-  if (!(DEV_BYPASS && !BASE_URL)) {
-    try {
-      await request('DELETE', `/exercises/${id}`);
-      removePendingResourceChange('exercises', id);
-    } catch (error) {
-      if (!isNetworkError(error)) throw error;
-      queuePendingResourceChange('exercises', 'delete', id);
-    }
-  }
-  cache.exercises = (cache.exercises ?? []).filter((e) => e.id !== id);
-  return cache.exercises;
-}
-
-// ── Templates ──────────────────────────────────────────────────────────────────
-export function getTemplates() { 
-  return (cache.templates ?? []).sort((a, b) => a.name.localeCompare(b.name)); 
+  const captured = context();
+  const result = (DEV_BYPASS && !BASE_URL) ? null : await mutateQueued('exercises', 'delete', id, captured);
+  assertCurrent(captured);
+  if (result === undefined) return getExercises();
+  cache.exercises = (cache.exercises ?? []).filter(item => item.id !== id);
+  return getExercises();
 }
 
 export async function saveTemplate(template) {
-  const id = template.id ?? crypto.randomUUID();
-  const item = { ...template, id };
-  let saved;
-  if (DEV_BYPASS && !BASE_URL) {
-    saved = item;
-  } else {
-    try {
-      saved = await request('PUT', `/templates/${id}`, withExpectedRevision(item));
-      removePendingResourceChange('templates', id);
-      removePendingConflict(pendingConflictId('templates', id));
-    } catch (error) {
-      if (error.status === 409) storePendingConflict('templates', 'put', item, error);
-      if (!isNetworkError(error)) throw error;
-      saved = pendingResourceItem(item);
-      queuePendingResourceChange('templates', 'put', item);
-    }
-  }
-  upsertCached('templates', saved);
-  return cache.templates;
+  const captured = context();
+  const item = { ...template, id: template.id ?? crypto.randomUUID() };
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await mutateQueued('templates', 'put', item, captured);
+  assertCurrent(captured);
+  if (saved) upsertCached('templates', saved);
+  return getTemplates();
 }
 
 export async function deleteTemplate(id) {
-  if (!(DEV_BYPASS && !BASE_URL)) {
-    try {
-      await request('DELETE', `/templates/${id}`);
-      removePendingResourceChange('templates', id);
-    } catch (error) {
-      if (!isNetworkError(error)) throw error;
-      queuePendingResourceChange('templates', 'delete', id);
-    }
-  }
-  cache.templates = (cache.templates ?? []).filter((t) => t.id !== id);
-  return cache.templates;
-}
-
-// ── Programs ────────────────────────────────────────────────────────────────────
-export function getPrograms() {
-  return (cache.programs ?? []).sort((a, b) => (
-    Number(Boolean(b.active)) - Number(Boolean(a.active))
-    || a.name.localeCompare(b.name)
-  ));
+  const captured = context();
+  const result = (DEV_BYPASS && !BASE_URL) ? null : await mutateQueued('templates', 'delete', id, captured);
+  assertCurrent(captured);
+  if (result === undefined) return getTemplates();
+  cache.templates = (cache.templates ?? []).filter(item => item.id !== id);
+  return getTemplates();
 }
 
 export async function saveProgram(program) {
-  const id = program.id ?? crypto.randomUUID();
-  const item = normalizeProgram({ ...program, id });
-  let saved;
-  if (DEV_BYPASS && !BASE_URL) {
-    saved = item;
-  } else {
-    try {
-      saved = await request('PUT', `/programs/${id}`, withExpectedRevision(item));
-      removePendingResourceChange('programs', id);
-      removePendingConflict(pendingConflictId('programs', id));
-    } catch (error) {
-      if (error.status === 409) storePendingConflict('programs', 'put', item, error);
-      if (!isNetworkError(error)) throw error;
-      saved = pendingResourceItem(item);
-      queuePendingResourceChange('programs', 'put', item);
-    }
-  }
-  upsertCached('programs', saved);
+  const captured = context();
+  const item = normalizeProgram({ ...program, id: program.id ?? crypto.randomUUID() });
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await mutateQueued('programs', 'put', item, captured);
+  assertCurrent(captured);
+  if (saved) upsertCached('programs', saved);
   return getPrograms();
 }
 
 export async function deleteProgram(id) {
-  if (!(DEV_BYPASS && !BASE_URL)) {
-    try {
-      await request('DELETE', `/programs/${id}`);
-      removePendingResourceChange('programs', id);
-    } catch (error) {
-      if (!isNetworkError(error)) throw error;
-      queuePendingResourceChange('programs', 'delete', id);
-    }
-  }
-  cache.programs = (cache.programs ?? []).filter((program) => program.id !== id);
+  const captured = context();
+  const result = (DEV_BYPASS && !BASE_URL) ? null : await mutateQueued('programs', 'delete', id, captured);
+  assertCurrent(captured);
+  if (result === undefined) return getPrograms();
+  cache.programs = (cache.programs ?? []).filter(item => item.id !== id);
   return getPrograms();
 }
 
-// ── Workout Logs ───────────────────────────────────────────────────────────────
-export function getLogs() { return cache.logs ?? []; }
-
 export async function saveLog(log) {
-  const id = log.id ?? crypto.randomUUID();
-  const item = { ...stripLocalLogFields(log), id };
-  let saved;
-  if (DEV_BYPASS && !BASE_URL) {
-    saved = item;
-  } else {
-    try {
-      saved = await request('PUT', `/logs/${id}`, withExpectedRevision(item));
-      removePendingLogSave(id);
-      removePendingConflict(pendingConflictId('logs', id));
-    } catch (error) {
-      if (error.status === 409) storePendingConflict('logs', 'put', item, error);
-      if (!isNetworkError(error)) throw error;
-      saved = queuePendingLogSave(item);
-    }
-  }
-  upsertLogItem(saved);
-  return cache.logs;
+  const captured = context();
+  const item = { ...stripLocalLogFields(log), id: log.id ?? crypto.randomUUID() };
+  const saved = (DEV_BYPASS && !BASE_URL) ? item : await mutateQueued('logs', 'put', item, captured);
+  assertCurrent(captured);
+  if (saved) upsertLogItem(saved);
+  return getLogs();
 }
 
 export async function deleteLog(id) {
-  if (!(DEV_BYPASS && !BASE_URL)) {
-    try {
-      await request('DELETE', `/logs/${id}`);
-      removePendingLogSave(id);
-    } catch (error) {
-      if (!isNetworkError(error)) throw error;
-      queuePendingLogDelete(id);
-    }
-  }
-  cache.logs = (cache.logs ?? []).filter((l) => l.id !== id);
-  return cache.logs;
+  const captured = context();
+  const result = (DEV_BYPASS && !BASE_URL) ? null : await mutateQueued('logs', 'delete', id, captured);
+  assertCurrent(captured);
+  if (result === undefined) return getLogs();
+  cache.logs = (cache.logs ?? []).filter(item => item.id !== id);
+  return getLogs();
 }
+
+export function getTemplates() { context(); return [...(cache.templates ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
+export function getPrograms() { context(); return [...(cache.programs ?? [])].sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)) || a.name.localeCompare(b.name)); }
+export function getLogs() { context(); return cache.logs ?? []; }
 
 // A retry acknowledges only the exact change it sent. Replacing the queue from
 // a snapshot would discard edits queued while the network request was pending.
@@ -632,37 +641,45 @@ function samePendingChange(a, b) {
 }
 
 export function flushPendingLogSaves() {
-  pendingLogFlush ??= flushLogQueue().finally(() => { pendingLogFlush = undefined; });
-  return pendingLogFlush;
+  const captured = context();
+  const key = JSON.stringify([captured.session, captured.generation]);
+  if (!pendingLogFlushes.has(key)) {
+    pendingLogFlushes.set(key, flushLogQueue(captured).finally(() => pendingLogFlushes.delete(key)));
+  }
+  return pendingLogFlushes.get(key);
 }
 
-async function flushLogQueue() {
-  const queue = readPendingLogQueue();
+async function flushLogQueue(captured) {
+  const queue = readPendingLogQueue(captured.owner);
   if (queue.length === 0 || (DEV_BYPASS && !BASE_URL)) {
     dispatchSyncStatus();
     return getLogs();
   }
 
   for (let index = 0; index < queue.length; index += 1) {
+    assertCurrent(captured);
     const entry = queue[index];
-    if (!readPendingLogQueue().some(current => samePendingChange(current, entry))) continue;
+    if (!readPendingLogQueue(captured.owner).some(current => samePendingChange(current, entry))) continue;
     try {
       let saved;
       if (entry.operation === 'delete') {
-        await request('DELETE', `/logs/${entry.id}`);
+        await request('DELETE', `/logs/${entry.id}`, undefined, captured);
+        assertCurrent(captured);
       } else {
-        saved = await request('PUT', `/logs/${entry.id}`, withExpectedRevision(stripLocalLogFields(entry)));
+        saved = await request('PUT', `/logs/${entry.id}`, withExpectedRevision(stripLocalLogFields(entry)), captured);
+        assertCurrent(captured);
       }
-      const currentQueue = readPendingLogQueue();
+      const currentQueue = readPendingLogQueue(captured.owner);
       if (!currentQueue.some(current => samePendingChange(current, entry))) continue;
       if (entry.operation === 'delete') cache.logs = (cache.logs ?? []).filter(log => log.id !== entry.id);
       else upsertLogItem(saved);
-      writePendingLogQueue(currentQueue.filter(current => !samePendingChange(current, entry)));
-      removePendingConflict(pendingConflictId('logs', entry.id));
+      writePendingLogQueue(currentQueue.filter(current => !samePendingChange(current, entry)), captured.owner);
+      removePendingConflict(pendingConflictId('logs', entry.id), captured.owner);
     } catch (error) {
-      if (!readPendingLogQueue().some(current => samePendingChange(current, entry))) continue;
+      assertCurrent(captured);
+      if (!readPendingLogQueue(captured.owner).some(current => samePendingChange(current, entry))) continue;
       if (error.status === 409) {
-        const conflict = storePendingConflict('logs', entry.operation, entry, error);
+        const conflict = storePendingConflict('logs', entry.operation, entry, error, captured.owner);
         dispatchSyncStatus({ syncIssue: error.message });
         window.dispatchEvent(new CustomEvent('wp:api-error', {
           detail: {
@@ -686,12 +703,16 @@ async function flushLogQueue() {
 }
 
 export function flushPendingResourceChanges() {
-  pendingResourceFlush ??= flushResourceQueue().finally(() => { pendingResourceFlush = undefined; });
-  return pendingResourceFlush;
+  const captured = context();
+  const key = JSON.stringify([captured.session, captured.generation]);
+  if (!pendingResourceFlushes.has(key)) {
+    pendingResourceFlushes.set(key, flushResourceQueue(captured).finally(() => pendingResourceFlushes.delete(key)));
+  }
+  return pendingResourceFlushes.get(key);
 }
 
-async function flushResourceQueue() {
-  const queue = readPendingResourceQueue();
+async function flushResourceQueue(captured) {
+  const queue = readPendingResourceQueue(captured.owner);
   if (queue.length === 0 || (DEV_BYPASS && !BASE_URL)) {
     dispatchSyncStatus();
     return {
@@ -702,25 +723,29 @@ async function flushResourceQueue() {
   }
 
   for (let index = 0; index < queue.length; index += 1) {
+    assertCurrent(captured);
     const entry = queue[index];
-    if (!readPendingResourceQueue().some(current => samePendingChange(current, entry))) continue;
+    if (!readPendingResourceQueue(captured.owner).some(current => samePendingChange(current, entry))) continue;
     try {
       let saved;
       if (entry.operation === 'delete') {
-        await request('DELETE', `/${entry.resource}/${entry.id}`);
+        await request('DELETE', `/${entry.resource}/${entry.id}`, undefined, captured);
+        assertCurrent(captured);
       } else {
-        saved = await request('PUT', `/${entry.resource}/${entry.id}`, withExpectedRevision(stripLocalResourceFields(entry.item)));
+        saved = await request('PUT', `/${entry.resource}/${entry.id}`, withExpectedRevision(stripLocalResourceFields(entry.item)), captured);
+        assertCurrent(captured);
       }
-      const currentQueue = readPendingResourceQueue();
+      const currentQueue = readPendingResourceQueue(captured.owner);
       if (!currentQueue.some(current => samePendingChange(current, entry))) continue;
       if (entry.operation === 'delete') cache[entry.resource] = (cache[entry.resource] ?? []).filter(item => item.id !== entry.id);
       else upsertCached(entry.resource, saved);
-      writePendingResourceQueue(currentQueue.filter(current => !samePendingChange(current, entry)));
-      removePendingConflict(pendingConflictId(entry.resource, entry.id));
+      writePendingResourceQueue(currentQueue.filter(current => !samePendingChange(current, entry)), captured.owner);
+      removePendingConflict(pendingConflictId(entry.resource, entry.id), captured.owner);
     } catch (error) {
-      if (!readPendingResourceQueue().some(current => samePendingChange(current, entry))) continue;
+      assertCurrent(captured);
+      if (!readPendingResourceQueue(captured.owner).some(current => samePendingChange(current, entry))) continue;
       if (error.status === 409) {
-        const conflict = storePendingConflict(entry.resource, entry.operation, entry.item ?? { id: entry.id }, error);
+        const conflict = storePendingConflict(entry.resource, entry.operation, entry.item ?? { id: entry.id }, error, captured.owner);
         dispatchSyncStatus({ syncIssue: error.message });
         window.dispatchEvent(new CustomEvent('wp:api-error', {
           detail: {
@@ -748,8 +773,11 @@ async function flushResourceQueue() {
 }
 
 export async function flushPendingChanges() {
+  const captured = context();
   const resources = await flushPendingResourceChanges();
+  assertCurrent(captured);
   const updatedLogs = await flushPendingLogSaves();
+  assertCurrent(captured);
   return {
     ...resources,
     logs: updatedLogs,
@@ -765,11 +793,11 @@ function currentCollections() {
   };
 }
 
-function removePendingChangeForConflict(conflict) {
+function removePendingChangeForConflict(conflict, owner) {
   if (conflict.resource === 'logs') {
-    removePendingLogSave(conflict.itemId);
+    removePendingLogSave(conflict.itemId, owner);
   } else {
-    removePendingResourceChange(conflict.resource, conflict.itemId);
+    removePendingResourceChange(conflict.resource, conflict.itemId, owner);
   }
 }
 
@@ -790,14 +818,15 @@ function applyRemoteConflictItem(conflict) {
 }
 
 export async function resolvePendingConflict(conflictId, resolution) {
-  const conflict = readPendingConflicts().find((entry) => entry.id === conflictId);
+  const captured = context();
+  const conflict = readPendingConflicts(captured.owner).find((entry) => entry.id === conflictId);
   if (!conflict) throw new Error('Conflict is no longer pending.');
   if (!['local', 'remote'].includes(resolution)) throw new Error('Conflict resolution is invalid.');
 
   if (resolution === 'remote') {
-    removePendingChangeForConflict(conflict);
+    removePendingChangeForConflict(conflict, captured.owner);
     applyRemoteConflictItem(conflict);
-    removePendingConflict(conflict.id);
+    removePendingConflict(conflict.id, captured.owner);
     return currentCollections();
   }
 
@@ -809,25 +838,28 @@ export async function resolvePendingConflict(conflictId, resolution) {
     : { ...local, revision: undefined };
   const saved = (DEV_BYPASS && !BASE_URL)
     ? { ...local, revision: Number.isInteger(conflict.remote?.revision) ? conflict.remote.revision + 1 : local.revision }
-    : await request('PUT', `/${conflict.resource}/${conflict.itemId}`, withExpectedRevision(body));
+    : await request('PUT', `/${conflict.resource}/${conflict.itemId}`, withExpectedRevision(body), captured);
+  assertCurrent(captured);
   if (conflict.resource === 'logs') {
     upsertLogItem(saved);
   } else {
     upsertCached(conflict.resource, saved);
   }
-  removePendingChangeForConflict(conflict);
-  removePendingConflict(conflict.id);
+  removePendingChangeForConflict(conflict, captured.owner);
+  removePendingConflict(conflict.id, captured.owner);
   return currentCollections();
 }
 
 export function getLogsByDate(dateStr) {
+  context();
   return (cache.logs ?? []).filter((l) => l.date === dateStr);
 }
 
 // ── Account / Support ─────────────────────────────────────────────────────────
 export async function exportData() {
+  const captured = context();
   if (DEV_BYPASS && !BASE_URL) return { exportedAt: new Date().toISOString(), exercises: getExercises(), templates: getTemplates(), logs: getLogs(), programs: getPrograms(), gyms: getGyms(), equipment: getEquipment(), settings: getSettings() };
-  return request('GET', '/export');
+  return request('GET', '/export', undefined, captured);
 }
 
 export function previewImportData(data, current = {
@@ -1017,22 +1049,32 @@ function importDataLocally(data, mode) {
 }
 
 export async function importData(data, mode = 'merge') {
+  const captured = context();
   if (DEV_BYPASS && !BASE_URL) {
     const result = importDataLocally(data, mode);
     dispatchSyncStatus();
     return result;
   }
-  const result = await request('POST', '/import', { mode, data });
+  const result = await request('POST', '/import', { mode, data }, captured);
+  assertCurrent(captured);
   await initData();
+  assertCurrent(captured);
   return result;
 }
 
 export async function submitFeedback(message, build = '') {
-  return request('POST', '/feedback', { message, build });
+  const captured = context();
+  return request('POST', '/feedback', { message, build }, captured);
 }
 
 export async function deleteAccount() {
-  const result = await request('DELETE', '/account');
+  const captured = context();
+  const result = await request('DELETE', '/account', undefined, captured);
+  assertCurrent(captured);
+  writePendingLogQueue([], captured.owner);
+  writePendingResourceQueue([], captured.owner);
+  writePendingConflicts([], captured.owner);
+  clearStoredUser();
   resetData();
   return result;
 }
