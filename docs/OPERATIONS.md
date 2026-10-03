@@ -221,3 +221,33 @@ Acceptance: with a disposable Apple account, sign in on the updated build, delet
 the account, and verify both app data deletion and removal of Apple authorization.
 Repeat deletion through a linked Google account. Do not use a real user's account
 for this destructive check. Automated mocks do not establish live Apple acceptance.
+
+## Audited release safety gate (October 2026)
+
+Main pushes run web/backend verification only. Production deployment requires a
+manual `Deploy to EC2` dispatch on main with `deploy_production=true`; native
+upload requires a separate `TestFlight` dispatch with `upload_testflight=true`
+after explicit distribution/profile approval. Builds do not establish physical
+device acceptance or App Store availability.
+
+`scripts/safe-compose-release.py workouts <full-sha> --check` validates the running
+containers' exact Compose files, project, config hashes, and effective environment
+without building/restarting. If a historical temporary override is missing, the existing durable base and
+shared override may be used only when both service config hashes exactly match
+the running containers and every effective environment value matches. Any other
+missing input or drift blocks release and requires reconciliation. Never
+replace those settings with a fresh shared checkout. Credentials stay on-host;
+the workflow no longer copies app secrets, upserts `.env`, or rewrites the shared
+Compose override. The frontend build reads only the existing public OAuth client
+ID from the live API container.
+
+The release helper uses the shared host lock, retains rollback image tags, builds
+only `workout`/`workout_api`, and recreates those services with `--no-deps
+--no-build`. A metadata-only overlay remains for the new live Compose labels.
+Preserve it and rollback images. Roll back using the retained images and exact
+config, never the historical workflow that overwrites shared settings.
+
+This client upgrade requires sign-in again. Unowned legacy queues stay preserved
+and quarantined, and users must not clear browser storage or uninstall before
+recovery. Never downgrade clients into the old unowned storage model as a recovery
+shortcut; preserve account-bound clients while investigating server issues.

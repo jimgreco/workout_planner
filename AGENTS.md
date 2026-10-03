@@ -150,3 +150,12 @@ Workout sets support optional `completion` (`recorded`, `skipped`, `unrecorded`)
 Contextual PBs come from finished workout history, keyed by exercise, technique baseline, equipment setup ID, weight mode and Smith resistance snapshot. Web helpers live in `src/progress.js`; matching native helpers live in `Models.swift`. The first eligible working set establishes the setup PB; higher total weight wins, with reps (including side-specific reps) as the tiebreaker. Unknown Smith totals and unweighted sets are ineligible. Keep numeric PB payload strings free of display formatting.
 
 `logsWithPersonalBests` reconstructs contextual badges from full history before date filtering, recovering previously skipped PBs and reflecting corrected/deleted workouts without changing recorded sets. Finish/Save persists the current workout's derived flags; on edit, compare with earlier workouts, never the PB cache produced by that same or a later workout. The existing exercise-level, manually editable PB remains separate for unscoped workouts. Contextual PBs are displayed as Setup PB in workout and exercise views; starting a new technique baseline starts a new record context. Native regression: `swiftc ios/WorkoutPlanner/Support/Models.swift ios/Tests/PersonalBestContextCheck.swift -o /tmp/repmixburn-pb-check && /tmp/repmixburn-pb-check`.
+
+## Release isolation
+
+Main pushes validate only. App deployment and TestFlight upload require separate
+explicit dispatch inputs (default false). Use the current Operations safety gate:
+verify live Compose labels/config hashes and preserve all effective environment
+settings. The app-local helper uses a shared host lock, rollback image tags and
+`--no-deps`; it never rewrites shared `.env`/overrides or transfers app credentials.
+Missing live override files are a release blocker, not permission to replace them.

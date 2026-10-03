@@ -1,12 +1,16 @@
 name: TestFlight
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: Upload this main commit after explicit distribution approval
+        type: boolean
+        default: false
 
 jobs:
   build:
+    if: inputs.upload_testflight && github.ref == 'refs/heads/main'
     runs-on: macos-latest
     timeout-minutes: 45
 

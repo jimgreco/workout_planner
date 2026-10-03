@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy_production:
+        description: Deploy this verified main commit after host preflight approval
+        type: boolean
+        default: false
 
 concurrency:
   group: repmixburn-production-deploy
@@ -49,6 +54,9 @@ jobs:
         working-directory: backend
         run: npm audit --omit=dev
 
+      - name: Test isolated deployment command plan
+        run: python3 scripts/test-safe-compose-release.py
+
       - name: Check release hardening config
         run: |
           set -euo pipefail
@@ -56,29 +64,14 @@ jobs:
           grep -q 'StrictHostKeyChecking=yes' .github/workflows/deploy.yml
 
   deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: verify
     env:
       WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://repmixburn.com' }}
-      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://repmixburn.com' }}
-      APP_VERSION: ${{ vars.APP_VERSION || '1.2.0' }}
-      APP_SESSION_SECRET: ${{ secrets.APP_SESSION_SECRET }}
-      GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
-      APPLE_CLIENT_IDS: ${{ secrets.APPLE_CLIENT_IDS || vars.IOS_BUNDLE_ID || 'com.workoutplanner.ios' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Check production secrets
-        run: |
-          set -euo pipefail
-          test -n "$APP_SESSION_SECRET"
-          if [ "${#APP_SESSION_SECRET}" -lt 32 ]; then
-            echo "APP_SESSION_SECRET must be at least 32 characters."
-            exit 1
-          fi
-          test -n "$GOOGLE_IOS_CLIENT_ID"
-          test -n "$APPLE_CLIENT_IDS"
 
       - name: Prepare SSH
         env:
@@ -110,16 +103,14 @@ jobs:
         run: |
           set -euo pipefail
           VITE_GOOGLE_CLIENT_ID="$(ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes -o ConnectTimeout=30 "$EC2_USER@$EC2_HOST" 'python3 -' <<'PYTHON'
-          import os
-          from pathlib import Path
-          deploy = Path(os.environ.get('WORKOUT_DEPLOY_DIR', str(Path.home() / 'consolidated-deploy')))
-          if not (deploy / 'docker-compose.yml').is_file():
-              deploy = Path.home() / 'deploy'
-          for line in (deploy / '.env').read_text().splitlines():
-              key, separator, value = line.partition('=')
-              if separator and key == 'WORKOUT_GOOGLE_CLIENT_ID':
-                  print(value.strip().strip('"').strip("'"))
-                  break
+          import json, subprocess
+          ids = subprocess.check_output(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.service=workout_api'], text=True).split()
+          if len(ids) != 1:
+              raise SystemExit('Expected exactly one running workout_api')
+          item = json.loads(subprocess.check_output(['docker', 'inspect', ids[0]], text=True))[0]
+          values = dict(value.split('=', 1) for value in item['Config']['Env'] if '=' in value)
+          # OAuth client IDs are public application identifiers, not credentials.
+          print(values.get('GOOGLE_CLIENT_ID', ''))
           PYTHON
           )"
           : "${VITE_GOOGLE_CLIENT_ID:?Production Google web client ID is required}"
@@ -141,204 +132,14 @@ jobs:
           rsync -az --delete -e "ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" \
             dist/ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/workout_planner/dist/
 
-      - name: Rebuild and restart Workout Planner
+      - name: Rebuild only Workouts with the existing live configuration
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           set -euo pipefail
-          SHORT_SHA="${GITHUB_SHA::7}"
-          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "APP_SESSION_SECRET='$APP_SESSION_SECRET' \
-             ALLOWED_ORIGINS='$ALLOWED_ORIGINS' \
-             APP_VERSION='$APP_VERSION' \
-             GOOGLE_IOS_CLIENT_ID='$GOOGLE_IOS_CLIENT_ID' \
-             APPLE_CLIENT_IDS='$APPLE_CLIENT_IDS' \
-             SHORT_SHA='$SHORT_SHA' \
-             BUILD_TIME='$BUILD_TIME' \
-             bash -s" <<'REMOTE_DEPLOY'
-          set -euo pipefail
-
-          DEPLOY_DIR="${WORKOUT_DEPLOY_DIR:-$HOME/consolidated-deploy}"
-          if [ ! -f "$DEPLOY_DIR/docker-compose.yml" ]; then
-            if [ -f "$HOME/deploy/docker-compose.yml" ]; then
-              echo "Using fallback deploy directory: $HOME/deploy"
-              DEPLOY_DIR="$HOME/deploy"
-            else
-              echo "Could not find docker-compose.yml in $DEPLOY_DIR or $HOME/deploy"
-              ls -la "$HOME"
-              exit 1
-            fi
-          fi
-          cd "$DEPLOY_DIR"
-
-          cleanup_deploy() {
-            rm -f "${OVERRIDE_FILE:-}"
-          }
-          trap cleanup_deploy EXIT
-
-          read_deploy_env() {
-            local key="$1"
-            if [ ! -f .env ]; then
-              return 0
-            fi
-            awk -v key="$key" '
-              $0 ~ "^[[:space:]]*#" { next }
-              index($0, key "=") == 1 {
-                value = substr($0, length(key) + 2)
-                gsub(/^["\047]|["\047]$/, "", value)
-                print value
-                exit
-              }
-            ' .env
-          }
-
-          WORKOUT_GOOGLE_CLIENT_ID="${WORKOUT_GOOGLE_CLIENT_ID:-$(read_deploy_env WORKOUT_GOOGLE_CLIENT_ID)}"
-          WORKOUT_GOOGLE_CLIENT_IDS="${WORKOUT_GOOGLE_CLIENT_IDS:-$(read_deploy_env WORKOUT_GOOGLE_CLIENT_IDS)}"
-          WORKOUT_APPLE_CLIENT_IDS="${WORKOUT_APPLE_CLIENT_IDS:-$(read_deploy_env WORKOUT_APPLE_CLIENT_IDS)}"
-
-          : "${WORKOUT_GOOGLE_CLIENT_ID:?WORKOUT_GOOGLE_CLIENT_ID must be set in $DEPLOY_DIR/.env}"
-          : "${GOOGLE_IOS_CLIENT_ID:?GOOGLE_IOS_CLIENT_ID must be set in GitHub Secrets}"
-          : "${APP_SESSION_SECRET:?APP_SESSION_SECRET must be set in GitHub Secrets}"
-          : "${APPLE_CLIENT_IDS:?APPLE_CLIENT_IDS must be set}"
-
-          normalize_csv() {
-            printf '%s' "${1:-}" | tr -d '[:space:]' | sed 's/^,*//;s/,*$//;s/,,*/,/g'
-          }
-
-          append_csv_unique() {
-            local list
-            local additions
-            local value
-            list="$(normalize_csv "${1:-}")"
-            additions="$(normalize_csv "${2:-}")"
-            IFS=',' read -ra values <<< "$additions"
-            for value in "${values[@]}"; do
-              if [ -z "$value" ]; then
-                continue
-              fi
-              case ",$list," in
-                *",$value,"*) ;;
-                *) list="${list:+$list,}$value" ;;
-              esac
-            done
-            printf '%s' "$list"
-          }
-
-          WORKOUT_GOOGLE_CLIENT_IDS="$(append_csv_unique "$WORKOUT_GOOGLE_CLIENT_IDS" "$WORKOUT_GOOGLE_CLIENT_ID,$GOOGLE_IOS_CLIENT_ID")"
-          WORKOUT_APPLE_CLIENT_IDS="$(append_csv_unique "$WORKOUT_APPLE_CLIENT_IDS" "$APPLE_CLIENT_IDS")"
-          LOCAL_AUTH_BYPASS=false
-
-          export APP_SESSION_SECRET
-          export ALLOWED_ORIGINS
-          export APP_VERSION
-          export LOCAL_AUTH_BYPASS
-          export SHORT_SHA
-          export BUILD_TIME
-          export WORKOUT_GOOGLE_CLIENT_ID
-          export WORKOUT_GOOGLE_CLIENT_IDS
-          export WORKOUT_APPLE_CLIENT_IDS
-
-          upsert_deploy_env() {
-            local key="$1"
-            local value="$2"
-            local tmp
-            tmp="$(mktemp)"
-            if [ -f .env ]; then
-              grep -v -E "^${key}=" .env > "$tmp" || true
-            fi
-            printf '%s=%s\n' "$key" "$value" >> "$tmp"
-            mv "$tmp" .env
-            chmod 600 .env
-          }
-
-          upsert_deploy_env WORKOUT_APP_SESSION_SECRET "$APP_SESSION_SECRET"
-          upsert_deploy_env WORKOUT_LOCAL_AUTH_BYPASS "$LOCAL_AUTH_BYPASS"
-          upsert_deploy_env WORKOUT_ALLOWED_ORIGINS "$ALLOWED_ORIGINS"
-          upsert_deploy_env WORKOUT_APP_VERSION "$APP_VERSION"
-          upsert_deploy_env WORKOUT_GIT_COMMIT "$SHORT_SHA"
-          upsert_deploy_env WORKOUT_BUILD_TIME "$BUILD_TIME"
-          upsert_deploy_env WORKOUT_GOOGLE_CLIENT_ID "$WORKOUT_GOOGLE_CLIENT_ID"
-          upsert_deploy_env WORKOUT_GOOGLE_CLIENT_IDS "$WORKOUT_GOOGLE_CLIENT_IDS"
-          upsert_deploy_env WORKOUT_APPLE_CLIENT_IDS "$WORKOUT_APPLE_CLIENT_IDS"
-
-          cat > docker-compose.override.yml <<'COMPOSE_PERSISTENT_OVERRIDE'
-          services:
-            workout:
-              build:
-                target: frontend-prebuilt
-            workout_api:
-              environment:
-                NODE_ENV: production
-                APP_SESSION_SECRET: ${WORKOUT_APP_SESSION_SECRET}
-                ALLOWED_ORIGINS: ${WORKOUT_ALLOWED_ORIGINS}
-                LOCAL_AUTH_BYPASS: ${WORKOUT_LOCAL_AUTH_BYPASS:-false}
-                APP_VERSION: ${WORKOUT_APP_VERSION:-1.2.0}
-                GIT_COMMIT: ${WORKOUT_GIT_COMMIT:-local}
-                BUILD_TIME: ${WORKOUT_BUILD_TIME:-local}
-                GOOGLE_CLIENT_ID: ${WORKOUT_GOOGLE_CLIENT_ID}
-                GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
-                APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
-                APPLE_TEAM_ID: ${WORKOUT_APPLE_TEAM_ID:-}
-                APPLE_SIGN_IN_KEY_ID: ${WORKOUT_APPLE_SIGN_IN_KEY_ID:-}
-                APPLE_SIGN_IN_PRIVATE_KEY_BASE64: ${WORKOUT_APPLE_SIGN_IN_PRIVATE_KEY_BASE64:-}
-                APPLE_TOKEN_ENCRYPTION_KEY: ${WORKOUT_APPLE_TOKEN_ENCRYPTION_KEY:-}
-          COMPOSE_PERSISTENT_OVERRIDE
-
-          OVERRIDE_FILE="$(mktemp)"
-          cat > "$OVERRIDE_FILE" <<'COMPOSE_OVERRIDE'
-          services:
-            workout:
-              build:
-                target: frontend-prebuilt
-            workout_api:
-              environment:
-                NODE_ENV: production
-                APP_SESSION_SECRET: ${APP_SESSION_SECRET}
-                ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-                LOCAL_AUTH_BYPASS: ${LOCAL_AUTH_BYPASS}
-                APP_VERSION: ${APP_VERSION}
-                GIT_COMMIT: ${SHORT_SHA}
-                BUILD_TIME: ${BUILD_TIME}
-                GOOGLE_CLIENT_ID: ${WORKOUT_GOOGLE_CLIENT_ID}
-                GOOGLE_CLIENT_IDS: ${WORKOUT_GOOGLE_CLIENT_IDS}
-                APPLE_CLIENT_IDS: ${WORKOUT_APPLE_CLIENT_IDS}
-                APPLE_TEAM_ID: ${WORKOUT_APPLE_TEAM_ID:-}
-                APPLE_SIGN_IN_KEY_ID: ${WORKOUT_APPLE_SIGN_IN_KEY_ID:-}
-                APPLE_SIGN_IN_PRIVATE_KEY_BASE64: ${WORKOUT_APPLE_SIGN_IN_PRIVATE_KEY_BASE64:-}
-                APPLE_TOKEN_ENCRYPTION_KEY: ${WORKOUT_APPLE_TOKEN_ENCRYPTION_KEY:-}
-          COMPOSE_OVERRIDE
-
-          rm -rf \
-            ~/workout_planner/node_modules \
-            ~/workout_planner/backend/node_modules \
-            ~/workout_planner/coverage \
-            ~/workout_planner/backend/coverage
-          docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" build \
-            --build-arg VITE_DEV_BYPASS_AUTH=false \
-            --build-arg VITE_GIT_COMMIT="$SHORT_SHA" \
-            --build-arg VITE_APP_VERSION="$APP_VERSION" \
-            --build-arg APP_VERSION="$APP_VERSION" \
-            --build-arg GIT_COMMIT="$SHORT_SHA" \
-            --build-arg BUILD_TIME="$BUILD_TIME" \
-            workout workout_api
-          docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" up -d --force-recreate workout workout_api
-          docker-compose -f docker-compose.yml -f "$OVERRIDE_FILE" exec -T workout_api node - <<'NODE'
-          const checks = [
-            ['APP_SESSION_SECRET', 32],
-            ['GOOGLE_CLIENT_IDS', 1],
-            ['APPLE_CLIENT_IDS', 1],
-          ];
-          for (const [key, minLength] of checks) {
-            const value = process.env[key] || '';
-            if (value.length < minLength) {
-              throw new Error(`${key} is not configured in the workout_api container`);
-            }
-          }
-          if (process.env.LOCAL_AUTH_BYPASS !== 'false') {
-            throw new Error('LOCAL_AUTH_BYPASS must be false in production');
-          }
-          console.log('workout_api runtime config verified');
-          NODE
-          REMOTE_DEPLOY
+          ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" \
+            "python3 ~/workout_planner/scripts/safe-compose-release.py workouts '$GITHUB_SHA'"
 
       - name: Smoke test live app
         timeout-minutes: 8
