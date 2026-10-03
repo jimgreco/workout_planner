@@ -159,3 +159,7 @@ verify live Compose labels/config hashes and preserve all effective environment
 settings. The app-local helper uses a shared host lock, rollback image tags and
 `--no-deps`; it never rewrites shared `.env`/overrides or transfers app credentials.
 Missing live override files are a release blocker, not permission to replace them.
+
+Compose 2.26.1 may hash `--no-deps` releases without external dependency edges.
+The release helper accepts only the exact scoped hash after a lossless full JSON
+roundtrip; preserve internal app dependencies and the effective-environment guard.
