@@ -491,12 +491,13 @@ struct WorkoutLogView: View {
     }
 
     private func builderChanged() {
-        scheduleExternalLiveActivityUpdate()
+        // Publish removals before the phone can background and the widget acts.
+        updateExternalLiveActivityNow()
         if workoutId == nil, !items.isEmpty {
             workoutId = UUID().uuidString
             saveNow(status: "planning")
         } else {
-            scheduleSave()
+            saveNow(status: currentStatus())
         }
     }
 
@@ -1154,40 +1155,53 @@ struct WorkoutLogView: View {
     }
 
     private func applyLiveActivityInteractionChanges() {
-        guard let workoutId,
+        guard !isEditing, !isSaving, let workoutId,
               let sharedState = WorkoutLiveActivitySharedStore.load(workoutID: workoutId),
               sharedState.revision > appliedLiveActivityInteractionRevision
         else { return }
 
-        items = sharedState.items.map { item in
-            ExerciseItem(
-                exerciseId: item.exerciseId,
-                weightType: item.weightType,
-                restTargetSeconds: item.restTargetSeconds,
-                sets: item.sets.map { set in
-                    WorkoutSet(
-                        reps: set.reps,
-                        repsLeft: set.repsLeft,
-                        repsRight: set.repsRight,
-                        repMode: set.repMode,
-                        weight: set.weight,
-                        placeholderReps: set.placeholderReps,
-                        placeholderRepsLeft: set.placeholderRepsLeft,
-                        placeholderRepsRight: set.placeholderRepsRight,
-                        placeholderWeight: set.placeholderWeight,
-                        placeholderWeightType: set.placeholderWeightType,
-                        restStartTime: set.restStartTime,
-                        restDuration: set.restDuration,
-                        restTargetSeconds: set.restTargetSeconds,
-                        setType: set.setType
-                    )
-                }
-            )
+        func snapshotItems(_ sharedItems: [WorkoutLiveActivitySharedItem]) -> [ExerciseItem] {
+            sharedItems.map { item in
+                ExerciseItem(
+                    exerciseId: item.exerciseId,
+                    weightType: item.weightType,
+                    restTargetSeconds: item.restTargetSeconds,
+                    sets: item.sets.map { set in
+                        WorkoutSet(
+                            reps: set.reps,
+                            repsLeft: set.repsLeft,
+                            repsRight: set.repsRight,
+                            repMode: set.repMode,
+                            weight: set.weight,
+                            placeholderReps: set.placeholderReps,
+                            placeholderRepsLeft: set.placeholderRepsLeft,
+                            placeholderRepsRight: set.placeholderRepsRight,
+                            placeholderWeight: set.placeholderWeight,
+                            placeholderWeightType: set.placeholderWeightType,
+                            restStartTime: set.restStartTime,
+                            restDuration: set.restDuration,
+                            restTargetSeconds: set.restTargetSeconds,
+                            setType: set.setType,
+                            completion: set.completion
+                        )
+                    }
+                )
+            }
         }
-        activeExerciseIndex = min(sharedState.activeExerciseIndex, max(0, items.count - 1))
-        activeSetIndex = items.indices.contains(activeExerciseIndex)
-            ? min(sharedState.activeSetIndex, max(0, items[activeExerciseIndex].sets.count - 1))
-            : 0
+        // Older shared snapshots have no merge base; never restore their list.
+        if let baseItems = sharedState.baseItems {
+            let base = snapshotItems(baseItems)
+            let updated = snapshotItems(sharedState.items)
+            let matchingLayout = items.map(\.exerciseId) == base.map(\.exerciseId)
+                && items.map({ $0.sets.count }) == base.map({ $0.sets.count })
+            items = mergingWorkoutLiveActivityItems(current: items, base: base, updated: updated)
+            if matchingLayout {
+                activeExerciseIndex = min(sharedState.activeExerciseIndex, max(0, items.count - 1))
+                activeSetIndex = items.indices.contains(activeExerciseIndex)
+                    ? min(sharedState.activeSetIndex, max(0, items[activeExerciseIndex].sets.count - 1))
+                    : 0
+            }
+        }
         appliedLiveActivityInteractionRevision = sharedState.revision
         rescheduleRestAlertIfNeeded()
         saveNow(status: currentStatus())
@@ -1221,7 +1235,8 @@ struct WorkoutLogView: View {
                         restStartTime: set.restStartTime,
                         restDuration: set.restDuration,
                         restTargetSeconds: set.restTargetSeconds,
-                        setType: set.setType
+                        setType: set.setType,
+                        completion: set.completion
                     )
                 }
             )
@@ -1235,7 +1250,8 @@ struct WorkoutLogView: View {
             activeSetIndex: activeSetIndex,
             startedAt: startTime.flatMap { ISO8601DateFormatter().date(from: $0) },
             revision: max(appliedLiveActivityInteractionRevision, existingRevision),
-            contentState: contentState
+            contentState: contentState,
+            baseItems: sharedItems
         )
         WorkoutLiveActivitySharedStore.save(sharedState)
     }

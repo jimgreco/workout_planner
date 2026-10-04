@@ -40,6 +40,7 @@ final class WorkoutStore: ObservableObject {
     private var snapshotStore: OfflineDataSnapshotStore { .init(ownerID: auth.user?.sub, directory: snapshotFolder) }
     private var pendingRetryTask: Task<Void, Never>?
     private var isFlushingPendingChanges = false
+    private let logWriteQueue = WorkoutLogWriteQueue()
     private var api: WorkoutAPI? {
         guard let baseURL = AppConfiguration.apiBaseURL, auth.user != nil else { return nil }
         let generation = auth.sessionGeneration
@@ -426,13 +427,27 @@ final class WorkoutStore: ObservableObject {
 
     @discardableResult
     func saveLog(_ log: WorkoutLog) async throws -> WorkoutLog {
-        let saved: WorkoutLog
-        if usesLocalData {
-            saved = log
-        } else {
-            guard let api else { throw WorkoutAPIError.missingConfiguration }
+        let generation = storeGeneration
+        let requestAPI = usesLocalData ? nil : api
+        if !usesLocalData, requestAPI == nil { throw WorkoutAPIError.missingConfiguration }
+        // Persist the latest intent before waiting for an older network request.
+        let sentChange: PendingWorkoutLogChange?
+        if requestAPI != nil {
             pendingLogQueue.upsert(log)
-            let sentChange = pendingLogQueue.changes.first { $0.id == log.id }!
+            sentChange = pendingLogQueue.changes.first { $0.id == log.id }
+            refreshPendingSyncCount()
+        } else { sentChange = nil }
+        return try await logWriteQueue.perform(id: log.id) { [self] in
+            guard storeGeneration == generation else { throw CancellationError() }
+            return try await persistLog(log, using: requestAPI, sentChange: sentChange)
+        }
+    }
+
+    private func persistLog(_ log: WorkoutLog, using api: WorkoutAPI?, sentChange: PendingWorkoutLogChange?) async throws -> WorkoutLog {
+        let saved: WorkoutLog
+        if let api {
+            try api.checkSession()
+            guard let sentChange, pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
             do {
                 let received = try await api.saveLog(log)
                 try api.checkSession()
@@ -452,6 +467,8 @@ final class WorkoutStore: ObservableObject {
                 }
                 refreshPendingSyncCount()
             }
+        } else {
+            saved = log
         }
         upsert(saved, in: &logs)
         persistOfflineSnapshot()
@@ -460,10 +477,25 @@ final class WorkoutStore: ObservableObject {
     }
 
     func deleteLog(_ id: String) async throws {
-        if !usesLocalData {
-            guard let api else { throw WorkoutAPIError.missingConfiguration }
+        let generation = storeGeneration
+        let requestAPI = usesLocalData ? nil : api
+        if !usesLocalData, requestAPI == nil { throw WorkoutAPIError.missingConfiguration }
+        let sentChange: PendingWorkoutLogChange?
+        if requestAPI != nil {
             pendingLogQueue.delete(id)
-            let sentChange = pendingLogQueue.changes.first { $0.id == id }!
+            sentChange = pendingLogQueue.changes.first { $0.id == id }
+            refreshPendingSyncCount()
+        } else { sentChange = nil }
+        try await logWriteQueue.perform(id: id) { [self] in
+            guard storeGeneration == generation else { throw CancellationError() }
+            try await persistLogDeletion(id, using: requestAPI, sentChange: sentChange)
+        }
+    }
+
+    private func persistLogDeletion(_ id: String, using api: WorkoutAPI?, sentChange: PendingWorkoutLogChange?) async throws {
+        if let api {
+            try api.checkSession()
+            guard let sentChange, pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
             do {
                 try await api.deleteLog(id)
                 try api.checkSession()
@@ -1118,9 +1150,13 @@ final class WorkoutStore: ObservableObject {
         case .logs:
             guard var log = conflict.local?.log else { return }
             log.revision = expectedRevision
-            let saved = try await api.saveLog(log)
-            try api.checkSession()
-            upsert(saved, in: &logs)
+            let value = log
+            try await logWriteQueue.perform(id: log.id) { [self] in
+                try api.checkSession()
+                let saved = try await api.saveLog(value)
+                try api.checkSession()
+                upsert(saved, in: &logs)
+            }
         case .programs:
             guard var program = conflict.local?.program else { return }
             program.revision = expectedRevision
@@ -1315,19 +1351,23 @@ final class WorkoutStore: ObservableObject {
             guard (try? api.checkSession()) != nil else { return }
             guard pendingLogQueue.changes.contains(change) else { continue }
             do {
-                if change.operation == .delete {
-                    try await api.deleteLog(change.id)
+                try await logWriteQueue.perform(id: change.id) { [self] in
                     try api.checkSession()
-                    guard pendingLogQueue.changes.contains(change) else { continue }
-                    logs.removeAll { $0.id == change.id }
-                } else if let log = change.log {
-                    let saved = try await api.saveLog(log)
-                    try api.checkSession()
-                    guard pendingLogQueue.changes.contains(change) else { continue }
-                    upsert(saved, in: &logs)
-                    pendingConflictQueue.remove(.logs, id: change.id)
+                    guard pendingLogQueue.changes.contains(change) else { return }
+                    if change.operation == .delete {
+                        try await api.deleteLog(change.id)
+                        try api.checkSession()
+                        guard pendingLogQueue.changes.contains(change) else { return }
+                        logs.removeAll { $0.id == change.id }
+                    } else if let log = change.log {
+                        let saved = try await api.saveLog(log)
+                        try api.checkSession()
+                        guard pendingLogQueue.changes.contains(change) else { return }
+                        upsert(saved, in: &logs)
+                        pendingConflictQueue.remove(.logs, id: change.id)
+                    }
+                    pendingLogQueue.remove(change.id)
                 }
-                pendingLogQueue.remove(change.id)
             } catch WorkoutAPIError.unauthorized {
                 guard (try? api.checkSession()) != nil else { return }
                 auth.signOut()

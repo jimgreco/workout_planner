@@ -303,6 +303,67 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     }
 }
 
+// Live Activity actions edit set values, never the app's exercise/set structure.
+// Reject an obsolete layout and preserve fields changed in the app since publish.
+func mergingWorkoutLiveActivityItems(current: [ExerciseItem], base: [ExerciseItem], updated: [ExerciseItem]) -> [ExerciseItem] {
+    guard current.map(\.exerciseId) == base.map(\.exerciseId),
+          updated.map(\.exerciseId) == base.map(\.exerciseId),
+          current.map({ $0.sets.count }) == base.map({ $0.sets.count }),
+          updated.map({ $0.sets.count }) == base.map({ $0.sets.count })
+    else { return current }
+
+    var result = current
+    for i in current.indices {
+        guard current[i].weightType == base[i].weightType else { continue }
+        for s in current[i].sets.indices {
+            let original = base[i].sets[s]
+            let edited = updated[i].sets[s]
+            let local = current[i].sets[s]
+            func merge<Value: Equatable>(_ key: WritableKeyPath<WorkoutSet, Value>) {
+                if local[keyPath: key] == original[keyPath: key], edited[keyPath: key] != original[keyPath: key] {
+                    result[i].sets[s][keyPath: key] = edited[keyPath: key]
+                }
+            }
+            merge(\.reps)
+            merge(\.repsLeft)
+            merge(\.repsRight)
+            merge(\.repMode)
+            merge(\.weight)
+            merge(\.restStartTime)
+            merge(\.restDuration)
+            merge(\.restTargetSeconds)
+            merge(\.completion)
+        }
+    }
+    return result
+}
+
+// An in-flight autosave must finish before a newer edit, finish or deletion.
+// These unstructured tasks keep request cancellation from reordering writes.
+@MainActor
+final class WorkoutLogWriteQueue {
+    private var tails: [String: Task<Void, Never>] = [:]
+    private var generations: [String: UUID] = [:]
+
+    func perform<Value>(id: String, operation: @escaping @MainActor () async throws -> Value) async throws -> Value {
+        let previous = tails[id]
+        let generation = UUID()
+        let task = Task {
+            await previous?.value
+            return try await operation()
+        }
+        tails[id] = Task { _ = try? await task.value }
+        generations[id] = generation
+        defer {
+            if generations[id] == generation {
+                tails[id] = nil
+                generations[id] = nil
+            }
+        }
+        return try await task.value
+    }
+}
+
 struct WorkoutTemplate: Codable, Identifiable, Equatable {
     var id: String
     var name: String

@@ -61,6 +61,7 @@ struct WorkoutLiveActivitySharedSet: Codable, Hashable {
     var restDuration: Int?
     var restTargetSeconds: Int?
     var setType: String?
+    var completion: String?
 }
 
 struct WorkoutLiveActivitySharedItem: Codable, Hashable {
@@ -82,6 +83,8 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
     var startedAt: Date?
     var revision: Int
     var contentState: WorkoutLiveActivityAttributes.ContentState
+    // The app snapshot on which widget edits are based, unchanged by intents.
+    var baseItems: [WorkoutLiveActivitySharedItem]? = nil
 
     mutating func adjustReps(delta: Int) {
         guard let position = activePosition else { return }
@@ -147,6 +150,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
 
         set.restStartTime = now
         set.restDuration = nil
+        set.completion = "recorded"
         items[position.exerciseIndex].sets[position.setIndex] = set
 
         if let next = nextOpenPosition(after: position) {
@@ -214,7 +218,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         for exerciseIndex in items.indices {
             for setIndex in items[exerciseIndex].sets.indices {
                 let set = items[exerciseIndex].sets[setIndex]
-                if set.restStartTime == nil, set.restDuration == nil {
+                if set.completion != "skipped", set.restStartTime == nil, set.restDuration == nil {
                     return (exerciseIndex, setIndex)
                 }
             }
@@ -240,7 +244,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
             for setIndex in items[exerciseIndex].sets.indices {
                 if foundCurrent {
                     let set = items[exerciseIndex].sets[setIndex]
-                    if set.restStartTime == nil, set.restDuration == nil {
+                    if set.completion != "skipped", set.restStartTime == nil, set.restDuration == nil {
                         return (exerciseIndex, setIndex)
                     }
                 }

@@ -104,8 +104,49 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         await syncing.value
         precondition(SyntheticProtocol.count() == start + 1)
         precondition(auth.user?.sub == "B" && store.pendingSyncCount == 1)
+
+        // A newer edit is durable while an older save is still in flight.
+        auth.login("C")
+        let queuedLog = WorkoutLog(id: "ordered", name: "Before removal", date: "2026-10-04")
+        let oldCount = SyntheticProtocol.count()
+        let oldSave = Task { try await store.saveLog(queuedLog) }
+        while SyntheticProtocol.count() == oldCount { await Task.yield() }
+        var removed = queuedLog
+        removed.name = "After core removal"
+        let latest = removed
+        let newerSave = Task { try await store.saveLog(latest) }
+        func hasQueuedText(_ text: String) -> Bool {
+            defaults.dictionaryRepresentation().values.compactMap { $0 as? Data }
+                .contains { String(data: $0, encoding: .utf8)?.contains(text) == true }
+        }
+        while !hasQueuedText("After core removal") { await Task.yield() }
+        precondition(SyntheticProtocol.count() == oldCount + 1)
+        oldSave.cancel()
+        SyntheticProtocol.finish(body: String(data: try JSONEncoder().encode(queuedLog), encoding: .utf8)!)
+        do { _ = try await oldSave.value; preconditionFailure("Superseded save was accepted") }
+        catch { precondition(isCancellationError(error)) }
+        while SyntheticProtocol.count() == oldCount + 1 { await Task.yield() }
+        SyntheticProtocol.finish(body: String(data: try JSONEncoder().encode(latest), encoding: .utf8)!)
+        _ = try await newerSave.value
+        precondition(store.logs.first?.name == latest.name && store.pendingSyncCount == 0)
+
+        // Queued deletion retains its owner and cannot acquire a new account's API.
+        let heldCount = SyntheticProtocol.count()
+        let heldSave = Task { try await store.saveLog(queuedLog) }
+        while SyntheticProtocol.count() == heldCount { await Task.yield() }
+        let deleting = Task { try await store.deleteLog(queuedLog.id) }
+        while !hasQueuedText("\"operation\":\"delete\"") { await Task.yield() }
+        auth.signOut(); auth.login("B")
+        SyntheticProtocol.finish(body: String(data: try JSONEncoder().encode(queuedLog), encoding: .utf8)!)
+        do { _ = try await heldSave.value; preconditionFailure("Old account save was accepted") }
+        catch { precondition(isCancellationError(error)) }
+        do { try await deleting.value; preconditionFailure("Queued delete crossed accounts") }
+        catch { precondition(isCancellationError(error)) }
+        precondition(SyntheticProtocol.count() == heldCount + 1 && store.logs.isEmpty)
+        auth.login("C")
+        precondition(store.pendingSyncCount == 1 && hasQueuedText("\"operation\":\"delete\""))
         for key in ["forge.pendingResourceChanges.v1", "forge.pendingWorkoutLogSaves.v1", "forge.pendingConflicts.v1"] { precondition(defaults.data(forKey: key) == legacy) }
         precondition(store.syncDetailText?.contains("preserved") == true)
-        print("PASS native account isolation: durable owner queues, sign-out reset, legacy quarantine, late success/failure/401, A-B-A, interrupted flush")
+        print("PASS native account isolation: durable owner queues, sign-out reset, legacy quarantine, late success/failure/401, A-B-A, interrupted flush, ordered edits, durable queued deletion and account-switch fencing")
     }
 }
