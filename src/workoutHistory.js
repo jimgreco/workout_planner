@@ -118,3 +118,60 @@ export function routineExerciseNeedsWeightIncrease(item = {}, logs = []) {
   if (caps.right !== null) checks.push(loggedSideRepValue(loggedSet, 'right') >= caps.right);
   return checks.length > 0 && checks.every(Boolean);
 }
+
+function repRangeBounds(value) {
+  const match = repTargetText(value).match(/^(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  return min > 0 && max >= min ? { min, max } : null;
+}
+
+function targetRange(set, side) {
+  const sideFields = side ? [set[`placeholderReps${side}`], set[`reps${side}`]] : [];
+  return [...sideFields, set.placeholderReps, set.reps].map(repRangeBounds).find(Boolean);
+}
+
+function recordedRepNumber(value) {
+  const text = cleanedText(value);
+  const number = Number(text);
+  return text && Number.isFinite(number) && number > 0 ? number : null;
+}
+
+// Compare prescribed working-set positions, so an inserted warmup or a new
+// third prescribed set cannot hide a miss in the two sets actually performed.
+export function routineExerciseWeightDecreaseReason(item = {}, logs = []) {
+  if (!item.exerciseId || item.weightType === 'none') return null;
+  const lastItem = lastFinishedExerciseItem(item.exerciseId, logs);
+  if (!lastItem || personalBestContext(item) !== personalBestContext(lastItem)) return null;
+  const targets = (item.sets || []).filter(set => set.setType !== 'warmup');
+  const recorded = (lastItem.sets || []).filter(set => set.setType !== 'warmup');
+  for (let index = 0; index < Math.min(targets.length, recorded.length); index += 1) {
+    const set = recorded[index];
+    if (!isWorkingSet(set) || !Number.isFinite(Number(set.weight)) || !(Number(set.weight) > 0)) continue;
+    const hasSides = set.repMode === 'separateSides' || set.repMode === 'linkedSides'
+      || cleanedText(set.repsLeft) || cleanedText(set.repsRight);
+    const sides = hasSides ? ['Left', 'Right'] : [''];
+    for (const side of sides) {
+      const range = targetRange(targets[index], side);
+      const value = side ? set[`reps${side}`] ?? set.reps : set.reps;
+      const reps = recordedRepNumber(value);
+      if (range && reps !== null && reps < range.min) {
+        const sideLabel = side ? ` (${side.toLowerCase()})` : '';
+        return `Last time, set ${index + 1}${sideLabel}: ${reps} reps; target ${range.min}–${range.max}. Try the next lighter weight than you used for that set, keeping your reps controlled.`;
+      }
+    }
+  }
+  return null;
+}
+
+export function routineExerciseWeightAdvice(item = {}, logs = [], { usesTime = false } = {}) {
+  if (usesTime) return null;
+  const message = routineExerciseWeightDecreaseReason(item, logs);
+  // A missed lower bound takes priority even if a later, lighter set hit its cap.
+  if (message) return { direction: 'decrease', label: 'Lower weight', message };
+  if (routineExerciseNeedsWeightIncrease(item, logs)) {
+    return { direction: 'increase', label: 'Add weight', message: 'Increase weight next time.' };
+  }
+  return null;
+}

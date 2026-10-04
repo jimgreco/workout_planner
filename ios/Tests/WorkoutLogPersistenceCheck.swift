@@ -46,6 +46,17 @@ struct WorkoutLogPersistenceCheck {
 
         // The saved API representation also excludes the deleted exercise.
         let saved = WorkoutLog(id: "log", name: "Test", date: "2026-10-01", exerciseItems: deleted, status: "finished")
+        var lateAutosave = saved
+        lateAutosave.status = "active"
+        lateAutosave.endTime = nil
+        precondition(!shouldPersistWorkoutAutosave(lateAutosave, current: saved))
+        lateAutosave.status = "planning"
+        precondition(!shouldPersistWorkoutAutosave(lateAutosave, current: saved))
+        precondition(shouldPersistWorkoutAutosave(saved, current: saved))
+        precondition(shouldPersistWorkoutAutosave(lateAutosave, current: nil))
+        var otherWorkout = saved
+        otherWorkout.id = "other"
+        precondition(shouldPersistWorkoutAutosave(lateAutosave, current: otherWorkout))
         let roundTrip = try JSONDecoder().decode(WorkoutLog.self, from: JSONEncoder().encode(saved))
         precondition(roundTrip.exerciseItems == [press])
 

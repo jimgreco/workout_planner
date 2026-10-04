@@ -60,6 +60,18 @@ describe('WorkoutBuilder', () => {
     expect(screen.getByLabelText(/bench press: increase weight next time/i)).toBeInTheDocument();
   });
 
+  it.each([true, false])('shows a lower-weight explanation when planningMode=%s without changing inputs', (planningMode) => {
+    const onChange = vi.fn();
+    const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ placeholderReps: '10-15', weight: '' }] }];
+    const logs = [{ id: 'last', date: '2026-10-02', status: 'finished', exerciseItems: [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ reps: '8', weight: '45', rir: '2' }] }] }];
+    render(<WorkoutBuilder exercises={exercises} items={items} onChange={onChange} planningMode={planningMode} logs={logs} />);
+    expect(screen.getByLabelText(/bench press: decrease weight next time/i)).toHaveTextContent('Lower weight');
+    expect(screen.getByText(/Last time, set 1: 8 reps; target 10–15/)).toBeVisible();
+    expect(screen.queryByLabelText(/increase weight next time/i)).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(items[0].sets[0].weight).toBe('');
+  });
+
   it('calls reset PB action from a workout exercise card', () => {
     const onResetPersonalBest = vi.fn();
     const exercisesWithPB = [

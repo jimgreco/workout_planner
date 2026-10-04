@@ -803,6 +803,73 @@ func routineExerciseNeedsWeightIncrease(_ item: ExerciseItem, logs: [WorkoutLog]
     return !checks.isEmpty && checks.allSatisfy { $0 }
 }
 
+struct WorkoutWeightAdvice {
+    enum Direction { case increase, decrease }
+    let direction: Direction
+    let message: String
+    var label: String { direction == .decrease ? "Lower weight" : "Add weight" }
+    var icon: String { direction == .decrease ? "arrow.down.circle.fill" : "arrow.up.circle.fill" }
+    var action: String { direction == .decrease ? "decrease" : "increase" }
+}
+
+// Delayed field callbacks must not reopen a workout after Finish has saved it.
+func shouldPersistWorkoutAutosave(_ proposed: WorkoutLog, current: WorkoutLog?) -> Bool {
+    !(current?.id == proposed.id && current?.status == "finished" && proposed.status != "finished")
+}
+
+private func workoutRepRangeBounds(_ value: String?) -> (min: Double, max: Double)? {
+    let text = workoutRepTargetText(value)
+    guard text.range(of: #"^\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?$"#, options: .regularExpression) != nil else { return nil }
+    let parts = text.split { $0 == "-" || $0 == "–" }.map { $0.trimmingCharacters(in: .whitespaces) }
+    guard parts.count == 2, let min = Double(parts[0]), let max = Double(parts[1]), min > 0, max >= min else { return nil }
+    return (min, max)
+}
+
+private func workoutTargetRange(_ set: WorkoutSet, side: String) -> (min: Double, max: Double)? {
+    var values: [String?] = []
+    if side == "left" { values += [set.placeholderRepsLeft, set.repsLeft] }
+    if side == "right" { values += [set.placeholderRepsRight, set.repsRight] }
+    values += [set.placeholderReps, set.reps]
+    return values.compactMap(workoutRepRangeBounds).first
+}
+
+// Align working-set positions without treating warmups, skipped rows or newly
+// added prescribed sets as failed attempts.
+func routineExerciseWeightDecreaseReason(_ item: ExerciseItem, logs: [WorkoutLog]) -> String? {
+    guard !item.exerciseId.isEmpty, item.weightType != "none",
+          let last = workoutLastFinishedItem(exerciseId: item.exerciseId, logs: logs),
+          personalBestContext(item) == personalBestContext(last)
+    else { return nil }
+    let targets = item.sets.filter { $0.setType != "warmup" }
+    let recorded = last.sets.filter { $0.setType != "warmup" }
+    for index in 0..<min(targets.count, recorded.count) {
+        let set = recorded[index]
+        guard isRecordedWorkingSet(set), let weight = Double(workoutCleanedText(set.weight)), weight.isFinite, weight > 0 else { continue }
+        let hasSides = set.repMode == "separateSides" || set.repMode == "linkedSides"
+            || !workoutCleanedText(set.repsLeft).isEmpty || !workoutCleanedText(set.repsRight).isEmpty
+        for side in hasSides ? ["left", "right"] : [""] {
+            let value = side == "left" ? (set.repsLeft ?? set.reps) : side == "right" ? (set.repsRight ?? set.reps) : set.reps
+            guard let range = workoutTargetRange(targets[index], side: side),
+                  let reps = Double(workoutCleanedText(value)), reps.isFinite, reps > 0, reps < range.min
+            else { continue }
+            let sideLabel = side.isEmpty ? "" : " (\(side))"
+            return "Last time, set \(index + 1)\(sideLabel): \(formatProgressionNumber(reps)) reps; target \(formatProgressionNumber(range.min))–\(formatProgressionNumber(range.max)). Try the next lighter weight than you used for that set, keeping your reps controlled."
+        }
+    }
+    return nil
+}
+
+func routineExerciseWeightAdvice(_ item: ExerciseItem, logs: [WorkoutLog], usesTime: Bool = false) -> WorkoutWeightAdvice? {
+    guard !usesTime else { return nil }
+    if let message = routineExerciseWeightDecreaseReason(item, logs: logs) {
+        return WorkoutWeightAdvice(direction: .decrease, message: message)
+    }
+    if routineExerciseNeedsWeightIncrease(item, logs: logs) {
+        return WorkoutWeightAdvice(direction: .increase, message: "Increase weight next time.")
+    }
+    return nil
+}
+
 enum SyncConflictResource: String, Codable, CaseIterable {
     case exercises
     case templates

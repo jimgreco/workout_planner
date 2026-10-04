@@ -2,6 +2,7 @@ import UpcomingDayActions from '../components/UpcomingDayActions.jsx';
 import { validateProgram } from '../../backend/src/validation.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowDown,
   ArrowRightLeft,
   CalendarDays,
   CheckCircle2,
@@ -38,7 +39,7 @@ import {
   swapProgramScheduleDays,
   upcomingProgramSchedule as buildUpcomingProgramSchedule,
 } from '../programs.js';
-import { lastWeightTypesByExerciseId, routineExerciseNeedsWeightIncrease } from '../workoutHistory.js';
+import { lastWeightTypesByExerciseId, routineExerciseWeightAdvice } from '../workoutHistory.js';
 
 const PROGRESSION_TYPES = [
   { value: 'double_progression', label: 'Reps, then weight' },
@@ -1172,17 +1173,17 @@ export default function Templates({
               {(t.exerciseItems || []).map((item) => {
                 const ex = exercises.find((e) => e.id === item.exerciseId);
                 if (!ex) return null;
-                const needsWeightIncrease = routineExerciseNeedsWeightIncrease(item, logs);
+                const weightAdvice = routineExerciseWeightAdvice(item, logs, ex);
                 return (
                   <span
                     key={item.exerciseId}
-                    className={`badge routine-exercise-badge ${needsWeightIncrease ? 'needs-weight-increase' : ''}`}
-                    title={needsWeightIncrease ? `${ex.name}: increase weight next time` : undefined}
+                    className={`badge routine-exercise-badge ${weightAdvice ? `needs-weight-${weightAdvice.direction}` : ''}`}
+                    title={weightAdvice?.message}
                   >
                     {item.supersetGroup ? `SS ${item.supersetGroup} · ` : ''}{ex.name} • {item.sets.length} {item.sets.length === 1 ? 'set' : 'sets'}
-                    {needsWeightIncrease && (
-                      <span className="routine-progress-marker" aria-label={`${ex.name}: increase weight next time`}>
-                        <Target size={12} aria-hidden="true" /> Add weight
+                    {weightAdvice && (
+                      <span className={`routine-progress-marker ${weightAdvice.direction === 'decrease' ? 'needs-weight-decrease' : ''}`} aria-label={`${ex.name}: ${weightAdvice.direction} weight next time`}>
+                        {weightAdvice.direction === 'decrease' ? <ArrowDown size={12} aria-hidden="true" /> : <Target size={12} aria-hidden="true" />} {weightAdvice.label}
                       </span>
                     )}
                   </span>

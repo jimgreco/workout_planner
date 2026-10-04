@@ -520,8 +520,13 @@ private struct LiveActivityMetadataRow: View {
                 LiveActivityTag(text: state.setType, compact: compact)
             }
 
-            if showsAddWeight && state.needsWeightIncrease && !state.isComplete {
-                LiveActivityAddWeightChip(compact: compact)
+            if showsAddWeight && !state.isComplete {
+                if let reason = state.weightDecreaseReason {
+                    LiveActivityWeightChip(compact: compact, decrease: true)
+                        .accessibilityHint(reason)
+                } else if state.needsWeightIncrease {
+                    LiveActivityWeightChip(compact: compact)
+                }
             }
         }
         .lineLimit(1)
@@ -740,14 +745,15 @@ private struct LockScreenProgressBar: View {
     }
 }
 
-private struct LiveActivityAddWeightChip: View {
+private struct LiveActivityWeightChip: View {
     var compact = false
+    var decrease = false
 
     var body: some View {
         HStack(spacing: compact ? 3 : 4) {
-            Image(systemName: "arrow.up.circle.fill")
+            Image(systemName: decrease ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
                 .font(.system(size: compact ? 9 : 10, weight: .heavy))
-            Text("Add Weight")
+            Text(decrease ? "Lower weight" : "Add weight")
                 .font(.system(size: compact ? 9 : 10, weight: .heavy))
                 .textCase(.uppercase)
                 .lineLimit(1)
@@ -757,7 +763,7 @@ private struct LiveActivityAddWeightChip: View {
         .padding(.horizontal, compact ? 6 : 8)
         .padding(.vertical, compact ? 3 : 4)
         .background(repmixburnAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .accessibilityLabel("Add weight")
+        .accessibilityLabel(decrease ? "Lower weight" : "Add weight")
     }
 }
 

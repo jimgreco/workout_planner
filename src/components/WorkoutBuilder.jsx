@@ -6,7 +6,7 @@ import { completionLabel, normalizedRir } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
 import { personalBestLabel, personalBestForItem, hasPersonalBestContext } from '../progress.js';
-import { routineExerciseNeedsWeightIncrease } from '../workoutHistory.js';
+import { routineExerciseWeightAdvice } from '../workoutHistory.js';
 
 /**
  * WorkoutBuilder — reusable component for building a workout's exercise list.
@@ -450,7 +450,7 @@ export default function WorkoutBuilder({
         const compactRepsValue = compactRepValue(firstSet, repsField);
         const compactRepsRange = repRange(compactRepsValue);
         const compactUsesRange = Boolean(compactRepsRange);
-        const needsWeightIncrease = routineExerciseNeedsWeightIncrease(item, logs);
+        const weightAdvice = routineExerciseWeightAdvice(item, logs, ex);
         const best = personalBestForItem(item, logs, ex.personalBest);
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
@@ -463,14 +463,17 @@ export default function WorkoutBuilder({
                 <div className="exercise-meta">
                   <span className="exercise-name">{ex.name}</span>
                   <span className="badge">{ex.muscleGroup}</span>
-                  {needsWeightIncrease && (
+                  {weightAdvice && (
                     <span
-                      className="routine-progress-marker workout-progress-marker"
-                      aria-label={`${ex.name}: increase weight next time`}
-                      title={`${ex.name}: increase weight next time`}
+                      className={`routine-progress-marker workout-progress-marker ${weightAdvice.direction === 'decrease' ? 'needs-weight-decrease' : ''}`}
+                      aria-label={`${ex.name}: ${weightAdvice.direction} weight next time`}
+                      title={weightAdvice.message}
                     >
-                      <Target size={12} aria-hidden="true" /> Add weight
+                      {weightAdvice.direction === 'decrease' ? <ArrowDown size={12} aria-hidden="true" /> : <Target size={12} aria-hidden="true" />} {weightAdvice.label}
                     </span>
+                  )}
+                  {weightAdvice?.direction === 'decrease' && (
+                    <p className="weight-advice-detail">{weightAdvice.message}</p>
                   )}
                   {best?.weight && (
                     <span className="pb-label">

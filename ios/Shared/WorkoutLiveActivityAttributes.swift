@@ -22,6 +22,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var setType: String
         var personalBest: String?
         var needsWeightIncrease: Bool
+        var weightDecreaseReason: String? = nil
         var completedSets: Int
         var totalSets: Int
         var exerciseCount: Int
@@ -69,6 +70,7 @@ struct WorkoutLiveActivitySharedItem: Codable, Hashable {
     var exerciseName: String
     var muscleGroup: String
     var repsTitle: String?
+    var weightDecreaseReason: String? = nil
     var weightType: String?
     var restTargetSeconds: Int?
     var sets: [WorkoutLiveActivitySharedSet]
@@ -189,6 +191,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.allowsWeightEntry = item.weightType != "none"
         contentState.weightBaseline = Self.weightBaseline(for: set, item: item)
         contentState.interactionRevision = revision
+        contentState.weightDecreaseReason = (restItem ?? item).weightDecreaseReason
         contentState.completedSets = completedSetCount
         contentState.totalSets = totalSetCount
         contentState.exerciseCount = items.count

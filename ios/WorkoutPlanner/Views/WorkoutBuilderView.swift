@@ -681,10 +681,17 @@ private struct ExerciseSetsCard: View {
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                 Badge(text: exercise.muscleGroup)
-                if routineExerciseNeedsWeightIncrease(item, logs: logs) {
-                    Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
-                        .accessibilityLabel("\(exercise.name): increase weight next time")
+                if let advice = routineExerciseWeightAdvice(item, logs: logs, usesTime: exercise.usesTime == true) {
+                    Badge(text: advice.label, icon: advice.icon, accent: true)
+                        .accessibilityLabel("\(exercise.name): \(advice.action) weight next time")
+                        .accessibilityHint(advice.message)
                 }
+            }
+            if let advice = routineExerciseWeightAdvice(item, logs: logs, usesTime: exercise.usesTime == true), advice.direction == .decrease {
+                Text(advice.message)
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let pb = personalBestLabel(personalBestForItem(item, logs: logs, legacyBest: exercise.personalBest), usesTime: exercise.usesTime == true) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

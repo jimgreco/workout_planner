@@ -487,6 +487,22 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   padding: 3px 7px;
   border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
 }
+.routine-exercise-badge.needs-weight-decrease {
+  color: var(--text);
+  background: color-mix(in srgb, var(--warn) 18%, var(--surface2));
+}
+.routine-progress-marker.needs-weight-decrease {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.weight-advice-detail {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
 .program-header,
 .program-next {
   display: flex;

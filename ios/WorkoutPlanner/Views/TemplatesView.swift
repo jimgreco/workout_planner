@@ -1321,9 +1321,10 @@ private struct TemplateCard: View {
                             let label = "\(prefix)\(entry.exercise.name) • \(entry.item.sets.count) \(entry.item.sets.count == 1 ? "set" : "sets")"
                             HStack(spacing: 5) {
                                 Badge(text: label)
-                                if routineExerciseNeedsWeightIncrease(entry.item, logs: logs) {
-                                    Badge(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
-                                        .accessibilityLabel("\(entry.exercise.name): increase weight next time")
+                                if let advice = routineExerciseWeightAdvice(entry.item, logs: logs, usesTime: entry.exercise.usesTime == true) {
+                                    Badge(text: advice.label, icon: advice.icon, accent: true)
+                                        .accessibilityLabel("\(entry.exercise.name): \(advice.action) weight next time")
+                                        .accessibilityHint(advice.message)
                                 }
                             }
                         }

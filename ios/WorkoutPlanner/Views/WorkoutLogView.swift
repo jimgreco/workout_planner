@@ -528,6 +528,7 @@ struct WorkoutLogView: View {
     }
 
     private func scheduleSave() {
+        guard !isSaving, finishSummary == nil else { return }
         guard let log = logSnapshot(status: currentStatus()) else { return }
         saveTask?.cancel()
         saveGeneration += 1
@@ -692,6 +693,9 @@ struct WorkoutLogView: View {
     }
 
     private func persist(_ log: WorkoutLog) async {
+        guard !isSaving, finishSummary == nil,
+              shouldPersistWorkoutAutosave(log, current: store.logs.first(where: { $0.id == log.id }))
+        else { return }
         do {
             try await store.saveLog(log)
         } catch {
@@ -1218,6 +1222,7 @@ struct WorkoutLogView: View {
                 exerciseName: exercise?.name ?? "Exercise",
                 muscleGroup: exercise?.muscleGroup ?? "",
                 repsTitle: exercise?.usesTime == true ? "Secs" : "Reps",
+                weightDecreaseReason: exercise?.usesTime == true ? nil : routineExerciseWeightDecreaseReason(item, logs: store.logs),
                 weightType: item.weightType,
                 restTargetSeconds: item.restTargetSeconds,
                 sets: item.sets.map { set in
@@ -1271,7 +1276,8 @@ struct WorkoutLogView: View {
             restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
         }
         let restTimerIsOverTarget = restTargetEnd.map { Date() >= $0 }
-        let weightIncreaseContext = resting ?? context
+        let weightAdviceContext = resting ?? context
+        let weightAdvice = routineExerciseWeightAdvice(weightAdviceContext.item, logs: store.logs, usesTime: weightAdviceContext.exercise.usesTime == true)
 
         return WorkoutLiveActivityAttributes.ContentState(
             workoutName: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Workout" : name,
@@ -1291,7 +1297,8 @@ struct WorkoutLogView: View {
             interactionRevision: appliedLiveActivityInteractionRevision,
             setType: store.settings.advancedMode ? setTypeLabel(context.set.setType) : "",
             personalBest: personalBestLabel(personalBestForItem(context.item, logs: store.logs, legacyBest: context.exercise.personalBest), usesTime: context.exercise.usesTime == true),
-            needsWeightIncrease: routineExerciseNeedsWeightIncrease(weightIncreaseContext.item, logs: store.logs),
+            needsWeightIncrease: weightAdvice?.direction == .increase,
+            weightDecreaseReason: weightAdvice?.direction == .decrease ? weightAdvice?.message : nil,
             completedSets: completed,
             totalSets: total,
             exerciseCount: items.count,
@@ -2409,7 +2416,7 @@ private struct WorkoutLiveActivityCard: View {
             .foregroundStyle(Theme.text)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
-        let needsWeightIncrease = routineExerciseNeedsWeightIncrease(context.item, logs: logs)
+        let weightAdvice = routineExerciseWeightAdvice(context.item, logs: logs, usesTime: context.exercise.usesTime == true)
 
         return VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: 10) {
@@ -2445,12 +2452,19 @@ private struct WorkoutLiveActivityCard: View {
                     WorkoutLiveInlineTag(text: context.exercise.muscleGroup)
                 }
 
-                if needsWeightIncrease {
-                    WorkoutLiveInlineTag(text: "Add weight", icon: "arrow.up.circle.fill", accent: true)
-                        .accessibilityLabel("\(context.exercise.name): increase weight next time")
+                if let advice = weightAdvice {
+                    WorkoutLiveInlineTag(text: advice.label, icon: advice.icon, accent: true)
+                        .accessibilityLabel("\(context.exercise.name): \(advice.action) weight next time")
+                        .accessibilityHint(advice.message)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if let advice = weightAdvice, advice.direction == .decrease {
+                Text(advice.message)
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
