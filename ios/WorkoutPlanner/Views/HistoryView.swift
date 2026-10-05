@@ -179,7 +179,7 @@ private struct HistoryItemView: View {
 
                     Spacer()
 
-                    Text(formatDuration(startTime: log.startTime, endTime: log.endTime))
+                    Text(formatDuration(startTime: log.startTime, endTime: log.endTime, pausedDurationMs: log.pausedDurationMs))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.muted)
                     Text("\(log.exerciseItems.count) ex")

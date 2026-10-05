@@ -143,6 +143,17 @@ Native Live Activity imports must merge set changes against the published base w
 Persist each latest log intent in its account-owned pending queue before waiting for older writes. Capture the API/session and store generation at enqueue time; reject work after an account reset before sending or applying its result. `AccountOfflineSyncCheck.swift` covers queued edits/deletions and account switches with the real store/API.
 
 
+## Workout pause timing
+
+An active log may carry `pausedAt` (epoch milliseconds) and `pausedDurationMs`
+(accumulated milliseconds). Keep `status: active` and the original start/end
+timestamps; subtract paused duration when displaying elapsed/history time.
+Resume shifts only running `restStartTime` values by the paused interval. Finish
+settles running rests and includes the final pause in accumulated duration.
+The app and Live Activity freeze timers and block set/rest actions while paused.
+Ship the API validator support before testers use Pause in a new native build.
+Native timing regression: `swiftc ios/WorkoutPlanner/Support/Models.swift ios/Tests/WorkoutPauseCheck.swift -o /tmp/repmixburn-pause-check && /tmp/repmixburn-pause-check`.
+
 ## Weight guidance
 
 Weight advice lives in `src/workoutHistory.js` and the matching helpers in `Models.swift`. A recorded, weighted working set below its prescribed range produces a Lower weight cue, ahead of the existing Add weight cue. Align working-set positions while excluding warmups, skip missing/skipped/unrecorded evidence, check side reps separately, and retain setup/baseline/weight-mode/Smith context matching. Use the latest finished occurrence; bodyweight and timed exercises have no weight cue. Advice never edits loads or treats blank RIR as failure. Live Activity decrease reasons travel per exercise so widget navigation cannot carry them to another movement. Native autosaves must not downgrade a finished workout to active/planning after delayed field callbacks.

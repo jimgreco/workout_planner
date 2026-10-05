@@ -1635,6 +1635,7 @@ input:focus, select:focus, textarea:focus {
 
 .workout-page-title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -1648,9 +1649,19 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 0;
 }
 
-.workout-discard-button {
+.workout-header-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
   flex-shrink: 0;
-  min-height: 36px;
+}
+
+.workout-header-actions .btn {
+  min-height: 44px;
+}
+
+.workout-pause-button, .workout-discard-button {
+  flex-shrink: 0;
 }
 
 .workout-page-primary-actions {

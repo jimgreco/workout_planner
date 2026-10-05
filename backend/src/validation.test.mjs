@@ -293,3 +293,20 @@ test('Smith mode and machine resistance round-trip through workouts, prescriptio
     assert.throws(() => validateExercise({ name: 'Smith', equipmentSetups: [{ id: 's', machine: 'Smith', smithBarWeight: resistance }] }, 'smith'), ValidationError);
   }
 });
+
+test('round trips pause timing and validates active-only pause state', () => {
+  const log = { id: 'paused', name: 'Push', date: '2026-10-05', status: 'active', startTime: '2026-10-05T10:00:00Z', exerciseItems: [] };
+  const pausedAt = Date.parse('2026-10-05T10:01:00Z');
+  assert.deepEqual(validateLog({ ...log, pausedAt, pausedDurationMs: 120000 }, log.id), { ...log, pausedAt, pausedDurationMs: 120000 });
+  const resumed = validateLog({ ...log, pausedAt: null, pausedDurationMs: 180000 }, log.id);
+  assert.equal(resumed.pausedAt, undefined);
+  assert.equal(resumed.pausedDurationMs, 180000);
+  assert.equal(validateLog({ ...resumed, status: 'finished', endTime: '2026-10-05T10:10:00Z' }, log.id).pausedDurationMs, 180000);
+  for (const invalid of [
+    { pausedAt: -1 }, { pausedAt: '123' }, { pausedAt: Infinity },
+    { pausedAt: 1 }, { pausedAt, status: 'finished' }, { pausedAt, status: 'planning' },
+    { pausedAt, startTime: null }, { pausedAt, endTime: '2026-10-05T10:02:00Z' },
+    { pausedDurationMs: -1 }, { pausedDurationMs: '100' }, { pausedDurationMs: NaN },
+  ]) assert.throws(() => validateLog({ ...log, ...invalid }, log.id), ValidationError);
+  assert.equal(validateLog(log, log.id).pausedDurationMs, undefined);
+});

@@ -14,17 +14,25 @@ private let liveActivityTertiaryText = Color.white.opacity(0.48)
 struct WorkoutPlannerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WorkoutLiveActivityAttributes.self) { context in
+            Group {
+            if context.state.isPaused {
+                PausedWorkoutActivityView(state: context.state)
+            } else {
             LockScreenWorkoutView(
                 state: context.state,
                 workoutID: context.attributes.workoutID,
                 isStale: context.isStale
             )
+            }
+            }
                 .activityBackgroundTint(liveActivityBackground)
                 .activitySystemActionForegroundColor(repmixburnAccent)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.bottom) {
-                    if context.state.isResting {
+                    if context.state.isPaused {
+                        PausedWorkoutActivityView(state: context.state)
+                    } else if context.state.isResting {
                         DynamicIslandExpandedRestView(state: context.state, isStale: context.isStale)
                     } else {
                         DynamicIslandExpandedWorkoutView(
@@ -34,14 +42,46 @@ struct WorkoutPlannerLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                LiveActivityCompactLeadingLabel(state: context.state, isStale: context.isStale)
+                if context.state.isPaused {
+                    Image(systemName: "pause.fill").accessibilityLabel("Workout paused")
+                } else {
+                    LiveActivityCompactLeadingLabel(state: context.state, isStale: context.isStale)
+                }
             } compactTrailing: {
                 LiveActivityCompactTrailingLabel(state: context.state, isStale: context.isStale)
             } minimal: {
-                LiveActivityMinimalLabel(state: context.state, isStale: context.isStale)
+                if context.state.isPaused {
+                    Image(systemName: "pause.fill").accessibilityLabel("Workout paused")
+                } else {
+                    LiveActivityMinimalLabel(state: context.state, isStale: context.isStale)
+                }
             }
             .keylineTint(repmixburnAccent)
         }
+    }
+}
+
+private struct PausedWorkoutActivityView: View {
+    let state: WorkoutLiveActivityAttributes.ContentState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Workout paused", systemImage: "pause.fill")
+                    .font(.headline)
+                Text(state.workoutName).font(.caption).lineLimit(1)
+                Text("Open the app to resume").font(.caption2)
+                    .foregroundStyle(liveActivitySecondaryText)
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 4) {
+                LiveActivityTimer(state: state).monospacedDigit()
+                Text(state.isResting ? "Rest paused" : "Elapsed").font(.caption2)
+                    .foregroundStyle(liveActivitySecondaryText)
+            }
+        }
+        .foregroundStyle(liveActivityText)
+        .padding(14)
     }
 }
 
@@ -777,7 +817,13 @@ private struct LiveActivityTimer: View {
     var displayStyle: LiveActivityTimerDisplayStyle = .standard
 
     var body: some View {
-        if let restTargetEnd = state.restTargetEnd,
+        if let pausedAt = state.pausedAt {
+            let interval = state.restTargetEnd.map { $0.timeIntervalSince(pausedAt) }
+                ?? pausedAt.timeIntervalSince(state.restStartedAt ?? state.startedAt ?? pausedAt)
+            let seconds = max(0, Int(abs(interval)))
+            Text("\(state.restTargetEnd != nil && interval < 0 ? "+" : "")\(seconds / 60):\(String(format: "%02d", seconds % 60))")
+                .monospacedDigit()
+        } else if let restTargetEnd = state.restTargetEnd,
            state.restStartedAt != nil {
             restTimer(targetEnd: restTargetEnd)
         } else if let restStartedAt = state.restStartedAt {
@@ -821,7 +867,7 @@ private struct LiveActivityIslandTimerLabel: View {
 }
 
 private func liveActivityTimerTint(for state: WorkoutLiveActivityAttributes.ContentState, isStale: Bool = false) -> Color {
-    guard state.isResting else { return liveActivityText }
+    guard state.isResting, !state.isPaused else { return liveActivityText }
     if let restTimerIsOverTarget = state.restTimerIsOverTarget {
         return restTimerIsOverTarget || isStale ? repmixburnAccent : liveActivityText
     }

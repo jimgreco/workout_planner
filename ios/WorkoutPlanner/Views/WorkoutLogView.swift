@@ -20,6 +20,8 @@ struct WorkoutLogView: View {
     @State private var readiness = 0
     @State private var items: [ExerciseItem] = []
     @State private var startTime: String?
+    @State private var pausedAt: Double?
+    @State private var pausedDurationMs: Double?
     @State private var activeExerciseIndex = 0
     @State private var activeSetIndex = 0
     @State private var isEditing = false
@@ -106,10 +108,14 @@ struct WorkoutLogView: View {
                 }
             }
         }
+        .environment(\.workoutPausedAt, pausedAt)
         .onAppear(perform: loadInitialState)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 applyLiveActivityInteractionChanges()
+                rescheduleRestAlertIfNeeded()
+            } else {
+                flushScheduledSave()
             }
         }
         .onChange(of: store.pendingWorkoutStart) { _, start in
@@ -180,33 +186,15 @@ struct WorkoutLogView: View {
 
     private var activeHeader: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if isActive, let startTime, !isEditing {
-                        TimelineView(.periodic(from: Date(), by: 30)) { _ in
-                            Label("In progress · \(formatDuration(startTime: startTime))", systemImage: "clock")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Theme.muted)
-                        }
-                    } else {
-                        Label(isEditing ? "Editing saved workout" : "Planning workout", systemImage: isEditing ? "pencil" : "list.clipboard")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.muted)
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    workoutStatusLabel.fixedSize()
+                    Spacer(minLength: 0)
+                    workoutHeaderActions
                 }
-
-                Spacer()
-
-                if isActive {
-                    Button {
-                        showDiscardConfirm = true
-                    } label: {
-                        Label(isEditing ? "Cancel" : isPlanningMode ? "Discard Plan" : "Discard", systemImage: "xmark")
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .buttonStyle(SecondaryButtonStyle(compact: true))
-                    .disabled(isSaving)
+                VStack(alignment: .leading, spacing: 8) {
+                    workoutStatusLabel
+                    HStack { Spacer(minLength: 0); workoutHeaderActions }
                 }
             }
 
@@ -242,11 +230,46 @@ struct WorkoutLogView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
     }
 
+    private var workoutStatusLabel: some View {
+        Group {
+            if isActive, let startTime, !isEditing {
+                TimelineView(.periodic(from: Date(), by: 1)) { _ in
+                    Label("\(pausedAt == nil ? "In progress" : "Paused") · \(formatDuration(startTime: startTime, pausedAt: pausedAt, pausedDurationMs: pausedDurationMs))", systemImage: pausedAt == nil ? "clock" : "pause.circle")
+                }
+            } else {
+                Label(isEditing ? "Editing saved workout" : "Planning workout", systemImage: isEditing ? "pencil" : "list.clipboard")
+            }
+        }
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(Theme.muted)
+    }
+
+    private var workoutHeaderActions: some View {
+        HStack(spacing: 8) {
+            if isActive, startTime != nil, !isEditing {
+                Button(action: toggleWorkoutPause) {
+                    Label(pausedAt == nil ? "Pause" : "Resume", systemImage: pausedAt == nil ? "pause.fill" : "play.fill")
+                        .frame(minHeight: 26)
+                }
+                .accessibilityHint(pausedAt == nil ? "Pause workout and rest timers" : "Resume workout and rest timers")
+                .accessibilityIdentifier("workout-pause-toggle")
+            }
+            Button { showDiscardConfirm = true } label: {
+                Label(isEditing ? "Cancel" : isPlanningMode ? "Discard Plan" : "Discard", systemImage: "xmark")
+                    .frame(minHeight: 26)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .buttonStyle(SecondaryButtonStyle(compact: true))
+        .disabled(isSaving || finishSummary != nil)
+    }
+
     private var liveActivityCard: some View {
         WorkoutLiveActivityCard(
             items: $items,
             exercises: store.exercises,
             startTime: startTime,
+            pausedDurationMs: pausedDurationMs,
             advancedMode: store.settings.advancedMode,
             logs: store.logs,
             activeExerciseIndex: $activeExerciseIndex,
@@ -259,6 +282,7 @@ struct WorkoutLogView: View {
             onTextChanged: builderTextChanged,
             onEditExercise: { exercise in editingExercise = exercise }
         )
+        .disabled(pausedAt != nil)
     }
 
     private var workoutFields: some View {
@@ -484,6 +508,9 @@ struct WorkoutLogView: View {
         readiness = log.readiness ?? 0
         items = log.exerciseItems
         startTime = log.startTime
+        pausedAt = log.pausedAt
+        pausedDurationMs = log.pausedDurationMs
+        rescheduleRestAlertIfNeeded()
         isEditing = editing
         let nextSet = firstOpenSet(in: log.exerciseItems)
         activeExerciseIndex = nextSet.exerciseIndex
@@ -553,6 +580,22 @@ struct WorkoutLogView: View {
         saveNow(status: "active")
     }
 
+    private func toggleWorkoutPause() {
+        guard !isEditing, !isSaving, finishSummary == nil else { return }
+        applyLiveActivityInteractionChanges()
+        dismissWorkoutInputFocus()
+        guard var log = logSnapshot(status: currentStatus()) else { return }
+        if log.pausedAt == nil { log.pause() } else { log.resume() }
+        pausedAt = log.pausedAt
+        pausedDurationMs = log.pausedDurationMs
+        items = log.exerciseItems
+        restAlertTask?.cancel()
+        restAlert = nil
+        updateExternalLiveActivityNow()
+        saveNow(status: "active")
+        rescheduleRestAlertIfNeeded()
+    }
+
     private func resetPersonalBest(_ exercise: Exercise) {
         guard !isPlanningMode, !isEditing, exercise.personalBest != nil else { return }
         Task {
@@ -577,7 +620,10 @@ struct WorkoutLogView: View {
         defer { isSaving = false }
 
         do {
-            let endTime = isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : ISO8601DateFormatter().string(from: Date())
+            let finishedAt = Date()
+            guard var timing = logSnapshot(status: currentStatus()) else { return }
+            if !isEditing { timing.finishTiming(at: finishedAt) }
+            let endTime = isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : ISO8601DateFormatter().string(from: finishedAt)
             let record = WorkoutLog(id: workoutId, name: name, date: DateHelpers.dayString(from: date), exerciseItems: items, startTime: startTime, endTime: endTime)
             let pbExerciseIds = personalBestIdsForWorkout(record, logs: store.logs, exercises: store.exercises)
             var pbExercises: [String] = []
@@ -602,15 +648,19 @@ struct WorkoutLogView: View {
                 date: DateHelpers.dayString(from: date),
                 notes: notes,
                 readiness: readiness > 0 ? readiness : nil,
-                exerciseItems: items,
+                exerciseItems: timing.exerciseItems,
                 startTime: startTime,
                 endTime: isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : endTime,
                 status: "finished",
                 hasPB: !pbExerciseIds.isEmpty,
                 pbExerciseIds: pbExerciseIds,
-                prescription: prescription
+                prescription: prescription,
+                pausedAt: timing.pausedAt,
+                pausedDurationMs: timing.pausedDurationMs
             )
             try await store.saveLog(log)
+            restAlertTask?.cancel()
+            restAlert = nil
             WorkoutLiveActivityController.shared.end(
                 workoutID: workoutId,
                 finalState: liveActivityState(isCompleteOverride: true)
@@ -621,7 +671,7 @@ struct WorkoutLogView: View {
                 resetWorkout()
             } else {
                 finishSummary = FinishSummary(
-                    duration: formatDuration(startTime: startTime, endTime: endTime),
+                    duration: formatDuration(startTime: startTime, endTime: endTime, pausedDurationMs: timing.pausedDurationMs),
                     exerciseCount: items.count,
                     setCount: items.reduce(0) { $0 + $1.sets.count },
                     pbExercises: pbExercises
@@ -687,8 +737,11 @@ struct WorkoutLogView: View {
             readiness: readiness > 0 ? readiness : nil,
             exerciseItems: items,
             startTime: startTime,
+            endTime: isEditing ? store.logs.first(where: { $0.id == workoutId })?.endTime : nil,
             status: status,
-            prescription: prescription
+            prescription: prescription,
+            pausedAt: pausedAt,
+            pausedDurationMs: pausedDurationMs
         )
     }
 
@@ -743,6 +796,8 @@ struct WorkoutLogView: View {
             items = templateItems
             workoutId = UUID().uuidString
             startTime = nil
+            pausedAt = nil
+            pausedDurationMs = nil
         } else {
             if name.isEmpty { name = template.name }
             items.append(contentsOf: templateItems)
@@ -1003,6 +1058,7 @@ struct WorkoutLogView: View {
     }
 
     private func markSetCompleted(exerciseIndex: Int, setIndex: Int) {
+        guard pausedAt == nil else { return }
         dismissWorkoutInputFocus()
 
         guard items.indices.contains(exerciseIndex),
@@ -1093,6 +1149,7 @@ struct WorkoutLogView: View {
     }
 
     private func endRest(exerciseIndex: Int, setIndex: Int) {
+        guard pausedAt == nil else { return }
         guard items.indices.contains(exerciseIndex),
               items[exerciseIndex].sets.indices.contains(setIndex),
               let start = items[exerciseIndex].sets[setIndex].restStartTime,
@@ -1109,6 +1166,7 @@ struct WorkoutLogView: View {
     }
 
     private func extendRest(exerciseIndex: Int, setIndex: Int, seconds: Int = 30) {
+        guard pausedAt == nil else { return }
         guard items.indices.contains(exerciseIndex),
               items[exerciseIndex].sets.indices.contains(setIndex),
               let start = items[exerciseIndex].sets[setIndex].restStartTime,
@@ -1159,7 +1217,7 @@ struct WorkoutLogView: View {
     }
 
     private func applyLiveActivityInteractionChanges() {
-        guard !isEditing, !isSaving, let workoutId,
+        guard pausedAt == nil, !isEditing, !isSaving, let workoutId,
               let sharedState = WorkoutLiveActivitySharedStore.load(workoutID: workoutId),
               sharedState.revision > appliedLiveActivityInteractionRevision
         else { return }
@@ -1253,7 +1311,7 @@ struct WorkoutLogView: View {
             items: sharedItems,
             activeExerciseIndex: activeExerciseIndex,
             activeSetIndex: activeSetIndex,
-            startedAt: startTime.flatMap { ISO8601DateFormatter().date(from: $0) },
+            startedAt: workoutTimestamp(startTime)?.addingTimeInterval((pausedDurationMs ?? 0) / 1000),
             revision: max(appliedLiveActivityInteractionRevision, existingRevision),
             contentState: contentState,
             baseItems: sharedItems
@@ -1269,13 +1327,13 @@ struct WorkoutLogView: View {
         let resting = liveRestingContext
         let total = liveTotalSets
         let completed = liveCompletedSets
-        let startedAt = startTime.flatMap { ISO8601DateFormatter().date(from: $0) }
+        let startedAt = workoutTimestamp(startTime)?.addingTimeInterval((pausedDurationMs ?? 0) / 1000)
         let restStartedAt = resting?.set.restStartTime.map { Date(timeIntervalSince1970: $0 / 1000) }
         let restTargetSeconds = resting?.set.restTargetSeconds ?? resting?.item.restTargetSeconds
         let restTargetEnd = restStartedAt.flatMap { start in
             restTargetSeconds.map { start.addingTimeInterval(TimeInterval($0)) }
         }
-        let restTimerIsOverTarget = restTargetEnd.map { Date() >= $0 }
+        let restTimerIsOverTarget = restTargetEnd.map { (pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()) >= $0 }
         let weightAdviceContext = resting ?? context
         let weightAdvice = routineExerciseWeightAdvice(weightAdviceContext.item, logs: store.logs, usesTime: weightAdviceContext.exercise.usesTime == true)
 
@@ -1308,7 +1366,8 @@ struct WorkoutLogView: View {
             restTimerIsOverTarget: restTimerIsOverTarget,
             restTargetSeconds: restTargetSeconds,
             restExerciseName: resting?.exercise.name,
-            isComplete: isCompleteOverride || (total > 0 && completed >= total)
+            isComplete: isCompleteOverride || (total > 0 && completed >= total),
+            pausedAt: pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
         )
     }
 
@@ -1491,7 +1550,7 @@ struct WorkoutLogView: View {
 
     private func scheduleRestAlert(exerciseIndex: Int, setIndex: Int, startTime: Double) {
         restAlertTask?.cancel()
-        guard items.indices.contains(exerciseIndex),
+        guard pausedAt == nil, items.indices.contains(exerciseIndex),
               items[exerciseIndex].sets.indices.contains(setIndex),
               let targetSeconds = items[exerciseIndex].sets[setIndex].restTargetSeconds ?? items[exerciseIndex].restTargetSeconds,
               targetSeconds > 0
@@ -1504,7 +1563,7 @@ struct WorkoutLogView: View {
             try? await Task.sleep(nanoseconds: UInt64(waitSeconds) * 1_000_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                guard items.indices.contains(exerciseIndex),
+                guard pausedAt == nil, items.indices.contains(exerciseIndex),
                       items[exerciseIndex].sets.indices.contains(setIndex),
                       items[exerciseIndex].sets[setIndex].restStartTime == startTime,
                       items[exerciseIndex].sets[setIndex].restDuration == nil
@@ -1526,7 +1585,8 @@ struct WorkoutLogView: View {
     }
 
     private func rescheduleRestAlertIfNeeded() {
-        guard let context = liveRestingContext,
+        restAlertTask?.cancel()
+        guard pausedAt == nil, let context = liveRestingContext,
               let startTime = context.set.restStartTime
         else { return }
         scheduleRestAlert(exerciseIndex: context.exerciseIndex, setIndex: context.setIndex, startTime: startTime)
@@ -1551,6 +1611,8 @@ struct WorkoutLogView: View {
         readiness = 0
         items = []
         startTime = nil
+        pausedAt = nil
+        pausedDurationMs = nil
         activeExerciseIndex = 0
         activeSetIndex = 0
         isEditing = false
@@ -1639,9 +1701,11 @@ private enum WorkoutLiveRepMode: String {
 }
 
 private struct WorkoutLiveActivityCard: View {
+    @Environment(\.workoutPausedAt) private var pausedAt
     @Binding var items: [ExerciseItem]
     let exercises: [Exercise]
     let startTime: String?
+    let pausedDurationMs: Double?
     let advancedMode: Bool
     let logs: [WorkoutLog]
     @Binding var activeExerciseIndex: Int
@@ -1726,14 +1790,14 @@ private struct WorkoutLiveActivityCard: View {
         TimelineView(.periodic(from: Date(), by: 1)) { _ in
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 10) {
-                    Label("Live", systemImage: "bolt.fill")
+                    Label(pausedAt == nil ? "Live" : "Paused", systemImage: pausedAt == nil ? "bolt.fill" : "pause.fill")
                         .font(.system(size: 13, weight: .heavy))
                         .foregroundStyle(Theme.accent)
 
                     Spacer()
 
                     if let startTime {
-                        Label(formatDuration(startTime: startTime), systemImage: "clock")
+                        Label(formatDuration(startTime: startTime, pausedAt: pausedAt, pausedDurationMs: pausedDurationMs), systemImage: "clock")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.muted)
                             .monospacedDigit()
@@ -1844,7 +1908,7 @@ private struct WorkoutLiveActivityCard: View {
 
     private func restClock(_ context: WorkoutLiveSetContext) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: restTargetSeconds(for: context)))
+            Text(restTimeText(startTime: context.set.restStartTime, duration: context.set.restDuration, targetSeconds: restTargetSeconds(for: context), now: pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()))
                 .font(.system(size: 28, weight: .heavy, design: .rounded))
                 .foregroundStyle(restTint(for: context))
                 .monospacedDigit()
@@ -2703,7 +2767,7 @@ private struct WorkoutLiveActivityCard: View {
               let startTime = context.set.restStartTime
         else { return Theme.success }
 
-        let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+        let elapsed = max(0, Int(((pausedAt ?? Date().timeIntervalSince1970 * 1000) - startTime) / 1000))
         return elapsed >= targetSeconds ? Theme.danger : Theme.accent
     }
 

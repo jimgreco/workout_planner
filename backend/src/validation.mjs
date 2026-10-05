@@ -553,7 +553,7 @@ export function validateLog(body, pathId) {
   assertObject(body, 'log');
   assertAllowedKeys(
     body,
-    new Set(['id', 'name', 'date', 'notes', 'readiness', 'prescription', 'exerciseItems', 'startTime', 'endTime', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
+    new Set(['id', 'name', 'date', 'notes', 'readiness', 'prescription', 'exerciseItems', 'startTime', 'endTime', 'pausedAt', 'pausedDurationMs', 'status', 'hasPB', 'pbExerciseIds', 'updatedAt', 'revision', 'expectedRevision']),
     'log',
   );
   requireMatchingId(body, pathId);
@@ -576,6 +576,14 @@ export function validateLog(body, pathId) {
   if (startTime !== undefined) log.startTime = startTime;
   const endTime = isoDateTimeValue(body.endTime, 'endTime');
   if (endTime !== undefined) log.endTime = endTime;
+  const pausedAt = optionalNumber(body.pausedAt, 'pausedAt', 0, 9_999_999_999_999);
+  if (pausedAt !== undefined) {
+    if (status !== 'active' || !startTime || endTime) fail('Only an active workout can be paused');
+    if (pausedAt < Date.parse(startTime)) fail('pausedAt must be after startTime');
+    log.pausedAt = pausedAt;
+  }
+  const pausedDurationMs = optionalNumber(body.pausedDurationMs, 'pausedDurationMs', 0, 9_999_999_999_999);
+  if (pausedDurationMs !== undefined) log.pausedDurationMs = pausedDurationMs;
   const hasPB = boolValue(body.hasPB, 'hasPB');
   if (hasPB !== undefined) log.hasPB = hasPB;
   const pbExerciseIds = idArray(body.pbExerciseIds, 'pbExerciseIds');

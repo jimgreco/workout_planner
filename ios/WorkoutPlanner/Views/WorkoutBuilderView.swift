@@ -1,5 +1,16 @@
 import SwiftUI
 
+private struct WorkoutPausedAtKey: EnvironmentKey {
+    static let defaultValue: Double? = nil
+}
+
+extension EnvironmentValues {
+    var workoutPausedAt: Double? {
+        get { self[WorkoutPausedAtKey.self] }
+        set { self[WorkoutPausedAtKey.self] = newValue }
+    }
+}
+
 enum WorkoutBuilderFocusedField: Hashable {
     case reps(itemIndex: Int, setIndex: Int)
     case repsMin(itemIndex: Int, setIndex: Int)
@@ -2020,6 +2031,7 @@ private struct RepsFieldPlaceholderView: View {
 }
 
 private struct SetCompleteButton: View {
+    @Environment(\.workoutPausedAt) private var pausedAt
     let isComplete: Bool
     let isEnabled: Bool
     let action: () -> Void
@@ -2035,19 +2047,20 @@ private struct SetCompleteButton: View {
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
+        .disabled(!isEnabled || pausedAt != nil)
         .opacity(isEnabled || isComplete ? 1 : 0.45)
         .accessibilityLabel(isComplete ? "Set complete" : "Complete set")
     }
 }
 
 private struct RestTimerText: View {
+    @Environment(\.workoutPausedAt) private var pausedAt
     let set: WorkoutSet
     var targetSeconds: Int?
 
     var body: some View {
         TimelineView(.periodic(from: Date(), by: 1)) { _ in
-            Text(restTimeText(startTime: set.restStartTime, duration: set.restDuration, targetSeconds: targetSeconds))
+            Text(restTimeText(startTime: set.restStartTime, duration: set.restDuration, targetSeconds: targetSeconds, now: pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()))
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
                 .foregroundStyle(foregroundStyle)
         }
@@ -2060,7 +2073,7 @@ private struct RestTimerText: View {
               targetSeconds > 0,
               let startTime = set.restStartTime
         else { return Theme.success }
-        let elapsed = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+        let elapsed = max(0, Int(((pausedAt ?? Date().timeIntervalSince1970 * 1000) - startTime) / 1000))
         return elapsed >= targetSeconds ? Theme.danger : Theme.accent
     }
 }

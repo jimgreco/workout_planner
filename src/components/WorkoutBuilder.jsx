@@ -134,31 +134,31 @@ function setRepField(set, field, value) {
   return next;
 }
 
-function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached }) {
+function RestTimer({ startTime, duration, targetSeconds = 0, onTargetReached, pausedAt }) {
   const [now, setNow] = useState(() => Date.now());
   const alertedRef = useRef(false);
   const hasDuration = duration !== undefined && duration !== null;
 
   useEffect(() => {
     alertedRef.current = false;
-    if (!startTime || hasDuration) return undefined;
+    if (!startTime || hasDuration || pausedAt != null) return undefined;
     const timeout = setTimeout(() => setNow(Date.now()), 0);
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       clearTimeout(timeout);
       clearInterval(id);
     };
-  }, [startTime, hasDuration, targetSeconds]);
+  }, [startTime, hasDuration, targetSeconds, pausedAt]);
 
-  const elapsed = startTime ? Math.max(0, Math.floor((now - startTime) / 1000)) : 0;
+  const elapsed = startTime ? Math.max(0, Math.floor(((pausedAt ?? now) - startTime) / 1000)) : 0;
   const hasTarget = Number.isInteger(targetSeconds) && targetSeconds > 0;
   const overTarget = hasTarget && !hasDuration && startTime && elapsed >= targetSeconds;
 
   useEffect(() => {
-    if (!overTarget || alertedRef.current) return;
+    if (!overTarget || alertedRef.current || pausedAt != null) return;
     alertedRef.current = true;
     onTargetReached?.();
-  }, [overTarget, onTargetReached]);
+  }, [overTarget, onTargetReached, pausedAt]);
 
   if (hasDuration) return <span className="rest-time">{formatRestDuration(duration)}</span>;
   if (startTime) {
@@ -191,6 +191,7 @@ export default function WorkoutBuilder({
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetCompleted,
+  pausedAt = null,
   onRestTargetReached,
   onRestExtended,
   onEndRest,
@@ -753,6 +754,7 @@ export default function WorkoutBuilder({
                     <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
                       <div className="rest-cell-content">
                         <RestTimer
+                          pausedAt={pausedAt}
                           startTime={set.restStartTime}
                           duration={set.restDuration}
                           targetSeconds={set.restTargetSeconds || item.restTargetSeconds}
@@ -764,6 +766,7 @@ export default function WorkoutBuilder({
                               type="button"
                               className="rest-action-btn"
                               onClick={() => onRestExtended?.(idx, si, 30)}
+                              disabled={pausedAt != null}
                               title="Add 30 seconds"
                               aria-label={`Add 30 seconds to rest for set ${si + 1} of ${ex.name}`}
                             >
@@ -773,6 +776,7 @@ export default function WorkoutBuilder({
                               type="button"
                               className="rest-action-btn"
                               onClick={() => onEndRest?.(idx, si)}
+                              disabled={pausedAt != null}
                               title="End rest"
                               aria-label={`End rest for set ${si + 1} of ${ex.name}`}
                             >
@@ -791,7 +795,7 @@ export default function WorkoutBuilder({
                             blurActiveEditableElement();
                             onSetCompleted?.(idx, si);
                           }}
-                          disabled={!setCanComplete(item, set)}
+                          disabled={pausedAt != null || !setCanComplete(item, set)}
                           title={setIsCompleted(set) ? 'Set complete' : 'Complete set'}
                           aria-label={`Complete set ${si + 1} for ${ex.name}`}
                         >

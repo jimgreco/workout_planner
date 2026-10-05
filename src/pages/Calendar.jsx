@@ -1,3 +1,4 @@
+import { formatWorkoutDuration } from '../workoutTiming.js';
 import { useState } from 'react';
 import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil, Trash2, ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
@@ -15,15 +16,6 @@ function toDateStr(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function formatDuration(startTime, endTime) {
-  if (!startTime || !endTime) return '—';
-  const mins = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
 function formatDateNice(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -32,7 +24,7 @@ function formatDateNice(dateStr) {
 function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, onDeleteLog }) {
   const d = new Date(log.date + 'T00:00:00');
   const dayName = DAY_NAMES[d.getDay()];
-  const duration = formatDuration(log.startTime, log.endTime);
+  const duration = log.startTime && log.endTime ? formatWorkoutDuration(log) : '—';
   const exCount = (log.exerciseItems || []).length;
   const isExpanded = expandedId === log.id;
 

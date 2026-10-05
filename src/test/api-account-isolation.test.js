@@ -3,7 +3,7 @@ import { storeSession, clearStoredUser, exchangeGoogleCredential, getStoredUser 
 import {
   saveLog, saveExercise, getLogs, getExercises, pendingChangeCount, resetData,
   flushPendingChanges, flushPendingLogSaves, flushPendingResourceChanges,
-  hasQuarantinedPendingChanges, getPendingConflicts, deleteAccount,
+  hasQuarantinedPendingChanges, getPendingConflicts, deleteAccount, initData, deleteLog,
 } from '../api.js';
 
 const login = sub => storeSession({ token: `synthetic-${sub}`, expiresAt: '2099-01-01T00:00:00Z', user: { sub } });
@@ -141,4 +141,26 @@ it('journals an initial save only under its captured owner when another tab swit
     expect(localStorage.getItem('forge.pendingLogSaves.v2:B')).toBeNull();
     login('A'); expect(pendingChangeCount()).toBe(1);
   } finally { spy.mockRestore(); }
+});
+
+
+it('restores paused timing from its offline queue and preserves resume, finish and discard', async () => {
+  globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('offline'));
+  const paused = { id: 'pause-queue', name: 'Paused', status: 'active', startTime: '2026-10-05T10:00:00Z', pausedAt: Date.parse('2026-10-05T10:01:00Z'), pausedDurationMs: 60000, exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '8', rir: '0', restStartTime: Date.parse('2026-10-05T10:00:50Z') }] }] };
+  await saveLog(paused);
+  resetData();
+  fetch.mockImplementation(async url => response(url.endsWith('/settings') ? {} : []));
+  await initData();
+  expect(getLogs()[0]).toMatchObject(paused);
+  fetch.mockRejectedValue(new TypeError('offline'));
+  await saveLog({ ...paused, pausedAt: null, pausedDurationMs: 120000 });
+  expect(getLogs()[0]).toMatchObject({ pausedAt: null, pausedDurationMs: 120000 });
+  await saveLog({ ...paused, status: 'finished', pausedAt: null, pausedDurationMs: 180000, endTime: '2026-10-05T10:10:00Z' });
+  expect(getLogs()[0]).toMatchObject({ status: 'finished', pausedAt: null, pausedDurationMs: 180000 });
+  await deleteLog(paused.id);
+  expect(getLogs()).toEqual([]);
+  resetData();
+  fetch.mockImplementation(async url => response(url.endsWith('/settings') ? {} : url.endsWith('/logs') ? [paused] : []));
+  await initData();
+  expect(getLogs()).toEqual([]);
 });

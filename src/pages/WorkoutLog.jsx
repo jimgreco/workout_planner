@@ -1,7 +1,8 @@
+import { pauseWorkout, resumeWorkout, finishWorkoutTiming, formatWorkoutDuration } from '../workoutTiming.js';
 import { currentSetup } from '../equipmentSetups.js';
 import { activeProgramForDate, routinePrescription } from '../programs.js';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Check, X, Clock, Trophy, Clipboard, Trash2 } from 'lucide-react';
+import { Check, X, Clock, Trophy, Clipboard, Trash2, Pause, Play } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Modal from '../components/Modal.jsx';
 import { saveLog, deleteLog, saveExercise } from '../api.js';
@@ -31,17 +32,6 @@ function getLastItemForExercise(exerciseId, logs, baselineId) {
     if (item) return JSON.parse(JSON.stringify(item));
   }
   return null;
-}
-
-function formatDuration(startTime, endTime) {
-  if (!startTime) return '';
-  const start = new Date(startTime);
-  const end = endTime ? new Date(endTime) : new Date();
-  const mins = Math.round((end - start) / 60000);
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 function startOfToday() {
@@ -240,6 +230,14 @@ export default function WorkoutLog({
   const [readiness, setReadiness]   = useState('');
   const [items, setItems]           = useState([]);
   const [startTime, setStartTime]   = useState(null);
+  const [timing, setTiming] = useState({ pausedAt: null, pausedDurationMs: 0 });
+  const timingRef = useRef(timing);
+  const isPaused = timing.pausedAt != null;
+  function updateTiming(log) {
+    const next = { pausedAt: log.pausedAt ?? null, pausedDurationMs: log.pausedDurationMs ?? 0 };
+    timingRef.current = next;
+    setTiming(next);
+  }
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [activeSetIdx, setActiveSetIdx] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -277,6 +275,7 @@ export default function WorkoutLog({
       setReadiness(editingLog.readiness ? String(editingLog.readiness) : '');
       setItems(JSON.parse(JSON.stringify(editingLog.exerciseItems || [])));
       setStartTime(editingLog.startTime || null);
+      updateTiming(editingLog);
       return;
     }
     // Check for an in-progress workout
@@ -290,6 +289,7 @@ export default function WorkoutLog({
       setReadiness(active.readiness ? String(active.readiness) : '');
       setItems(JSON.parse(JSON.stringify(active.exerciseItems || [])));
       setStartTime(active.startTime || null);
+      updateTiming(active);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -363,11 +363,12 @@ export default function WorkoutLog({
   // ── Elapsed timer ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!startTime || isEditing.current) return;
-    const tick = () => setElapsed(formatDuration(startTime));
+    const tick = () => setElapsed(formatWorkoutDuration({ startTime, ...timing }));
     tick();
-    const id = setInterval(tick, 30000);
+    if (timing.pausedAt != null) return;
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [startTime]);
+  }, [startTime, timing]);
 
   useEffect(() => () => clearTimeout(restAlertTimer.current), []);
 
@@ -383,13 +384,15 @@ export default function WorkoutLog({
         exerciseItems: data.items,
         ...(prescriptionRef.current ? {prescription: prescriptionRef.current} : {}),
         startTime: data.startTime,
+        ...timingRef.current,
+        ...(editingLog?.endTime ? { endTime: editingLog.endTime } : {}),
         status: data.status || 'active',
       });
       onLogsChanged(updated);
     } catch (e) {
       console.error('Auto-save failed:', e);
     }
-  }, [onLogsChanged]);
+  }, [onLogsChanged, editingLog?.endTime]);
 
   function scheduleAutoSave(id, data) {
     clearTimeout(saveTimer.current);
@@ -417,6 +420,20 @@ export default function WorkoutLog({
     const now = new Date().toISOString();
     setStartTime(now);
     autoSave(workoutId, { name, date, notes, readiness, items, startTime: now, status: 'active' });
+  }
+
+  function handleTogglePause() {
+    if (!workoutId || !startTime || saving || isEditing.current || finishModal) return;
+    blurActiveEditableElement();
+    clearTimeout(saveTimer.current);
+    const log = { status: 'active', startTime, exerciseItems: latestItemsRef.current, ...timingRef.current };
+    const next = log.pausedAt == null ? pauseWorkout(log) : resumeWorkout(log);
+    updateTiming(next);
+    latestItemsRef.current = next.exerciseItems;
+    setItems(next.exerciseItems);
+    setRestAlert(null);
+    clearTimeout(restAlertTimer.current);
+    autoSave(workoutId, { name, date, notes, readiness, items: next.exerciseItems, startTime, status: 'active' });
   }
 
   // ── Handle exercise changes from WorkoutBuilder ──────────────────────────
@@ -472,7 +489,7 @@ export default function WorkoutLog({
   
   function handleSetCompleted(exIdx, setIdx) {
     blurActiveEditableElement();
-    if (!workoutId) return;
+    if (!workoutId || isPaused) return;
 
     const targetEx = items[exIdx];
     const targetSet = targetEx.sets[setIdx];
@@ -533,6 +550,7 @@ export default function WorkoutLog({
   }
 
   function handleRestTargetReached(exIdx, setIdx) {
+    if (isPaused || finishModal) return;
     const item = items[exIdx];
     if (!item?.sets?.[setIdx]?.restTargetSeconds && !item?.restTargetSeconds) return;
     const exercise = exercises.find((ex) => ex.id === item.exerciseId);
@@ -548,7 +566,7 @@ export default function WorkoutLog({
   }
 
   function handleExtendRest(exIdx, setIdx, seconds = 30) {
-    if (!workoutId) return;
+    if (!workoutId || isPaused) return;
     const targetItem = items[exIdx];
     const targetSet = targetItem?.sets?.[setIdx];
     if (!targetSet?.restStartTime || targetSet.restDuration) return;
@@ -574,7 +592,7 @@ export default function WorkoutLog({
   }
 
   function handleEndRest(exIdx, setIdx) {
-    if (!workoutId) return;
+    if (!workoutId || isPaused) return;
     const targetSet = items[exIdx]?.sets?.[setIdx];
     if (!targetSet?.restStartTime || targetSet.restDuration) return;
 
@@ -724,7 +742,11 @@ export default function WorkoutLog({
     setSaving(true);
 
     try {
-      const endTime = isEditing.current ? editingLog?.endTime : new Date().toISOString();
+      const finishedAt = Date.now();
+      const finishedTiming = isEditing.current
+        ? { ...timingRef.current, exerciseItems: items }
+        : finishWorkoutTiming({ status: 'active', startTime, ...timingRef.current, exerciseItems: items }, finishedAt);
+      const endTime = isEditing.current ? editingLog?.endTime : new Date(finishedAt).toISOString();
 
       // Check for personal bests
       const pbExerciseIds = personalBestIdsForWorkout({ id: workoutId, date, startTime, endTime, exerciseItems: items }, logs, exercises);
@@ -753,7 +775,7 @@ export default function WorkoutLog({
         date,
         notes,
         ...(readinessValue(readiness) ? { readiness: readinessValue(readiness) } : {}),
-        exerciseItems: items,
+        ...finishedTiming,
         ...(prescriptionRef.current ? {prescription: prescriptionRef.current} : {}),
         startTime,
         endTime,
@@ -772,7 +794,7 @@ export default function WorkoutLog({
       } else {
         setFinishModal({
           pbExercises,
-          duration: formatDuration(startTime, endTime),
+          duration: formatWorkoutDuration({ startTime, endTime, ...finishedTiming }),
           exerciseCount: items.length,
           setCount: items.reduce((acc, i) => acc + i.sets.length, 0),
         });
@@ -833,6 +855,7 @@ export default function WorkoutLog({
     setReadiness('');
     setItems([]);
     setStartTime(null);
+    updateTiming({});
     setElapsed('');
     setRestAlert(null);
     clearTimeout(restAlertTimer.current);
@@ -854,19 +877,32 @@ export default function WorkoutLog({
             </h1>
             {isActive && startTime && !isEditing.current && (
               <div className="flex items-center gap-8 text-muted" style={{ marginTop: 2 }}>
-                <Clock size={12} /> <span style={{ fontSize: 13 }}>In progress · {elapsed}</span>
+                <Clock size={12} /> <span style={{ fontSize: 13 }}>{isPaused ? 'Paused' : 'In progress'} · {elapsed}</span>
               </div>
             )}
           </div>
 
           {isActive && (
-            <button
-              className="btn btn-secondary btn-sm workout-discard-button"
-              onClick={() => setConfirmDiscard(true)}
-              disabled={saving}
-            >
-              <X size={14} /> {isEditing.current ? 'Cancel' : isPlanningMode ? 'Discard Plan' : 'Discard'}
-            </button>
+            <div className="workout-header-actions">
+              {startTime && !isEditing.current && (
+                <button
+                  className="btn btn-secondary btn-sm workout-pause-button"
+                  onClick={handleTogglePause}
+                  disabled={saving || !!finishModal}
+                  title={isPaused ? 'Resume workout and rest timers' : 'Pause workout and rest timers'}
+                >
+                  {isPaused ? <Play size={14} /> : <Pause size={14} />}
+                  {isPaused ? 'Resume' : 'Pause'}
+                </button>
+              )}
+              <button
+                className="btn btn-secondary btn-sm workout-discard-button"
+                onClick={() => setConfirmDiscard(true)}
+                disabled={saving}
+              >
+                <X size={14} /> {isEditing.current ? 'Cancel' : isPlanningMode ? 'Discard Plan' : 'Discard'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -997,6 +1033,7 @@ export default function WorkoutLog({
         onTextBlur={handleItemsTextBlur}
         activeExerciseIdx={activeExerciseIdx}
         activeSetIdx={activeSetIdx}
+        pausedAt={timing.pausedAt}
         onSetCompleted={handleSetCompleted}
         onRestTargetReached={handleRestTargetReached}
         onRestExtended={handleExtendRest}

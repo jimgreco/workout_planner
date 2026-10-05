@@ -616,6 +616,9 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
     var pbExerciseIds: [String]?
     var updatedAt: String?
     var revision: Int?
+    // Milliseconds, like set.restStartTime. Keep the real session timestamps intact.
+    var pausedAt: Double?
+    var pausedDurationMs: Double?
 
     init(
         id: String = UUID().uuidString,
@@ -631,7 +634,9 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         pbExerciseIds: [String]? = nil,
         updatedAt: String? = nil,
         prescription: WorkoutPrescription? = nil,
-        revision: Int? = nil
+        revision: Int? = nil,
+        pausedAt: Double? = nil,
+        pausedDurationMs: Double? = nil
     ) {
         self.prescription = prescription
         self.id = id
@@ -647,8 +652,49 @@ struct WorkoutLog: Codable, Identifiable, Equatable {
         self.pbExerciseIds = pbExerciseIds
         self.updatedAt = updatedAt
         self.revision = revision
+        self.pausedAt = pausedAt
+        self.pausedDurationMs = pausedDurationMs
     }
 }
+
+extension WorkoutLog {
+    mutating func pause(at now: Date = Date()) {
+        guard status == "active", startTime != nil, pausedAt == nil else { return }
+        pausedAt = now.timeIntervalSince1970 * 1000
+        pausedDurationMs = pausedDurationMs ?? 0
+    }
+
+    mutating func resume(at now: Date = Date()) {
+        guard status == "active", let pausedAt else { return }
+        let interval = max(0, now.timeIntervalSince1970 * 1000 - pausedAt)
+        pausedDurationMs = (pausedDurationMs ?? 0) + interval
+        // Shift only running rests; recorded durations and set evidence stay intact.
+        for itemIndex in exerciseItems.indices {
+            for setIndex in exerciseItems[itemIndex].sets.indices {
+                if let start = exerciseItems[itemIndex].sets[setIndex].restStartTime,
+                   exerciseItems[itemIndex].sets[setIndex].restDuration == nil {
+                    exerciseItems[itemIndex].sets[setIndex].restStartTime = start + interval
+                }
+            }
+        }
+        self.pausedAt = nil
+    }
+
+    mutating func finishTiming(at now: Date = Date()) {
+        let restEnd = pausedAt ?? now.timeIntervalSince1970 * 1000
+        for itemIndex in exerciseItems.indices {
+            for setIndex in exerciseItems[itemIndex].sets.indices {
+                if let start = exerciseItems[itemIndex].sets[setIndex].restStartTime,
+                   exerciseItems[itemIndex].sets[setIndex].restDuration == nil {
+                    exerciseItems[itemIndex].sets[setIndex].restDuration = max(0, Int((restEnd - start) / 1000))
+                    exerciseItems[itemIndex].sets[setIndex].restStartTime = nil
+                }
+            }
+        }
+        resume(at: now)
+    }
+}
+
 
 struct WorkoutSettings: Codable, Equatable {
     var defaultSets: Int
@@ -1542,10 +1588,18 @@ enum ProgramCyclePlanner {
     }
 }
 
-func formatDuration(startTime: String?, endTime: String? = nil) -> String {
-    guard let startTime, let start = ISO8601DateFormatter().date(from: startTime) else { return "" }
-    let end = endTime.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-    let minutes = max(0, Int(round(end.timeIntervalSince(start) / 60)))
+func workoutTimestamp(_ value: String?) -> Date? {
+    guard let value else { return nil }
+    let formatter = ISO8601DateFormatter()
+    if let date = formatter.date(from: value) { return date }
+    formatter.formatOptions.insert(.withFractionalSeconds)
+    return formatter.date(from: value)
+}
+
+func formatDuration(startTime: String?, endTime: String? = nil, pausedAt: Double? = nil, pausedDurationMs: Double? = nil, now: Date = Date()) -> String {
+    guard let start = workoutTimestamp(startTime) else { return "" }
+    let end = workoutTimestamp(endTime) ?? pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? now
+    let minutes = max(0, Int(round((end.timeIntervalSince(start) - (pausedDurationMs ?? 0) / 1000) / 60)))
     if minutes < 60 { return "\(minutes)m" }
     let hours = minutes / 60
     let remaining = minutes % 60
@@ -1847,12 +1901,12 @@ func contextualWeightPlaceholder(weight: String?, sourceWeightType: String?, tar
     return formatProgressionNumber(contextualValue)
 }
 
-func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil) -> String {
+func restTimeText(startTime: Double?, duration: Int?, targetSeconds: Int? = nil, now: Date = Date()) -> String {
     let seconds: Int
     if let duration {
         seconds = duration
     } else if let startTime {
-        seconds = max(0, Int((Date().timeIntervalSince1970 * 1000 - startTime) / 1000))
+        seconds = max(0, Int((now.timeIntervalSince1970 * 1000 - startTime) / 1000))
     } else {
         seconds = 0
     }

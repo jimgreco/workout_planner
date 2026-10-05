@@ -14,7 +14,7 @@ final class WorkoutLiveActivityController {
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        let staleDate = state.isResting && state.restTimerIsOverTarget != true ? state.restTargetEnd : nil
+        let staleDate = !state.isPaused && state.isResting && state.restTimerIsOverTarget != true ? state.restTargetEnd : nil
         let content = ActivityContent(state: state, staleDate: staleDate)
         if let activity = activity(for: workoutID) {
             Task {

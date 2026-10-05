@@ -147,6 +147,40 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         precondition(store.pendingSyncCount == 1 && hasQueuedText("\"operation\":\"delete\""))
         for key in ["forge.pendingResourceChanges.v1", "forge.pendingWorkoutLogSaves.v1", "forge.pendingConflicts.v1"] { precondition(defaults.data(forKey: key) == legacy) }
         precondition(store.syncDetailText?.contains("preserved") == true)
+        // Pause state uses the same durable queue and offline snapshot on relaunch.
+        SyntheticProtocol.hold = false
+        let pauseAuth = AuthManager()
+        let pauseStore = WorkoutStore(auth: pauseAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+        pauseAuth.login("pause-owner")
+        let started = workoutTimestamp("2026-10-05T10:00:00Z")!
+        var paused = WorkoutLog(id: "paused-session", name: "Pause restore", date: "2026-10-05", exerciseItems: [ExerciseItem(exerciseId: "bench", sets: [WorkoutSet(reps: "8", weight: "100", restStartTime: started.addingTimeInterval(50).timeIntervalSince1970 * 1000, rir: "0")])], startTime: "2026-10-05T10:00:00Z", status: "active")
+        paused.pause(at: started.addingTimeInterval(60))
+        try await pauseStore.saveLog(paused)
+        let restoredAuth = AuthManager()
+        let restoredStore = WorkoutStore(auth: restoredAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+        restoredAuth.login("pause-owner")
+        await restoredStore.loadData()
+        precondition(restoredStore.activeWorkout() == paused)
+        var resumed = restoredStore.activeWorkout()!
+        resumed.resume(at: started.addingTimeInterval(3660))
+        try await restoredStore.saveLog(resumed)
+        precondition(restoredStore.logs.first?.pausedAt == nil)
+        precondition(restoredStore.logs.first?.pausedDurationMs == 3_600_000)
+        resumed.pause(at: started.addingTimeInterval(3720))
+        resumed.finishTiming(at: started.addingTimeInterval(7320))
+        resumed.status = "finished"
+        resumed.endTime = "2026-10-05T12:02:00Z"
+        try await restoredStore.saveLog(resumed)
+        precondition(restoredStore.logs.first?.pausedDurationMs == 7_200_000)
+        precondition(restoredStore.activeWorkout() == nil)
+        paused.id = "discard-paused"
+        try await restoredStore.saveLog(paused)
+        try await restoredStore.deleteLog(paused.id)
+        precondition(!restoredStore.logs.contains { $0.id == paused.id })
+        await restoredStore.loadData()
+        precondition(!restoredStore.logs.contains { $0.id == paused.id })
+        precondition(restoredStore.logs.first?.status == "finished")
+        print("PASS pause offline lifecycle: queued pause, full store recreation, offline resume/finish/discard and reload")
         print("PASS native account isolation: durable owner queues, sign-out reset, legacy quarantine, late success/failure/401, A-B-A, interrupted flush, ordered edits, durable queued deletion and account-switch fencing")
     }
 }

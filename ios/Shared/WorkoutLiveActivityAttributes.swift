@@ -33,6 +33,9 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var restTargetSeconds: Int?
         var restExerciseName: String?
         var isComplete: Bool
+        var pausedAt: Date? = nil
+
+        var isPaused: Bool { pausedAt != nil }
 
         var progress: Double {
             guard totalSets > 0 else { return 0 }
@@ -89,6 +92,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
     var baseItems: [WorkoutLiveActivitySharedItem]? = nil
 
     mutating func adjustReps(delta: Int) {
+        guard !contentState.isPaused else { return }
         guard let position = activePosition else { return }
         var set = items[position.exerciseIndex].sets[position.setIndex]
         if set.usesSideReps {
@@ -106,6 +110,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
     }
 
     mutating func adjustWeight(delta: Double?, resetToBaseline: Bool) {
+        guard !contentState.isPaused else { return }
         guard let position = activePosition,
               items[position.exerciseIndex].weightType != "none"
         else { return }
@@ -121,6 +126,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
     }
 
     mutating func logCurrentSet() {
+        guard !contentState.isPaused else { return }
         guard let position = activePosition else { return }
         var set = items[position.exerciseIndex].sets[position.setIndex]
         if set.usesSideReps {
@@ -197,7 +203,7 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.exerciseCount = items.count
         contentState.restStartedAt = restStartedAt
         contentState.restTargetEnd = restTargetEnd
-        contentState.restTimerIsOverTarget = restTargetEnd.map { Date() >= $0 }
+        contentState.restTimerIsOverTarget = restTargetEnd.map { (contentState.pausedAt ?? Date()) >= $0 }
         contentState.restTargetSeconds = restTargetSeconds
         contentState.restExerciseName = restItem?.exerciseName
         contentState.isComplete = totalSetCount > 0 && completedSetCount >= totalSetCount
@@ -583,10 +589,10 @@ private func mutateSharedWorkout(
     workoutID: String,
     mutation: (inout WorkoutLiveActivitySharedState) -> Void
 ) async {
-    guard var state = WorkoutLiveActivitySharedStore.load(workoutID: workoutID) else { return }
+    guard var state = WorkoutLiveActivitySharedStore.load(workoutID: workoutID), !state.contentState.isPaused else { return }
     mutation(&state)
     WorkoutLiveActivitySharedStore.save(state)
-    let staleDate = state.contentState.isResting && state.contentState.restTimerIsOverTarget != true
+    let staleDate = !state.contentState.isPaused && state.contentState.isResting && state.contentState.restTimerIsOverTarget != true
         ? state.contentState.restTargetEnd
         : nil
     let content = ActivityContent(state: state.contentState, staleDate: staleDate)
