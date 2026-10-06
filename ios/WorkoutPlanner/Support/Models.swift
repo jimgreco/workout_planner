@@ -287,9 +287,11 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var supersetGroup: String?
     var description: String?
     var useIndividualReps: Bool?
+    // Planned working-set effort, independent of the recorded WorkoutSet.rir.
+    var targetRIR: Int?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil, setupProfile: EquipmentSetup? = nil) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil, setupProfile: EquipmentSetup? = nil, targetRIR: Int? = nil) {
         self.setupProfile = setupProfile
         self.baselineId = baselineId
         self.techniqueNote = techniqueNote
@@ -299,7 +301,31 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
         self.supersetGroup = supersetGroup
         self.description = description
         self.useIndividualReps = useIndividualReps
+        self.targetRIR = targetRIR
         self.sets = sets
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case exerciseId, weightType, restTargetSeconds, supersetGroup, description, useIndividualReps, targetRIR, sets, baselineId, techniqueNote, setupProfile
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let targetRIR, !(0...10).contains(targetRIR) {
+            throw EncodingError.invalidValue(targetRIR, .init(codingPath: encoder.codingPath, debugDescription: "Target RIR must be a whole number from 0 to 10."))
+        }
+        try container.encode(exerciseId, forKey: .exerciseId)
+        try container.encodeIfPresent(weightType, forKey: .weightType)
+        try container.encodeIfPresent(restTargetSeconds, forKey: .restTargetSeconds)
+        try container.encodeIfPresent(supersetGroup, forKey: .supersetGroup)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(useIndividualReps, forKey: .useIndividualReps)
+        // Explicit null lets new clients clear a target; old clients omit it.
+        try container.encode(targetRIR, forKey: .targetRIR)
+        try container.encode(sets, forKey: .sets)
+        try container.encodeIfPresent(baselineId, forKey: .baselineId)
+        try container.encodeIfPresent(techniqueNote, forKey: .techniqueNote)
+        try container.encodeIfPresent(setupProfile, forKey: .setupProfile)
     }
 }
 

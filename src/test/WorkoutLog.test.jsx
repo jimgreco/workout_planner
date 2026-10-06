@@ -22,7 +22,7 @@ const templates = [
     name: 'Push Day',
     description: '',
     exerciseItems: [
-      { exerciseId: 'bench', weightType: 'weight', sets: [{ reps: '8', weight: '' }] },
+      { exerciseId: 'bench', weightType: 'weight', targetRIR: 2, sets: [{ reps: '8', weight: '' }] },
     ],
   },
 ];
@@ -74,7 +74,7 @@ describe('WorkoutLog', () => {
       name: 'Push Day',
       status: 'planning',
       readiness: 4,
-      exerciseItems: [{ exerciseId: 'bench' }],
+      exerciseItems: [{ exerciseId: 'bench', targetRIR: 2 }],
     });
     expect(screen.getAllByText('Bench Press')[0]).toBeInTheDocument();
   });
@@ -106,6 +106,7 @@ describe('WorkoutLog', () => {
     fireEvent.change(option.closest('select'), { target: { value: 'program-1:tmpl-1' } });
 
     await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+    expect(saveLog.mock.calls[0][0].exerciseItems[0].targetRIR).toBe(2);
     expect(saveLog.mock.calls[0][0].exerciseItems[0].sets[0]).toMatchObject({
       placeholderReps: '12 (8-12)',
       placeholderWeight: '105',

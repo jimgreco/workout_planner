@@ -70,6 +70,7 @@ private struct PausedWorkoutActivityView: View {
                 Label("Workout paused", systemImage: "pause.fill")
                     .font(.headline)
                 Text(state.workoutName).font(.caption).lineLimit(1)
+                if let goal = state.repsGoal { Text(goal).font(.caption).lineLimit(1).minimumScaleFactor(0.7).accessibilityLabel(workoutGoalAccessibilityLabel(goal)) }
                 Text("Open the app to resume").font(.caption2)
                     .foregroundStyle(liveActivitySecondaryText)
             }
@@ -314,6 +315,7 @@ private struct DynamicIslandMetric: View {
 
     private func metricCaption(_ text: String) -> some View {
         Text(text)
+            .accessibilityLabel(workoutGoalAccessibilityLabel(text))
             .font(.system(size: 7, weight: .heavy, design: .rounded))
             .foregroundStyle(liveActivitySecondaryText)
             .lineLimit(1)
@@ -717,6 +719,7 @@ private struct LiveActivitySummaryStrip: View {
 
                 if let inlineCaption {
                     Text(inlineCaption)
+                        .accessibilityLabel(workoutGoalAccessibilityLabel(inlineCaption))
                         .font(.system(size: 8, weight: .heavy))
                         .foregroundStyle(liveActivitySecondaryText)
                         .lineLimit(1)
@@ -908,6 +911,15 @@ private struct LiveActivityCompactTrailingLabel: View {
     var body: some View {
         if state.isResting {
             EmptyView()
+        } else if let target = state.targetRIR, let goal = state.repsGoal {
+            // Keep the effort target visible when long or asymmetric ranges do not fit.
+            ViewThatFits(in: .horizontal) {
+                Text(goal.replacingOccurrences(of: "Goal ", with: "")).fixedSize()
+                Text("+\(target) RIR").fixedSize()
+            }
+            .font(.system(size: 12, weight: .heavy, design: .rounded).monospacedDigit())
+            .foregroundStyle(liveActivityText)
+            .accessibilityLabel(workoutGoalAccessibilityLabel(goal))
         } else {
             Text(state.reps.isEmpty ? state.setLabel : state.reps)
                 .font(.system(size: 12, weight: .heavy, design: .rounded))

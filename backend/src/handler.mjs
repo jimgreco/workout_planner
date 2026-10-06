@@ -1,3 +1,4 @@
+import { preservingTargetRIR } from './target-rir.mjs';
 /**
  * Workout Planner API handler.
  *
@@ -1265,6 +1266,9 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
     const SK = `${prefix}#${id}`;
     const { item: versioned, existing } = await itemWithRevision(PK, SK, body, rawBody.expectedRevision);
     const item = { PK, SK, ...versioned };
+    if (resource === 'templates' || resource === 'logs') {
+      item.exerciseItems = preservingTargetRIR(item.exerciseItems, existing?.exerciseItems);
+    }
     // Compare at the write boundary; a preceding read alone cannot prevent lost updates.
     const condition = existing
       ? existing.revision === undefined

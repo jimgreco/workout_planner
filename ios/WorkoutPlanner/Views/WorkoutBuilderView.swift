@@ -596,6 +596,25 @@ private struct ExerciseSetsCard: View {
                 .disabled(readOnly)
             }
 
+            if exercise.usesTime != true {
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("Target RIR", selection: Binding(
+                        get: { item.targetRIR ?? -1 },
+                        set: { item.targetRIR = $0 < 0 ? nil : $0; onChanged?() }
+                    )) {
+                        Text("Not set").tag(-1)
+                        ForEach(0...10, id: \.self) { value in
+                            Text("\(value) reps in reserve").tag(value)
+                        }
+                    }
+                    .disabled(readOnly)
+                    .accessibilityHint("Planned reps left after each working set. Zero means none left. Warmups are excluded.")
+                    Text("Planned reps left after each working set. 0 means none left. Warmups are excluded. Record actual effort in Reps left.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+
             if planningMode && !readOnly {
                 HStack(spacing: 12) {
                     Text("Same \(repUnit) target for every set")

@@ -224,7 +224,7 @@ function prescription(value) {
 
 function exerciseItem(value, index) {
   assertObject(value, `exerciseItems[${index}]`);
-  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps', 'baselineId', 'techniqueNote', 'setupProfile']), `exerciseItems[${index}]`);
+  assertAllowedKeys(value, new Set(['exerciseId', 'weightType', 'sets', 'restTargetSeconds', 'supersetGroup', 'description', 'useIndividualReps', 'targetRIR', 'baselineId', 'techniqueNote', 'setupProfile']), `exerciseItems[${index}]`);
   const exerciseId = validateId(value.exerciseId, `exerciseItems[${index}].exerciseId`);
   const weightType = stringValue(value.weightType, `exerciseItems[${index}].weightType`, { max: 16 }) ?? 'weight';
   if (!WEIGHT_TYPES.has(weightType)) fail(`exerciseItems[${index}].weightType is invalid`);
@@ -236,6 +236,7 @@ function exerciseItem(value, index) {
     weightType,
     sets: value.sets.map(workoutSet),
   };
+  if (Object.hasOwn(value, 'targetRIR')) item.targetRIR = value.targetRIR == null ? null : optionalIntValue(value.targetRIR, 'targetRIR', 0, 10);
   if (value.setupProfile != null) item.setupProfile = setupProfile(value.setupProfile);
   if (value.baselineId != null) item.baselineId = validateId(value.baselineId, 'baselineId');
   const techniqueNote = stringValue(value.techniqueNote, 'techniqueNote', { max: 300 });

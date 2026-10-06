@@ -2,6 +2,26 @@ import ActivityKit
 import AppIntents
 import Foundation
 
+// Exercise targets apply only to rep-based working sets; nil stays unspecified.
+func workoutTargetRIR(_ value: Int?, setType: String?, usesTime: Bool = false) -> Int? {
+    guard !usesTime, setType != "warmup", let value, (0...10).contains(value) else { return nil }
+    return value
+}
+
+func workoutGoalLabel(_ reps: String?, targetRIR: Int?) -> String? {
+    let goal = (reps ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: #"(\d)\s*[-–]\s*(?=\d)"#, with: "$1–", options: .regularExpression)
+    let rir = workoutTargetRIR(targetRIR, setType: nil)
+    if goal.isEmpty { return rir.map { "Goal \($0) RIR" } }
+    return "Goal \(goal)" + (rir.map { "+\($0)" } ?? "")
+}
+
+func workoutGoalAccessibilityLabel(_ text: String) -> String {
+    text.replacingOccurrences(of: "–", with: " to ")
+        .replacingOccurrences(of: #"\+(\d+)"#, with: " reps, $1 reps in reserve", options: .regularExpression)
+        .replacingOccurrences(of: "RIR", with: "reps in reserve")
+}
+
 struct WorkoutLiveActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var workoutName: String
@@ -11,6 +31,7 @@ struct WorkoutLiveActivityAttributes: ActivityAttributes {
         var repsTitle: String?
         var reps: String
         var repsGoal: String?
+        var targetRIR: Int? = nil
         var repsLast: String?
         var weight: String
         var weightCaption: String?
@@ -74,6 +95,7 @@ struct WorkoutLiveActivitySharedItem: Codable, Hashable {
     var muscleGroup: String
     var repsTitle: String?
     var weightDecreaseReason: String? = nil
+    var targetRIR: Int? = nil
     var weightType: String?
     var restTargetSeconds: Int?
     var sets: [WorkoutLiveActivitySharedSet]
@@ -188,7 +210,8 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         contentState.setLabel = "\(position.setIndex + 1)/\(item.sets.count)"
         contentState.repsTitle = item.repsTitle
         contentState.reps = Self.repsLabel(for: set)
-        contentState.repsGoal = Self.repsGoalLabel(for: set)
+        contentState.targetRIR = workoutTargetRIR(item.targetRIR, setType: set.setType, usesTime: item.repsTitle == "Secs")
+        contentState.repsGoal = Self.repsGoalLabel(for: set, targetRIR: contentState.targetRIR)
         contentState.repsLast = Self.repsLastLabel(for: set)
         contentState.weight = Self.weightLabel(for: set, item: item)
         contentState.weightCaption = Self.weightCaption(for: set, item: item)
@@ -286,13 +309,12 @@ struct WorkoutLiveActivitySharedState: Codable, Hashable {
         return repText(value: set.reps, placeholder: set.placeholderReps) ?? "-"
     }
 
-    private static func repsGoalLabel(for set: WorkoutLiveActivitySharedSet) -> String? {
+    private static func repsGoalLabel(for set: WorkoutLiveActivitySharedSet, targetRIR: Int?) -> String? {
         if let left = repGoal(from: set.placeholderRepsLeft),
            let right = repGoal(from: set.placeholderRepsRight) {
-            return left == right ? left : "\(left)/\(right)"
+            return workoutGoalLabel(left == right ? left : "\(left)/\(right)", targetRIR: targetRIR)
         }
-        guard let goal = repGoal(from: set.placeholderReps) else { return nil }
-        return "Goal \(goal)"
+        return workoutGoalLabel(repGoal(from: set.placeholderReps), targetRIR: targetRIR)
     }
 
     private static func repsLastLabel(for set: WorkoutLiveActivitySharedSet) -> String? {

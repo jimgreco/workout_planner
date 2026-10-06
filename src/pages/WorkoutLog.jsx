@@ -306,6 +306,7 @@ export default function WorkoutLog({
       const weightType = lastItem?.weightType || item.weightType || 'weight';
       return {
         exerciseId: item.exerciseId,
+        targetRIR: item.targetRIR ?? null,
         weightType,
         restTargetSeconds: item.restTargetSeconds,
         supersetGroup: item.supersetGroup,
@@ -669,6 +670,7 @@ export default function WorkoutLog({
         const weightType = lastItem?.weightType || item.weightType || 'weight';
         return {
           exerciseId: item.exerciseId,
+          targetRIR: item.targetRIR ?? null,
           weightType,
           restTargetSeconds: item.restTargetSeconds,
           supersetGroup: item.supersetGroup,
@@ -1050,7 +1052,7 @@ export default function WorkoutLog({
       />
 
       <hr className="divider" style={{ opacity: 0.3, margin: '16px 0' }} />
-      {prescriptionRef.current && <section className="exercise-evidence" aria-label="Starting prescription"><h3>Starting prescription</h3><p>{prescriptionRef.current.templateName} · {prescriptionRef.current.phaseName || 'Routine'} · {prescriptionRef.current.optional ? 'Optional' : 'Required'}</p><p>{prescriptionRef.current.exerciseItems.reduce((n,item)=>n+item.sets.length,0)} prescribed sets{prescriptionRef.current.targetRir != null ? ` · Target ${prescriptionRef.current.targetRir} reps left` : ''}</p><details><summary>View original prescription</summary>{prescriptionRef.current.exerciseItems.map((item,index)=><p key={index}>{exercises.find(e=>e.id===item.exerciseId)?.name || item.exerciseId}: {item.sets.map(s=>s.reps || s.placeholderReps || 'unspecified reps').join(' / ')}</p>)}</details></section>}
+      {prescriptionRef.current && <section className="exercise-evidence" aria-label="Starting prescription"><h3>Starting prescription</h3><p>{prescriptionRef.current.templateName} · {prescriptionRef.current.phaseName || 'Routine'} · {prescriptionRef.current.optional ? 'Optional' : 'Required'}</p><p>{prescriptionRef.current.exerciseItems.reduce((n,item)=>n+item.sets.length,0)} prescribed sets{prescriptionRef.current.targetRir != null ? ` · Phase guidance: ${prescriptionRef.current.targetRir} reps left; exercise targets are shown per movement` : ''}</p><details><summary>View original prescription</summary>{prescriptionRef.current.exerciseItems.map((item,index)=><p key={index}>{exercises.find(e=>e.id===item.exerciseId)?.name || item.exerciseId}: {item.sets.map(s=>s.reps || s.placeholderReps || 'unspecified reps').join(' / ')}</p>)}</details></section>}
       <div className="form-group">
         <label>Session Notes (optional)</label>
         <textarea

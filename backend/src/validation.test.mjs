@@ -310,3 +310,25 @@ test('round trips pause timing and validates active-only pause state', () => {
   ]) assert.throws(() => validateLog({ ...log, ...invalid }, log.id), ValidationError);
   assert.equal(validateLog(log, log.id).pausedDurationMs, undefined);
 });
+
+
+test('planned targetRIR is nullable, bounded and distinct from actual effort', () => {
+  const item = { exerciseId: 'bench', sets: [{ reps: '6-10', rir: '1' }] };
+  const template = targetRIR => validateTemplate({ id: 't', name: 'Routine', exerciseItems: [{ ...item, targetRIR }] }, 't');
+  for (const value of [0, 2, 10, null]) {
+    const saved = template(value).exerciseItems[0];
+    assert.equal(saved.targetRIR, value);
+    assert.equal(saved.sets[0].rir, '1');
+    assert.equal(saved.sets[0].reps, '6-10');
+  }
+  for (const value of [-1, 11, 1.5, '2', '', true]) assert.throws(() => template(value), ValidationError);
+  const legacy = validateTemplate({ id: 't', name: 'Routine', exerciseItems: [item] }, 't');
+  assert.equal(Object.hasOwn(legacy.exerciseItems[0], 'targetRIR'), false);
+  const log = validateLog({ id: 'l', name: 'Workout', date: '2026-10-06', status: 'planning', exerciseItems: [{ ...item, targetRIR: 2 }], prescription: { templateId: 't', templateName: 'Routine', day: '2026-10-06', exerciseItems: [{ ...item, targetRIR: 2 }], targetRir: 3 } }, 'l');
+  assert.equal(log.exerciseItems[0].targetRIR, 2);
+  assert.equal(log.prescription.exerciseItems[0].targetRIR, 2);
+  assert.equal(log.prescription.targetRir, 3);
+  const restored = validateImport({ data: { templates: [template(2)], logs: [log] } });
+  assert.equal(restored.templates[0].exerciseItems[0].targetRIR, 2);
+  assert.equal(restored.logs[0].exerciseItems[0].targetRIR, 2);
+});

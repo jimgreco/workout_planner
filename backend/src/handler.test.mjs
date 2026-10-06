@@ -953,3 +953,25 @@ test('exhausted batch retries cannot report account deletion as complete', async
   assert.ok(db.items.has(`${PK}|LOG#private`));
   assert.equal(db.items.has(`${PK}|ACCOUNT`), false);
 });
+
+
+test('RIR round trip preserves older clients, explicit clears and account scope', async () => {
+  __setTestDb(fakeDb());
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const source = { id: 'rir-routine', name: 'Synthetic routine', exerciseItems: [{ exerciseId: 'bench', targetRIR: 2, sets: [{ reps: '6-10', rir: '1' }] }, { exerciseId: 'curl', targetRIR: 1, sets: [{ reps: '10-15' }] }] };
+  let response = await handler(event('PUT', '/templates/rir-routine', source, headers));
+  assert.equal(response.statusCode, 200);
+  const legacy = { ...source, exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '6-10', rir: '0' }] }], expectedRevision: 1 };
+  response = await handler(event('PUT', '/templates/rir-routine', legacy, headers));
+  const saved = JSON.parse(response.body);
+  assert.equal(response.statusCode, 200);
+  assert.equal(saved.exerciseItems.length, 1);
+  assert.equal(saved.exerciseItems[0].targetRIR, 2);
+  assert.equal(saved.exerciseItems[0].sets[0].rir, '0');
+  response = await handler(event('PUT', '/templates/rir-routine', { ...legacy, expectedRevision: 2, exerciseItems: [{ ...legacy.exerciseItems[0], targetRIR: null }] }, headers));
+  assert.equal(JSON.parse(response.body).exerciseItems[0].targetRIR, null);
+  const other = await createAppSession({ sub: 'other-rir-user', name: 'Synthetic Other', email: 'other@example.invalid' });
+  response = await handler(event('PUT', '/templates/rir-routine', { ...legacy, expectedRevision: 0 }, { authorization: `Bearer ${other.token}` }));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).exerciseItems[0].targetRIR, undefined);
+});

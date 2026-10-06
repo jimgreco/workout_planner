@@ -1,3 +1,4 @@
+import { targetRIRForSet, setTargetGoalLabel } from '../targetRIR.js';
 import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
 import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
 import { exerciseSetups, setupLabel, removingSetup } from '../equipmentSetups.js';
@@ -430,6 +431,7 @@ export default function WorkoutBuilder({
     return Boolean(set.restStartTime || set.restDuration);
   }
 
+  const targetRIRId = useId();
   const usedIds = new Set(items.map((i) => i.exerciseId));
   const availableExercises = exercises
     .filter((e) => !usedIds.has(e.id))
@@ -570,6 +572,20 @@ export default function WorkoutBuilder({
                     onChange={(e) => updateItem(idx, { description: e.target.value })}
                     disabled={readOnly}
                   />
+                )}
+                {!usesTime && (
+                  <div className="target-rir-control">
+                    <label>
+                      <span>Target RIR</span>
+                      <select aria-label={`Target RIR for ${ex.name}`} aria-describedby={`${targetRIRId}-rir-help-${idx}`}
+                        value={item.targetRIR ?? ''} disabled={readOnly}
+                        onChange={e => updateItem(idx, { targetRIR: e.target.value === '' ? null : Number(e.target.value) })}>
+                        <option value="">Not set</option>
+                        {Array.from({ length: 11 }, (_, value) => <option key={value} value={value}>{value} {value === 1 ? 'rep' : 'reps'} in reserve</option>)}
+                      </select>
+                    </label>
+                    <small id={`${targetRIRId}-rir-help-${idx}`}>Planned reps you could still do after each working set. 0 means none left. Warmups are excluded; record actual effort in Reps left.</small>
+                  </div>
                 )}
                 {!readOnly && planningMode && (
                   <label className="checkbox-row compact-toggle">
@@ -728,6 +744,11 @@ export default function WorkoutBuilder({
                           disabled={readOnly}
                           style={planningMode ? { color: 'var(--text-muted)' } : undefined}
                         />
+                      )}
+                      {!planningMode && targetRIRForSet(item, set, ex) != null && (
+                        <small className="target-rir-goal" aria-label={`Target ${item.targetRIR} reps in reserve for working set ${si + 1}`}>
+                          {setTargetGoalLabel(set, item.targetRIR)}
+                        </small>
                       )}
                     </td>
                     {hasWeightColumn && (

@@ -682,3 +682,15 @@ describe('contextual personal best display', () => {
     expect(screen.queryByText(/300 lbs/)).not.toBeInTheDocument();
   });
 });
+
+
+it('edits and clears planned RIR without changing rep ranges or actual RIR', () => {
+  const onChange = vi.fn();
+  const item = { exerciseId: 'ex1', targetRIR: 2, sets: [{ reps: '6-10', rir: '0' }] };
+  render(<WorkoutBuilder exercises={exercises} items={[item]} onChange={onChange} planningMode />);
+  const field = screen.getByLabelText('Target RIR for Bench Press');
+  fireEvent.change(field, { target: { value: '3' } });
+  expect(onChange.mock.calls.at(-1)[0][0]).toMatchObject({ targetRIR: 3, sets: item.sets });
+  fireEvent.change(field, { target: { value: '' } });
+  expect(onChange.mock.calls.at(-1)[0][0]).toMatchObject({ targetRIR: null, sets: item.sets });
+});

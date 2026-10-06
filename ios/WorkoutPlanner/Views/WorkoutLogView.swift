@@ -83,7 +83,7 @@ struct WorkoutLogView: View {
                             Text("Starting prescription").font(.headline)
                             Text(prescription.templateName)
                             if let phase = prescription.phaseName { Text(phase).foregroundStyle(Theme.muted) }
-                            if let rir = prescription.targetRir { Text("Target: \(rir) reps left") }
+                            if let rir = prescription.targetRir { Text("Phase guidance: \(rir) reps left. Exercise targets are shown per movement.") }
                             Text(prescription.optional ? "Optional training" : "Required training")
                             Text("\(prescription.exerciseItems.reduce(0) { $0 + $1.sets.count }) prescribed sets · \(prescription.day)").font(.caption)
                         }.padding().background(Theme.surface).clipShape(RoundedRectangle(cornerRadius: 18))
@@ -872,7 +872,8 @@ struct WorkoutLogView: View {
             sets: sets,
             baselineId: last?.baselineId ?? item.baselineId,
             techniqueNote: last?.techniqueNote ?? item.techniqueNote,
-            setupProfile: store.exercise(id: item.exerciseId)?.currentSetup(last?.setupProfile ?? item.setupProfile)
+            setupProfile: store.exercise(id: item.exerciseId)?.currentSetup(last?.setupProfile ?? item.setupProfile),
+            targetRIR: item.targetRIR
         )
     }
 
@@ -1281,6 +1282,7 @@ struct WorkoutLogView: View {
                 muscleGroup: exercise?.muscleGroup ?? "",
                 repsTitle: exercise?.usesTime == true ? "Secs" : "Reps",
                 weightDecreaseReason: exercise?.usesTime == true ? nil : routineExerciseWeightDecreaseReason(item, logs: store.logs),
+                targetRIR: item.targetRIR,
                 weightType: item.weightType,
                 restTargetSeconds: item.restTargetSeconds,
                 sets: item.sets.map { set in
@@ -1344,7 +1346,8 @@ struct WorkoutLogView: View {
             setLabel: "\(context.setIndex + 1)/\(context.item.sets.count)",
             repsTitle: context.exercise.usesTime == true ? "Secs" : "Reps",
             reps: liveRepsLabel(for: context.set) ?? "-",
-            repsGoal: liveRepsGoalLabel(for: context.set),
+            repsGoal: liveRepsGoalLabel(for: context.set, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
+            targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true),
             repsLast: liveRepsLastLabel(for: context.set),
             weight: liveWeightLabel(for: context) ?? "",
             weightCaption: liveWeightCaption(for: context),
@@ -1447,13 +1450,12 @@ struct WorkoutLogView: View {
         return liveWeightPlaceholder(for: context)
     }
 
-    private func liveRepsGoalLabel(for set: WorkoutSet) -> String? {
+    private func liveRepsGoalLabel(for set: WorkoutSet, targetRIR: Int?) -> String? {
         if let left = liveRepTargetText(from: set.placeholderRepsLeft),
            let right = liveRepTargetText(from: set.placeholderRepsRight) {
-            return left == right ? left : "\(left)/\(right)"
+            return workoutGoalLabel(left == right ? left : "\(left)/\(right)", targetRIR: targetRIR)
         }
-        guard let target = liveRepTargetText(from: set.placeholderReps) else { return nil }
-        return "Goal \(target)"
+        return workoutGoalLabel(liveRepTargetText(from: set.placeholderReps), targetRIR: targetRIR)
     }
 
     private func liveRepsLastLabel(for set: WorkoutSet) -> String? {
@@ -2130,8 +2132,8 @@ private struct WorkoutLiveActivityCard: View {
                 leftValue: repsValueBinding(set, \.repsLeft, fallback: sideRepsFallback(context.set, left: true)),
                 rightValue: repsValueBinding(set, \.repsRight, fallback: sideRepsFallback(context.set, left: false)),
                 repMode: mode,
-                leftCaption: sideRepCaption(for: context.set, left: true),
-                rightCaption: sideRepCaption(for: context.set, left: false),
+                leftCaption: sideRepCaption(for: context.set, left: true, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
+                rightCaption: sideRepCaption(for: context.set, left: false, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
                 range: range
             )
         } else {
@@ -2139,7 +2141,7 @@ private struct WorkoutLiveActivityCard: View {
                 title: title,
                 value: commonRepsValueBinding(set, context: context, repMode: repMode),
                 repMode: mode,
-                caption: repCaption(for: context.set, mode: repMode),
+                caption: repCaption(for: context.set, mode: repMode, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
                 range: range
             )
         }
@@ -2243,7 +2245,7 @@ private struct WorkoutLiveActivityCard: View {
         return set.placeholderRepsRight ?? set.placeholderReps
     }
 
-    private func repCaption(for set: WorkoutSet, mode: WorkoutLiveRepMode) -> String? {
+    private func repCaption(for set: WorkoutSet, mode: WorkoutLiveRepMode, targetRIR: Int?) -> String? {
         let sideTarget = combinedSideRepText(
             left: repTargetText(from: set.placeholderRepsLeft),
             right: repTargetText(from: set.placeholderRepsRight)
@@ -2256,8 +2258,8 @@ private struct WorkoutLiveActivityCard: View {
         let commonLast = repLastText(from: set.placeholderReps)
         let prefersSideHistory = mode == .separateSides || mode == .linkedSides
         var parts: [String] = []
-        if let target = prefersSideHistory ? (sideTarget ?? commonTarget) : (commonTarget ?? sideTarget) {
-            parts.append("Goal \(target)")
+        if let goal = workoutGoalLabel(prefersSideHistory ? (sideTarget ?? commonTarget) : (commonTarget ?? sideTarget), targetRIR: targetRIR) {
+            parts.append(goal)
         }
         if let last = prefersSideHistory ? (sideLast ?? commonLast) : (commonLast ?? sideLast) {
             parts.append("Last \(last)")
@@ -2272,11 +2274,11 @@ private struct WorkoutLiveActivityCard: View {
         return left ?? right
     }
 
-    private func sideRepCaption(for set: WorkoutSet, left: Bool) -> String? {
+    private func sideRepCaption(for set: WorkoutSet, left: Bool, targetRIR: Int?) -> String? {
         let sidePlaceholder = left ? set.placeholderRepsLeft : set.placeholderRepsRight
         var parts: [String] = []
-        if let target = repTargetText(from: sidePlaceholder) ?? repTargetText(from: set.placeholderReps) {
-            parts.append(target)
+        if let goal = workoutGoalLabel(repTargetText(from: sidePlaceholder) ?? repTargetText(from: set.placeholderReps), targetRIR: targetRIR) {
+            parts.append(goal)
         }
         if let last = repLastText(from: sidePlaceholder) ?? repLastText(from: set.placeholderReps) {
             parts.append("Last \(last)")
@@ -3018,6 +3020,7 @@ private struct WorkoutLiveInput: View {
 
             if let caption {
                 Text(caption)
+                    .accessibilityLabel(workoutGoalAccessibilityLabel(caption))
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
@@ -3090,6 +3093,7 @@ private struct WorkoutLiveRepWheel: View {
 
             if let caption {
                 Text(caption)
+                    .accessibilityLabel(workoutGoalAccessibilityLabel(caption))
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
@@ -3209,6 +3213,7 @@ private struct WorkoutLiveSideRepControl: View {
 
                 if let caption {
                     Text(caption)
+                    .accessibilityLabel(workoutGoalAccessibilityLabel(caption))
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(Theme.muted.opacity(0.88))
                         .lineLimit(1)
@@ -3379,6 +3384,7 @@ private struct WorkoutLiveWeightAdjuster: View {
 
                     if let caption {
                         Text(caption)
+                    .accessibilityLabel(workoutGoalAccessibilityLabel(caption))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Theme.muted)
                             .lineLimit(1)

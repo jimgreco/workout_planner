@@ -62,9 +62,15 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         let legacy = Data("[{\"id\":\"unknown-owner\"}]".utf8)
         for key in ["forge.pendingResourceChanges.v1", "forge.pendingWorkoutLogSaves.v1", "forge.pendingConflicts.v1"] { defaults.set(legacy, forKey: key) }
         auth.login("B")
-        let log = WorkoutLog(id: "b-workout", name: "Synthetic B", date: "2026-10-03")
+        let log = WorkoutLog(id: "b-workout", name: "Synthetic B", date: "2026-10-03", exerciseItems: [ExerciseItem(exerciseId: "bench", sets: [WorkoutSet(reps: "", placeholderReps: "6-10")], targetRIR: 2)])
         _ = try await store.saveLog(log)
         precondition(store.pendingSyncCount == 1)
+        precondition(store.logs.first?.exerciseItems.first?.targetRIR == 2)
+        let queuedData = defaults.dictionaryRepresentation().first { $0.key.hasPrefix("forge.pendingWorkoutLogSaves.v2") }!.value as! Data
+        let queued = try JSONSerialization.jsonObject(with: queuedData) as! [[String: Any]]
+        let queuedPayload = queued[0]["log"] as! [String: Any]
+        let queuedItems = queuedPayload["exerciseItems"] as! [[String: Any]]
+        precondition(queuedItems[0]["targetRIR"] as? Int == 2)
         auth.signOut()
         auth.login("A")
         precondition(store.pendingSyncCount == 0 && store.logs.isEmpty)
