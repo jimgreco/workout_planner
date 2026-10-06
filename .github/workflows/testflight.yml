@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' && inputs.upload_testflight && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || inputs.upload_testflight) && github.ref == 'refs/heads/main'
     runs-on: macos-latest
     timeout-minutes: 45
     permissions:

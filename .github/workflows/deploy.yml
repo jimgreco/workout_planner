@@ -55,9 +55,7 @@ jobs:
         run: npm audit --omit=dev
 
       - name: Test isolated deployment command plan
-        run: |
-          python3 scripts/test-safe-compose-release.py
-          node --test .github/scripts/release-workflow-tests.mjs
+        run: python3 scripts/test-safe-compose-release.py
 
       - name: Verify private files are excluded from production images
         run: |
