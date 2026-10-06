@@ -3113,6 +3113,7 @@ private struct WorkoutLiveRepWheel: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue("\(value)")
+        .accessibilityHint(caption.map(workoutGoalAccessibilityLabel) ?? "")
     }
 
     private var spinnerDrag: some Gesture {
@@ -3253,6 +3254,7 @@ private struct WorkoutLiveSideRepControl: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title) \(unitTitle.lowercased())")
         .accessibilityValue("\(value)")
+        .accessibilityHint(caption.map(workoutGoalAccessibilityLabel) ?? "")
     }
 
     private var spinnerDrag: some Gesture {

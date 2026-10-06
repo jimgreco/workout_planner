@@ -50,3 +50,24 @@ values with optimistic revision checks. Preserve every set, rep range, load,
 actual RIR, setup, and phase. Never update completed sessions. Stop on any changed
 revision or account mismatch. Re-read and compare the exact changed fields after
 saving, and retain the before/after diff for recovery.
+
+## Local validation checkpoint — 2026-10-06
+
+- Web: 264 tests passed; backend: 79 tests passed. Focused follow-up suites,
+  lint, production web build, and simulator app/extension build passed.
+- Swift checks passed for target and actual RIR, persistence, account-owned
+  offline sync, pause timing, and Live Activity state serialization and updates.
+- Web synthetic editor QA covered setting, zero, clearing, and working-set-only
+  display without changing rep prescriptions or actual effort.
+- iOS 26.2 local demo QA visually confirmed `Goal 6–10+2` in the in-app Live
+  card and lock screen, plus `6–10+2` in compact Dynamic Island. The paused
+  lock screen retained the goal and frozen elapsed time; resuming restored
+  controls and the same goal. Actual Reps left remained Not sure.
+- Accessibility inspection confirmed the rep control exposes the expanded hint
+  `Goal 8 to 12 reps, 2 reps in reserve` after combining its child elements.
+
+Expanded Dynamic Island, larger text, and long-range fallback still require
+on-device visual acceptance. Their formatting and state logic are covered by
+the implementation and automated checks, but simulator screenshots do not
+establish physical-device acceptance. No release or production routine write
+was performed at this checkpoint.
