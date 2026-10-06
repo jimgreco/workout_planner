@@ -49,6 +49,27 @@ def decoded_config(compose, execute):
             raise RuntimeError('Compose configuration could not be parsed (details withheld)') from None
 
 
+def extended_compose_files(chains):
+    longest = max(chains, key=len)
+    if not all(longest[:len(chain)] == chain for chain in chains):
+        raise RuntimeError('Live Compose input chains diverge; reconcile before release')
+    return longest
+
+
+def verify_extended_model(before, after, service):
+    if before['services'][service] != after['services'][service]:
+        raise RuntimeError('Extended Compose chain changes service ' + service)
+    # New resource definitions are permitted; every existing definition and
+    # project option must remain identical, including networks and volumes.
+    for key, value in before.items():
+        if key == 'services':
+            continue
+        current = after.get(key)
+        matches = (isinstance(current, dict) and all(current.get(k) == v for k, v in value.items())) if isinstance(value, dict) else current == value
+        if not matches:
+            raise RuntimeError('Extended Compose chain changes existing ' + key)
+
+
 def verify_live_hashes(compose, compose_base, config, live, services, execute):
     def hashes(command, document=None):
         result = {}
@@ -95,6 +116,23 @@ def verify_live_hashes(compose, compose_base, config, live, services, execute):
             raise RuntimeError('Compose JSON roundtrip changed configuration hashes; reconcile before release')
         if hashes(rendered, scoped) == expected:
             return
+        # Infrastructure operations may have recreated each service separately.
+        # Accept only its recorded dependency set, with all edge options intact.
+        recorded = copy.deepcopy(config)
+        for service in services:
+            labels = live[service]['Config']['Labels']
+            if 'com.docker.compose.depends_on' not in labels:
+                raise RuntimeError('Live Compose configuration drift; reconcile before release')
+            deps = recorded['services'][service].get('depends_on', {})
+            retained = {part.split(':', 1)[0] for part in labels['com.docker.compose.depends_on'].split(',') if part}
+            if not isinstance(deps, dict) or not retained <= set(deps):
+                raise RuntimeError('Recorded dependency differs for ' + service)
+            if retained:
+                recorded['services'][service]['depends_on'] = {k: v for k, v in deps.items() if k in retained}
+            else:
+                recorded['services'][service].pop('depends_on', None)
+        if hashes(rendered, recorded) == expected:
+            return
     raise RuntimeError('Live Compose configuration drift; reconcile before release')
 
 
@@ -106,27 +144,33 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
     home = Path(home or Path.home())
     live = {}
     contract = None
+    chains = {}
     for service in services:
         ids = execute(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.service=' + service]).split()
         if len(ids) != 1:
             raise RuntimeError('Expected exactly one running container for ' + service)
         item = json.loads(execute(['docker', 'inspect', ids[0]]))[0]
         labels = item['Config']['Labels']
-        selected = (labels.get('com.docker.compose.project'), labels.get('com.docker.compose.project.working_dir'), labels.get('com.docker.compose.project.config_files'))
+        selected = (labels.get('com.docker.compose.project'), labels.get('com.docker.compose.project.working_dir'))
         if not all(selected) or (contract and selected != contract):
             raise RuntimeError('Missing or inconsistent live Compose labels')
+        files = labels.get('com.docker.compose.project.config_files')
+        if not files:
+            raise RuntimeError('Missing live Compose input files')
+        chains[service] = files.split(',')
         contract = selected
         live[service] = item
-    project, workdir, files = contract
+    project, workdir = contract
+    files = extended_compose_files(list(chains.values()))
     if not Path(workdir).is_dir():
         raise RuntimeError('Live Compose working directory is missing')
-    paths = [Path(p) if Path(p).is_absolute() else Path(workdir) / p for p in files.split(',')]
+    paths = [Path(p) if Path(p).is_absolute() else Path(workdir) / p for p in files]
     if not all(p.is_file() for p in paths):
         # Historical Workouts releases deleted their temporary override. The
         # existing durable pair is usable only if every service hash below is
         # identical to the live labels; environment equality is checked too.
         durable = [Path(workdir) / 'docker-compose.yml', Path(workdir) / 'docker-compose.override.yml']
-        if app != 'workouts' or not all(p.is_file() for p in durable):
+        if app != 'workouts' or len({tuple(c) for c in chains.values()}) != 1 or not all(p.is_file() for p in durable):
             raise RuntimeError('A live Compose input is missing; reconcile it before release')
         paths = durable
     # Prefer legacy Compose when installed so config hashes remain comparable.
@@ -141,6 +185,12 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
     if app == 'macros':
         os.environ['APP_BUILD'] = envmap(live['macros']['Config'].get('Env')).get('APP_BUILD', '')
     config = decoded_config(compose, execute)
+    for service, chain in chains.items():
+        if chain != files:
+            original = list(compose_base)
+            for path in chain:
+                original += ['-f', str(Path(path) if Path(path).is_absolute() else Path(workdir) / path)]
+            verify_extended_model(decoded_config(original, execute), config, service)
     verify_live_hashes(compose, compose_base, config, live, services, execute)
     for service in services:
         item = live[service]

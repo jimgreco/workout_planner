@@ -143,7 +143,7 @@ class ScopedHashTests(unittest.TestCase):
         import hashlib
         return hashlib.sha256(json.dumps(document['services'][service], sort_keys=True).encode()).hexdigest()
 
-    def verify(self, app, *, roundtrip_drift=False, config_drift=False, drop_internal=False):
+    def verify(self, app, *, roundtrip_drift=False, config_drift=False, drop_internal=False, recorded_dependencies=False):
         import copy
         services, config = self.fixture(app)
         expected = copy.deepcopy(config)
@@ -154,6 +154,9 @@ class ScopedHashTests(unittest.TestCase):
             if drop_internal:
                 del expected['services']['workout']['depends_on']
         live = {name: {'Config': {'Labels': {'com.docker.compose.config-hash': self.digest(expected, name)}}} for name in services}
+        if recorded_dependencies:
+            for item in live.values():
+                item['Config']['Labels']['com.docker.compose.depends_on'] = ''
         if config_drift:
             config['services'][services[0]]['privileged'] = True
         original = copy.deepcopy(config)
@@ -217,6 +220,12 @@ class ScopedHashTests(unittest.TestCase):
         error, _, _ = self.verify('workouts', drop_internal=True)
         self.assertIn('configuration drift', error)
 
+    def test_separate_infra_recreation_requires_exact_recorded_dependency_hash(self):
+        error, _, _ = self.verify('workouts', drop_internal=True, recorded_dependencies=True)
+        self.assertIsNone(error)
+        error, _, _ = self.verify('workouts', drop_internal=True, recorded_dependencies=True, config_drift=True)
+        self.assertIn('configuration drift', error)
+
     def test_exact_original_hash_avoids_alternate_and_secret_stdin(self):
         services, config = self.fixture('macros')
         live = {'macros': {'Config': {'Labels': {'com.docker.compose.config-hash': 'exact'}}}}
@@ -227,6 +236,25 @@ class ScopedHashTests(unittest.TestCase):
             return 'macros exact'
         release.verify_live_hashes(['docker-compose', '-f', 'base.yml'], ['docker-compose'], config, live, services, execute)
         self.assertEqual(len(calls), 1)
+
+
+class ExtendedInputsTests(unittest.TestCase):
+    def test_only_existing_prefix_extensions_are_selected(self):
+        self.assertEqual(release.extended_compose_files([['base', 'logs'], ['base', 'logs', 'isolation']]), ['base', 'logs', 'isolation'])
+        with self.assertRaisesRegex(RuntimeError, 'diverge'):
+            release.extended_compose_files([['base', 'logs'], ['base', 'isolation']])
+
+    def test_extended_inputs_preserve_service_and_existing_resources(self):
+        import copy
+        before = {'services': {'workout': {'logging': {'driver': 'json-file'}, 'networks': ['default']}}, 'networks': {'default': {'internal': False}}, 'volumes': {'data': {'external': True}}}
+        after = copy.deepcopy(before)
+        after['networks']['workout_data'] = {'internal': True}
+        release.verify_extended_model(before, after, 'workout')
+        for section, key, replacement in [('services', 'workout', {}), ('networks', 'default', {'internal': True}), ('volumes', 'data', {})]:
+            changed = copy.deepcopy(after)
+            changed[section][key] = replacement
+            with self.assertRaisesRegex(RuntimeError, 'changes'):
+                release.verify_extended_model(before, changed, 'workout')
 
 
 if __name__ == '__main__':

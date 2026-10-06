@@ -267,6 +267,14 @@ resulting hash to match live. Internal dependencies and all other configuration
 remain unchanged; full effective-environment comparison still runs. Resolved
 configuration stays in process memory/stdin and is never written or logged.
 
+After separate infrastructure recreations, Workouts may have different recorded
+input chains. The helper accepts only prefix extensions, preserving the selected
+service definition and every existing resource definition under the extended
+chain. It can also verify the exact dependency set recorded in each live
+container's Compose label, after the same lossless hash roundtrip. Missing labels,
+diverging chains, changed logging/networks/volumes, or any other hash/environment
+drift still block release. The retained isolation overlay remains authoritative.
+
 ## Private build-context exclusions
 
 Exclude root/nested `.env*`, private PEM/key files, `.ssh`, and `.aws` from Docker
