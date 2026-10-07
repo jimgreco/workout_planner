@@ -975,3 +975,21 @@ test('RIR round trip preserves older clients, explicit clears and account scope'
   assert.equal(response.statusCode, 200);
   assert.equal(JSON.parse(response.body).exerciseItems[0].targetRIR, undefined);
 });
+
+
+test('positive recovery revision cannot resurrect a hard-deleted record after a lost successful response', async () => {
+  const db = fakeDb([{ PK: 'USER#dev-user-local', SK: 'EXERCISE#recovery-only', id: 'recovery-only', name: 'Original', muscleGroup: 'Chest', revision: 7 }]);
+  __setTestDb(db);
+  const headers = { Authorization: 'Bearer dev-bypass-token' };
+  const reviewed = { id: 'recovery-only', name: 'Recovered', muscleGroup: 'Chest', expectedRevision: 7 };
+  const committed = await handler(event('PUT', '/exercises/recovery-only', reviewed, headers));
+  assert.equal(committed.statusCode, 200); // Client loses this response.
+  assert.equal(JSON.parse(committed.body).revision, 8);
+  const deleted = await handler(event('DELETE', '/exercises/recovery-only', undefined, headers));
+  assert.equal(deleted.statusCode, 204);
+  assert.equal(db.items.has('USER#dev-user-local|EXERCISE#recovery-only'), false);
+  const retried = await handler(event('PUT', '/exercises/recovery-only', reviewed, headers));
+  assert.equal(retried.statusCode, 409);
+  assert.equal(JSON.parse(retried.body).conflict.actualRevision, 0);
+  assert.equal(db.items.has('USER#dev-user-local|EXERCISE#recovery-only'), false);
+});

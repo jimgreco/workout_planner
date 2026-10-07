@@ -3691,3 +3691,10 @@ input:focus, select:focus, textarea:focus {
 .target-rir-control label { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .target-rir-control small { color: var(--text-muted); max-width: 48rem; }
 .target-rir-goal { font-weight: 700; }
+
+.legacy-recovery { display: grid; gap: 1rem; }
+.legacy-recovery label { display: block; }
+.legacy-recovery pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; font-size: .8rem; }
+.legacy-recovery code { overflow-wrap: anywhere; }
+
+.recovery-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font-size: .8rem; }

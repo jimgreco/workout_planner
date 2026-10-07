@@ -186,6 +186,103 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         await restoredStore.loadData()
         precondition(!restoredStore.logs.contains { $0.id == paused.id })
         precondition(restoredStore.logs.first?.status == "finished")
+        // Explicit legacy recovery stages a retained comparison; no historical write.
+        let recoveryAuth = AuthManager()
+        let recoveryStore = WorkoutStore(auth: recoveryAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+        recoveryAuth.login("recovery-A")
+        var original = paused
+        original.id = "legacy-recovery-only"
+        original.exerciseItems[0].targetRIR = 2
+        let originalBytes = try JSONEncoder().encode([original])
+        defaults.set(originalBytes, forKey: "forge.pendingWorkoutLogSaves.v1")
+        do { _ = try recoveryStore.beginLegacyRecovery(account: "wrong", confirmed: true); preconditionFailure("Wrong owner accepted") } catch {}
+        let review = try recoveryStore.beginLegacyRecovery(account: "recovery-A", confirmed: true)
+        let record = try recoveryStore.legacyRecoveryRecords(review).first { $0.resource == .logs }!
+        precondition(record.local?.log == original)
+        SyntheticProtocol.hold = true
+        let firstReadCount = SyntheticProtocol.count()
+        let recovering = Task { try await recoveryStore.recoverLegacyRecord(record.id, review: review, setAside: false) }
+        while SyntheticProtocol.count() == firstReadCount { await Task.yield() }
+        var cloudOriginal = original; cloudOriginal.revision = 7
+        SyntheticProtocol.finish(body: String(decoding: try JSONEncoder().encode([cloudOriginal]), as: UTF8.self))
+        try await recovering.value
+        precondition(SyntheticProtocol.count() == firstReadCount + 1)
+        precondition(recoveryStore.pendingSyncCount == 0 && recoveryStore.pendingConflictCount == 1)
+        let comparison = recoveryStore.syncConflicts[0]
+        precondition(comparison.local?.log == original && comparison.actualRevision == 7)
+        precondition(comparison.local?.log?.exerciseItems[0].targetRIR == 2)
+        precondition(comparison.local?.log?.exerciseItems[0].sets[0].rir == "0")
+        precondition(comparison.local?.log?.pausedAt == original.pausedAt)
+        let reloaded = WorkoutStore(auth: recoveryAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+        precondition(reloaded.syncConflicts == [comparison])
+        do { try await recoveryStore.recoverLegacyRecord(record.id, review: review, setAside: false); preconditionFailure("Duplicate recovery staged") } catch {}
+        let conflictWriteCount = SyntheticProtocol.count()
+        let conflictWrite = Task { await recoveryStore.resolveSyncConflict(comparison, keeping: .local) }
+        while SyntheticProtocol.count() == conflictWriteCount { await Task.yield() }
+        // The server committed the positive-revision write but its response was lost.
+        SyntheticProtocol.finish(fail: true)
+        await conflictWrite.value
+        precondition(recoveryStore.syncConflicts == [comparison])
+        let retryCount = SyntheticProtocol.count()
+        let retryAfterDelete = Task { await recoveryStore.resolveSyncConflict(comparison, keeping: .local) }
+        while SyntheticProtocol.count() == retryCount { await Task.yield() }
+        // Another client then hard-deleted it. The reviewed positive revision must
+        // be retained; the real handler regression verifies this returns 409.
+        SyntheticProtocol.finish(status: 409, body: #"{"error":"Resource was updated elsewhere","conflict":{"actualRevision":0}}"#)
+        await retryAfterDelete.value
+        precondition(recoveryStore.syncConflicts == [comparison])
+        precondition(defaults.data(forKey: "forge.pendingWorkoutLogSaves.v1") == originalBytes)
+        await recoveryStore.resolveSyncConflict(comparison, keeping: .remote)
+        precondition(recoveryStore.pendingConflictCount == 0)
+        precondition(defaults.data(forKey: "forge.pendingWorkoutLogSaves.v1") == originalBytes)
+        recoveryAuth.login("recovery-B")
+        let otherReview = try reloaded.beginLegacyRecovery(account: "recovery-B", confirmed: true)
+        let otherRecords = try reloaded.legacyRecoveryRecords(otherReview)
+        precondition(otherRecords.first { $0.id == record.id }?.state == "another-account")
+        let otherPacket = try reloaded.exportLegacyRecovery(otherReview)
+        precondition(!otherPacket.contains(originalBytes.base64EncodedString()))
+        recoveryAuth.login("recovery-A")
+        let lateReview = try reloaded.beginLegacyRecovery(account: "recovery-A", confirmed: true)
+        // A new source version allows review, but an A → B → A session switch cancels its read.
+        original.id = "late-recovery-source"
+        defaults.set(try JSONEncoder().encode([original]), forKey: "forge.pendingWorkoutLogSaves.v1")
+        do { _ = try reloaded.exportLegacyRecovery(lateReview); preconditionFailure("Changed source accepted") } catch {}
+        let freshReview = try reloaded.beginLegacyRecovery(account: "recovery-A", confirmed: true)
+        let freshRecord = try reloaded.legacyRecoveryRecords(freshReview).first { $0.resource == .logs }!
+        let lateCount = SyntheticProtocol.count()
+        let lateRecovery = Task { try await reloaded.recoverLegacyRecord(freshRecord.id, review: freshReview, setAside: false) }
+        while SyntheticProtocol.count() == lateCount { await Task.yield() }
+        recoveryAuth.login("recovery-B"); recoveryAuth.login("recovery-A")
+        SyntheticProtocol.finish(body: "[]")
+        do { try await lateRecovery.value; preconditionFailure("Late recovery crossed accounts") } catch { precondition(isCancellationError(error)) }
+        precondition(reloaded.pendingConflictCount == 0)
+        let reversibleReview = try reloaded.beginLegacyRecovery(account: "recovery-A", confirmed: true)
+        let reversibleRecord = try reloaded.legacyRecoveryRecords(reversibleReview).first { $0.resource == .logs }!
+        let beforeAside = SyntheticProtocol.count()
+        try await reloaded.recoverLegacyRecord(reversibleRecord.id, review: reversibleReview, setAside: true)
+        try reloaded.restoreLegacyRecord(reversibleRecord.id, review: reversibleReview)
+        let restoredRecords = try reloaded.legacyRecoveryRecords(reversibleReview)
+        precondition(restoredRecords.first { $0.id == reversibleRecord.id }?.state == "preserved")
+        precondition(SyntheticProtocol.count() == beforeAside)
+        let missingCount = SyntheticProtocol.count()
+        let missingRecovery = Task { try await reloaded.recoverLegacyRecord(reversibleRecord.id, review: reversibleReview, setAside: false) }
+        while SyntheticProtocol.count() == missingCount { await Task.yield() }
+        SyntheticProtocol.finish(body: "[]")
+        do { try await missingRecovery.value; preconditionFailure("Missing history was staged") } catch {}
+        precondition(reloaded.pendingConflictCount == 0 && SyntheticProtocol.count() == missingCount + 1)
+        let retainedPacket = try reloaded.exportLegacyRecovery(reversibleReview)
+        precondition(retainedPacket.contains(defaults.data(forKey: "forge.pendingWorkoutLogSaves.v1")!.base64EncodedString()))
+        let reviewRaceCount = SyntheticProtocol.count()
+        let reviewRace = Task { try await reloaded.recoverLegacyRecord(reversibleRecord.id, review: reversibleReview, setAside: false) }
+        while SyntheticProtocol.count() == reviewRaceCount { await Task.yield() }
+        try await reloaded.recoverLegacyRecord(reversibleRecord.id, review: reversibleReview, setAside: true)
+        try reloaded.restoreLegacyRecord(reversibleRecord.id, review: reversibleReview)
+        var liveCopy = original; liveCopy.revision = 7
+        SyntheticProtocol.finish(body: String(decoding: try JSONEncoder().encode([liveCopy]), as: UTF8.self))
+        do { try await reviewRace.value; preconditionFailure("Set-aside decision was ignored") } catch {}
+        precondition(reloaded.pendingConflictCount == 0 && SyntheticProtocol.count() == reviewRaceCount + 1)
+        print("PASS missing/deleted recovery containment and in-flight set-aside/return review fencing")
+        print("PASS legacy recovery: exact source retention, explicit attribution, staged comparison, pause/RIR preservation, reload, duplicate decisions, cross-account export and stale-read fencing")
         print("PASS pause offline lifecycle: queued pause, full store recreation, offline resume/finish/discard and reload")
         print("PASS native account isolation: durable owner queues, sign-out reset, legacy quarantine, late success/failure/401, A-B-A, interrupted flush, ordered edits, durable queued deletion and account-switch fencing")
     }

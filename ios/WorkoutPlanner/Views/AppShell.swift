@@ -223,6 +223,11 @@ private struct SettingsPage: View {
                                 }
                                 .frame(minHeight: 44)
 
+                                if store.hasLegacyRecoveryWork {
+                                    NavigationLink("Offline Recovery") { LegacyOfflineRecoveryView() }
+                                        .padding(.vertical, 12)
+                                }
+
                                 if let detail = store.syncDetailText {
                                     AccountSettingsDivider()
 
@@ -851,15 +856,18 @@ private struct SyncConflictReviewSheet: View {
 
                                     ViewThatFits(in: .horizontal) {
                                         HStack(alignment: .top, spacing: 12) {
-                                            SyncConflictValueColumn(title: "This iPhone", value: conflict.local)
-                                            SyncConflictValueColumn(title: "Cloud", value: conflict.remote)
+                                            SyncConflictValueColumn(title: "This iPhone", value: conflict.local, includeFullContent: conflict.recoveryID != nil)
+                                            SyncConflictValueColumn(title: "Cloud", value: conflict.remote, includeFullContent: conflict.recoveryID != nil)
                                         }
                                         VStack(alignment: .leading, spacing: 12) {
-                                            SyncConflictValueColumn(title: "This iPhone", value: conflict.local)
-                                            SyncConflictValueColumn(title: "Cloud", value: conflict.remote)
+                                            SyncConflictValueColumn(title: "This iPhone", value: conflict.local, includeFullContent: conflict.recoveryID != nil)
+                                            SyncConflictValueColumn(title: "Cloud", value: conflict.remote, includeFullContent: conflict.recoveryID != nil)
                                         }
                                     }
 
+                                    if conflict.recoveryID != nil {
+                                        Text("This is recovered older work. Keep This iPhone writes the saved content to this account; a newer cloud revision blocks the write. The original stays in the recovery export.").font(.footnote)
+                                    }
                                     HStack(spacing: 10) {
                                         Button {
                                             resolve(conflict, keeping: .remote)
@@ -916,6 +924,7 @@ private struct SyncConflictReviewSheet: View {
 private struct SyncConflictValueColumn: View {
     let title: String
     let value: SyncConflictValue?
+    var includeFullContent = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -934,11 +943,21 @@ private struct SyncConflictValueColumn: View {
             Text(revisionText)
                 .font(.caption)
                 .foregroundStyle(Theme.muted)
+            if includeFullContent {
+                DisclosureGroup("Full content") {
+                    Text(fullContent).font(.caption.monospaced()).textSelection(.enabled)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Theme.surface2)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var fullContent: String {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? "Unavailable"
     }
 
     private var revisionText: String {
@@ -1187,6 +1206,91 @@ private extension View {
             tabBarMinimizeBehavior(.automatic)
         } else {
             self
+        }
+    }
+}
+
+
+private struct LegacyOfflineRecoveryView: View {
+    @EnvironmentObject private var store: WorkoutStore
+    @State private var owner: String?
+    @State private var generation = UUID()
+    @State private var typed = ""
+    @State private var confirmed = false
+    @State private var review: LegacyRecoveryReview?
+    @State private var records: [LegacyRecoveryRecord] = []
+    @State private var packet: String?
+    @State private var message: String?
+    @State private var busy = false
+    private var current: Bool { owner != nil && owner == store.recoveryAccountID && generation == store.recoveryGeneration }
+
+    var body: some View {
+        List {
+            if current, let owner {
+                Section("Original account") {
+                    Text("Older work has no verified owner. Nothing here syncs automatically. Verify the original account before viewing private workout data. Leave it preserved if unsure.")
+                    Text(owner).font(.caption.monospaced()).textSelection(.enabled)
+                    if review == nil {
+                        TextField("Type the original account ID above", text: $typed).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        Toggle("I verified this device's older work belongs to this original account", isOn: $confirmed)
+                        Button("Review preserved work") {
+                            do {
+                                let value = try store.beginLegacyRecovery(account: typed, confirmed: confirmed)
+                                records = try store.legacyRecoveryRecords(value); review = value
+                            } catch { message = error.localizedDescription }
+                        }.disabled(!confirmed || typed != owner)
+                    }
+                }
+                if let review {
+                    Section("Preserved work") {
+                        Text("Recover to conflict review fetches the current cloud copy and stages a comparison. Missing or deleted cloud copies are export-only. Review that comparison before choosing Keep This iPhone. Set aside retains the original and changes no cloud history.")
+                        ForEach(records) { record in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("\(record.resource?.label ?? "Source") · \(record.state)").font(.headline)
+                                DisclosureGroup("Review saved contents") { Text(record.preview).font(.caption.monospaced()).textSelection(.enabled) }
+                                if record.state == "set-aside" {
+                                    Button("Return to review") {
+                                        do { try store.restoreLegacyRecord(record.id, review: review); records = try store.legacyRecoveryRecords(review); packet = nil }
+                                        catch { message = error.localizedDescription }
+                                    }.disabled(busy)
+                                }
+                                if record.state == "preserved" {
+                                    Button("Recover to conflict review") { act(record, review: review, setAside: false) }
+                                        .disabled(busy || record.local == nil)
+                                    Button("Set aside; retain original") { act(record, review: review, setAside: true) }.disabled(busy)
+                                    if record.local == nil { Text("Deletion or unsupported content needs separate support review. It cannot be replayed here.").font(.footnote) }
+                                }
+                            }
+                        }
+                    }
+                    Section("Local recovery export") {
+                        Button("Prepare recovery export") {
+                            do { packet = try store.exportLegacyRecovery(review) }
+                            catch { message = error.localizedDescription }
+                        }
+                        if let packet {
+                            DisclosureGroup("Review export contents") { Text(packet).font(.caption.monospaced()).textSelection(.enabled) }
+                            ShareLink("Export reviewed copy…", item: packet)
+                            Text("Contains private workout data. Choose a destination you trust. Nothing is uploaded automatically.").font(.footnote)
+                        }
+                    }
+                }
+                if let message { Text(message) }
+            } else { Text("The account changed. Close and reopen recovery from the original account.") }
+        }
+        .navigationTitle("Offline Recovery")
+        .task { if owner == nil { owner = store.recoveryAccountID; generation = store.recoveryGeneration } }
+        .onChange(of: store.recoveryGeneration) { _, _ in packet = nil; records = []; review = nil; confirmed = false; typed = "" }
+    }
+    private func act(_ record: LegacyRecoveryRecord, review: LegacyRecoveryReview, setAside: Bool) {
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                try await store.recoverLegacyRecord(record.id, review: review, setAside: setAside)
+                records = try store.legacyRecoveryRecords(review); packet = nil
+                message = setAside ? "Set aside on this device; original retained." : "Staged for Sync Conflict review in Settings. No cloud write has been made."
+            } catch { if current { message = error.localizedDescription } }
         }
     }
 }

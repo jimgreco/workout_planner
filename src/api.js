@@ -9,6 +9,7 @@
  */
 
 import { getSessionSnapshot, clearStoredUser, DEV_BYPASS } from './auth.js';
+import { recoverySources, recoveryRecords, readRecoveryJournal, recoveryConflicts, recordRecoveryDecision, settleRecoveryConflicts } from './legacyRecovery.js';
 import { normalizeProgram } from './programs.js';
 import { DEFAULT_EQUIPMENT } from '../backend/src/default-equipment.mjs';
 
@@ -110,15 +111,13 @@ function readPendingResourceQueue(owner = context().owner) {
 }
 
 function readPendingConflicts(owner = context().owner) {
+  if (!owner) return [];
+  let ordinary = [];
   try {
-    const key = queueKey(PENDING_CONFLICTS_KEY, owner);
-    if (!key) return [];
-    const raw = storage()?.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+    const parsed = JSON.parse(storage()?.getItem(queueKey(PENDING_CONFLICTS_KEY, owner)) || '[]');
+    if (Array.isArray(parsed)) ordinary = parsed;
+  } catch { /* Leave malformed source untouched. */ }
+  return [...ordinary, ...recoveryConflicts(storage(), owner)];
 }
 
 function writePendingLogQueue(queue, owner) {
@@ -145,7 +144,8 @@ function writePendingResourceQueue(queue, owner) {
 
 function writePendingConflicts(conflicts, owner) {
   if (!owner) throw new AuthError('Sign in before saving offline changes.');
-  const next = conflicts.filter((entry) => entry?.id && entry?.resource);
+  settleRecoveryConflicts(storage(), owner, conflicts);
+  const next = conflicts.filter((entry) => entry?.id && entry?.resource && !entry.recoveryID);
   if (next.length === 0) {
     storage()?.removeItem(queueKey(PENDING_CONFLICTS_KEY, owner));
   } else {
@@ -817,11 +817,22 @@ function applyRemoteConflictItem(conflict) {
   }
 }
 
+function assertRecoveryConflictUnchanged(conflict, owner) {
+  if (!conflict.recoveryID) return;
+  if (!Number.isInteger(conflict.remote?.revision) || conflict.remote.revision <= 0) throw new Error('Missing or unversioned cloud work can only be exported for support review.');
+  if (!readPendingConflicts(owner).some(entry => JSON.stringify(entry) === JSON.stringify(conflict))
+    || readPendingLogQueue(owner).some(row => conflict.resource === 'logs' && row.id === conflict.itemId)
+    || readPendingResourceQueue(owner).some(row => row.resource === conflict.resource && row.id === conflict.itemId)) {
+    throw new Error('Newer pending work changed this review. Resolve that work before recovering the original.');
+  }
+}
+
 export async function resolvePendingConflict(conflictId, resolution) {
   const captured = context();
   const conflict = readPendingConflicts(captured.owner).find((entry) => entry.id === conflictId);
   if (!conflict) throw new Error('Conflict is no longer pending.');
   if (!['local', 'remote'].includes(resolution)) throw new Error('Conflict resolution is invalid.');
+  assertRecoveryConflictUnchanged(conflict, captured.owner);
 
   if (resolution === 'remote') {
     removePendingChangeForConflict(conflict, captured.owner);
@@ -840,6 +851,8 @@ export async function resolvePendingConflict(conflictId, resolution) {
     ? { ...local, revision: Number.isInteger(conflict.remote?.revision) ? conflict.remote.revision + 1 : local.revision }
     : await request('PUT', `/${conflict.resource}/${conflict.itemId}`, withExpectedRevision(body), captured);
   assertCurrent(captured);
+  assertRecoveryConflictUnchanged(conflict, captured.owner);
+  if (!readPendingConflicts(captured.owner).some(entry => JSON.stringify(entry) === JSON.stringify(conflict))) throw new Error('The saved review changed. Reopen it before continuing.');
   if (conflict.resource === 'logs') {
     upsertLogItem(saved);
   } else {
@@ -1077,4 +1090,56 @@ export async function deleteAccount() {
   clearStoredUser();
   resetData();
   return result;
+}
+
+
+const recoveryReviews = new WeakMap();
+export function beginLegacyRecovery(confirmedAccount, confirmedOwnership) {
+  const captured = context();
+  if (!captured.owner || confirmedAccount !== captured.owner || confirmedOwnership !== true) throw new Error('Verify the original account before reviewing older work.');
+  const sources = recoverySources(storage());
+  const review = { account: captured.owner, records: recoveryRecords(sources, readRecoveryJournal(storage()), captured.owner) };
+  recoveryReviews.set(review, { captured, sources });
+  return review;
+}
+function checkLegacyReview(review) {
+  const saved = recoveryReviews.get(review);
+  if (!saved) throw new Error('Open a new recovery review.');
+  assertCurrent(saved.captured);
+  if (JSON.stringify(saved.sources) !== JSON.stringify(recoverySources(storage()))) throw new Error('The preserved source changed. Reopen recovery.');
+  return saved;
+}
+export function exportLegacyRecovery(review) {
+  const { captured, sources } = checkLegacyReview(review);
+  const decisions = readRecoveryJournal(storage());
+  // A source already attributed to another account is not exported through this session.
+  const allowed = sources.filter(source => !decisions.some(row => row.key === source.key && row.raw === source.raw && row.owner !== captured.owner));
+  return JSON.stringify({ format: 'forge-local-recovery-v1', account: captured.owner, ownership: 'user-asserted; verify before repair', sources: allowed, decisions: decisions.filter(row => row.owner === captured.owner && allowed.some(source => source.key === row.key && source.raw === row.raw)) }, null, 2);
+}
+export async function reviewLegacyRecord(review, id, action) {
+  const { captured, sources } = checkLegacyReview(review);
+  const record = recoveryRecords(sources, readRecoveryJournal(storage()), captured.owner).find(row => row.id === id);
+  if (!record || (record.state !== 'preserved' && !(record.state === 'set-aside' && action === 'restore'))) throw new Error('This source is already reviewed or requires support.');
+  if (action === 'restore') {
+    recordRecoveryDecision(storage(), record, captured.owner, 'preserved');
+  } else if (action === 'archive') {
+    recordRecoveryDecision(storage(), record, captured.owner, 'set-aside');
+  } else if (action === 'stage' && record.recoverable) {
+    const decisionsBeforeRead = JSON.stringify(readRecoveryJournal(storage()));
+    const remoteItems = await request('GET', `/${record.resource}`, undefined, captured);
+    checkLegacyReview(review);
+    if (JSON.stringify(readRecoveryJournal(storage())) !== decisionsBeforeRead) throw new Error('A recovery decision changed while loading. Review again before staging.');
+    if (!Array.isArray(remoteItems)) throw new Error('Could not verify the current cloud collection.');
+    if (readPendingLogQueue(captured.owner).some(row => record.resource === 'logs' && row.id === record.local.id)
+      || readPendingResourceQueue(captured.owner).some(row => row.resource === record.resource && row.id === record.local.id)
+      || readPendingConflicts(captured.owner).some(row => row.resource === record.resource && row.itemId === record.local.id)) throw new Error('Resolve newer pending work for this item first.');
+    const remote = remoteItems.find(row => row.id === record.local.id) ?? null;
+    if (!remote || !Number.isInteger(remote.revision) || remote.revision <= 0) throw new Error('Missing, deleted or unversioned cloud work is export-only. Its absence cannot prove it was never saved.');
+    const conflict = { id: `${record.resource}:${record.local.id}`, recoveryID: crypto.randomUUID(), resource: record.resource, operation: 'put', itemId: record.local.id,
+      local: structuredClone(record.local), remote, actualRevision: remote.revision, createdAt: new Date().toISOString() };
+    recordRecoveryDecision(storage(), record, captured.owner, 'staged', conflict);
+    dispatchSyncStatus();
+  } else { throw new Error('Deletion and unreadable work require separate support review.'); }
+  review.records = recoveryRecords(sources, readRecoveryJournal(storage()), captured.owner);
+  return review.records;
 }

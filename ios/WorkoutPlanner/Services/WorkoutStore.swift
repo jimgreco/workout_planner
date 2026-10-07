@@ -84,8 +84,8 @@ final class WorkoutStore: ObservableObject {
     }
 
     var syncDetailText: String? {
-        if ["forge.pendingWorkoutLogSaves.v1", "forge.pendingResourceChanges.v1", "forge.pendingConflicts.v1"].contains(where: { offlineDefaults.object(forKey: $0) != nil }) {
-            return "Older offline changes are preserved on this device. Contact support to verify their account before recovery; do not remove the app."
+        if hasLegacyRecoveryWork {
+            return "Older offline changes are preserved on this device. Open Offline Recovery to verify their original account; do not remove the app."
         }
         if let syncIssueMessage {
             return syncIssueMessage
@@ -101,6 +101,70 @@ final class WorkoutStore: ObservableObject {
             return "Showing saved data. Changes will sync when Rep, Mix, Burn reconnects."
         }
         return nil
+    }
+
+    var hasLegacyRecoveryWork: Bool { LegacyRecoveryJournal.keys.contains { offlineDefaults.object(forKey: $0) != nil } }
+    var recoveryAccountID: String? { auth.user?.sub }
+    var recoveryGeneration: UUID { storeGeneration }
+
+    func beginLegacyRecovery(account: String, confirmed: Bool) throws -> LegacyRecoveryReview {
+        guard confirmed, auth.user?.sub == account else { throw LegacyRecoveryError.reviewRequired }
+        return LegacyRecoveryReview(owner: account, generation: storeGeneration, sources: LegacyRecoveryJournal.sources(offlineDefaults))
+    }
+
+    private func checkLegacyReview(_ review: LegacyRecoveryReview) throws {
+        guard review.owner == auth.user?.sub, review.generation == storeGeneration,
+              review.sources == LegacyRecoveryJournal.sources(offlineDefaults) else { throw CancellationError() }
+    }
+
+    func legacyRecoveryRecords(_ review: LegacyRecoveryReview) throws -> [LegacyRecoveryRecord] {
+        try checkLegacyReview(review)
+        return try LegacyRecoveryJournal.records(review, defaults: offlineDefaults)
+    }
+
+    func exportLegacyRecovery(_ review: LegacyRecoveryReview) throws -> String {
+        try checkLegacyReview(review)
+        let decisions = try LegacyRecoveryJournal.read(offlineDefaults)
+        let allowed = review.sources.filter { source in !decisions.contains { $0.source == source && $0.owner != review.owner } }
+        let packet = LegacyRecoveryExport(account: review.owner, sources: allowed, decisions: decisions.filter { $0.owner == review.owner && allowed.contains($0.source) })
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return String(decoding: try encoder.encode(packet), as: UTF8.self)
+    }
+
+    func restoreLegacyRecord(_ recordID: String, review: LegacyRecoveryReview) throws {
+        try checkLegacyReview(review)
+        guard let record = try legacyRecoveryRecords(review).first(where: { $0.id == recordID }), record.state == "set-aside" else { throw LegacyRecoveryError.reviewRequired }
+        try LegacyRecoveryJournal.record(record, owner: review.owner, state: "preserved", conflict: nil, defaults: offlineDefaults)
+    }
+
+    func recoverLegacyRecord(_ recordID: String, review: LegacyRecoveryReview, setAside: Bool) async throws {
+        try checkLegacyReview(review)
+        guard let record = try legacyRecoveryRecords(review).first(where: { $0.id == recordID }), record.state == "preserved" else { throw LegacyRecoveryError.reviewRequired }
+        if setAside {
+            try LegacyRecoveryJournal.record(record, owner: review.owner, state: "set-aside", conflict: nil, defaults: offlineDefaults)
+            return
+        }
+        guard let resource = record.resource, let local = record.local, record.operation == "put", let itemID = record.itemID, let api, !usesLocalData else { throw LegacyRecoveryError.reviewRequired }
+        let decisionsBeforeRead = try LegacyRecoveryJournal.read(offlineDefaults)
+        let remote: SyncConflictValue?
+        switch resource {
+        case .logs: remote = try await api.fetchLogs().first { $0.id == itemID }.map { .log($0) }
+        case .exercises: remote = try await api.fetchExercises().first { $0.id == itemID }.map { .exercise($0) }
+        case .templates: remote = try await api.fetchTemplates().first { $0.id == itemID }.map { .template($0) }
+        case .programs: remote = try await api.fetchPrograms().first { $0.id == itemID }.map { .program($0) }
+        }
+        try api.checkSession()
+        try checkLegacyReview(review)
+        guard try LegacyRecoveryJournal.read(offlineDefaults) == decisionsBeforeRead else { throw LegacyRecoveryError.reviewRequired }
+        guard let remote, let remoteRevision = remote.revision, remoteRevision > 0,
+              !pendingLogQueue.changes.contains(where: { resource == .logs && $0.id == itemID }),
+              !pendingResourceQueue.all.contains(where: { $0.resource.conflictResource == resource && $0.id == itemID }),
+              !pendingConflictQueue.all.contains(where: { $0.resource == resource && $0.itemId == itemID }) else { throw LegacyRecoveryError.reviewRequired }
+        let conflict = SyncConflictItem(recoveryID: UUID().uuidString, resource: resource, operation: .put, itemId: itemID, local: local, remote: remote, expectedRevision: local.revision, actualRevision: remoteRevision, requestId: nil, createdAt: ISO8601DateFormatter().string(from: Date()))
+        // The receipt and staged conflict commit together. No network write or active
+        // queue adoption occurs, even if the process exits immediately after this.
+        try LegacyRecoveryJournal.record(record, owner: review.owner, state: "staged", conflict: conflict, defaults: offlineDefaults)
+        refreshPendingSyncCount()
     }
 
     func reset() {
@@ -539,6 +603,7 @@ final class WorkoutStore: ObservableObject {
         }
 
         do {
+            try checkRecoveredConflict(conflict)
             switch resolution {
             case .remote:
                 applyRemoteConflictValue(conflict)
@@ -546,6 +611,7 @@ final class WorkoutStore: ObservableObject {
                 try await saveLocalConflictValue(conflict, using: api)
                 try api.checkSession()
             }
+            guard pendingConflictQueue.all.contains(conflict) else { throw CancellationError() }
             removePendingChange(for: conflict)
             pendingConflictQueue.remove(conflict.resource, id: conflict.itemId)
             persistOfflineSnapshot()
@@ -1130,7 +1196,16 @@ final class WorkoutStore: ObservableObject {
         }
     }
 
+    private func checkRecoveredConflict(_ conflict: SyncConflictItem) throws {
+        guard conflict.recoveryID != nil else { return }
+        guard let revision = conflict.remote?.revision, revision > 0 else { throw LegacyRecoveryError.reviewRequired }
+        guard pendingConflictQueue.all.contains(conflict),
+              !pendingLogQueue.changes.contains(where: { conflict.resource == .logs && $0.id == conflict.itemId }),
+              !pendingResourceQueue.all.contains(where: { $0.resource.conflictResource == conflict.resource && $0.id == conflict.itemId }) else { throw LegacyRecoveryError.reviewRequired }
+    }
+
     private func saveLocalConflictValue(_ conflict: SyncConflictItem, using api: WorkoutAPI) async throws {
+        try checkRecoveredConflict(conflict)
         let expectedRevision = conflict.remote?.revision ?? conflict.actualRevision
         switch conflict.resource {
         case .exercises:
@@ -1138,6 +1213,7 @@ final class WorkoutStore: ObservableObject {
             exercise.revision = expectedRevision
             let saved = try await api.saveExercise(exercise)
             try api.checkSession()
+            try checkRecoveredConflict(conflict)
             upsert(saved, in: &exercises)
             exercises = exercises.sortedByName()
         case .templates:
@@ -1145,6 +1221,7 @@ final class WorkoutStore: ObservableObject {
             template.revision = expectedRevision
             let saved = try await api.saveTemplate(template)
             try api.checkSession()
+            try checkRecoveredConflict(conflict)
             upsert(saved, in: &templates)
             templates = templates.sortedByName()
         case .logs:
@@ -1153,8 +1230,10 @@ final class WorkoutStore: ObservableObject {
             let value = log
             try await logWriteQueue.perform(id: log.id) { [self] in
                 try api.checkSession()
+            try checkRecoveredConflict(conflict)
                 let saved = try await api.saveLog(value)
                 try api.checkSession()
+            try checkRecoveredConflict(conflict)
                 upsert(saved, in: &logs)
             }
         case .programs:
@@ -1162,6 +1241,7 @@ final class WorkoutStore: ObservableObject {
             program.revision = expectedRevision
             let saved = try await api.saveProgram(program)
             try api.checkSession()
+            try checkRecoveredConflict(conflict)
             upsert(saved, in: &programs)
             programs = programs.sortedForDisplay()
         }
@@ -1627,9 +1707,10 @@ private struct PendingSyncConflictQueue {
     private var key: String { AccountOfflineKey.key("forge.pendingConflicts.v2", ownerID: ownerID) }
 
     var all: [SyncConflictItem] {
-        guard ownerID != nil, let data = defaults.data(forKey: key) else { return [] }
-        return ((try? JSONDecoder().decode([SyncConflictItem].self, from: data)) ?? [])
-            .sorted { $0.createdAt > $1.createdAt }
+        guard let ownerID else { return [] }
+        let ordinary = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([SyncConflictItem].self, from: $0) } ?? []
+        let recovered = (try? LegacyRecoveryJournal.read(defaults))?.filter { $0.owner == ownerID && $0.state == "staged" }.compactMap(\.conflict) ?? []
+        return (ordinary + recovered).sorted { $0.createdAt > $1.createdAt }
     }
 
     var count: Int {
@@ -1648,13 +1729,16 @@ private struct PendingSyncConflictQueue {
 
     func clear() {
         guard ownerID != nil else { return }
+        try? LegacyRecoveryJournal.settle(owner: ownerID!, retained: [], defaults: defaults)
         defaults.removeObject(forKey: key)
     }
 
     private func save(_ conflicts: [SyncConflictItem]) {
-        guard ownerID != nil else { return }
+        guard let ownerID else { return }
+        do { try LegacyRecoveryJournal.settle(owner: ownerID, retained: conflicts, defaults: defaults) } catch { return }
+        let conflicts = conflicts.filter { $0.recoveryID == nil }
         guard !conflicts.isEmpty else {
-            clear()
+            defaults.removeObject(forKey: key)
             return
         }
         if let data = try? JSONEncoder().encode(conflicts) {
@@ -1728,5 +1812,108 @@ private extension Array where Element == TrainingProgram {
             if leftActive != rightActive { return leftActive && !rightActive }
             return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+    }
+}
+
+
+enum LegacyRecoveryError: LocalizedError {
+    case reviewRequired
+    var errorDescription: String? { "Verify the original account and resolve newer pending work first. Missing, deleted, unversioned or already reviewed work stays export-only for support; its absence cannot prove it was never saved." }
+}
+struct LegacyRecoverySource: Codable, Equatable { var key: String; var bytes: Data }
+struct LegacyRecoveryReview { var owner: String; var generation: UUID; var sources: [LegacyRecoverySource] }
+struct LegacyRecoveryRecord: Identifiable {
+    var source: LegacyRecoverySource
+    var index: Int
+    var state: String
+    var preview: String
+    var resource: SyncConflictResource?
+    var operation: String?
+    var local: SyncConflictValue?
+    var itemID: String?
+    var id: String { "\(source.key):\(index)" }
+}
+struct LegacyRecoveryDecision: Codable, Equatable {
+    var decisionID: String? = nil
+    var source: LegacyRecoverySource
+    var index: Int
+    var owner: String
+    var state: String
+    var conflict: SyncConflictItem?
+}
+struct LegacyRecoveryExport: Codable {
+    var format = "forge-local-recovery-v1"
+    var ownership = "user-asserted; verify before repair"
+    var account: String
+    var sources: [LegacyRecoverySource]
+    var decisions: [LegacyRecoveryDecision]
+}
+private enum LegacyRecoveryJournal {
+    static let key = "forge.legacyRecoveryReview.v1"
+    static let keys = ["forge.pendingWorkoutLogSaves.v1", "forge.pendingResourceChanges.v1", "forge.pendingConflicts.v1"]
+    static func sources(_ defaults: UserDefaults) -> [LegacyRecoverySource] {
+        keys.compactMap { key in defaults.data(forKey: key).map { .init(key: key, bytes: $0) } }
+    }
+    static func read(_ defaults: UserDefaults) throws -> [LegacyRecoveryDecision] {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return try JSONDecoder().decode([LegacyRecoveryDecision].self, from: data)
+    }
+    static func records(_ review: LegacyRecoveryReview, defaults: UserDefaults) throws -> [LegacyRecoveryRecord] {
+        let decisions = try read(defaults)
+        return review.sources.flatMap { source -> [LegacyRecoveryRecord] in
+            guard let rows = (try? JSONSerialization.jsonObject(with: source.bytes)) as? [[String: Any]] else {
+                return [.init(source: source, index: -1, state: "unreadable", preview: "Unreadable source; export preserves its exact bytes.")]
+            }
+            return rows.enumerated().map { index, row in
+                let prior = decisions.first { $0.source == source && $0.index == index }
+                if let prior, prior.owner != review.owner {
+                    return .init(source: source, index: index, state: "another-account", preview: "Already attributed to another account. Sign in to that account.")
+                }
+                let resource = source.key == keys[0] ? SyncConflictResource.logs : SyncConflictResource(rawValue: row["resource"] as? String ?? "")
+                let operation = row["operation"] as? String ?? "put"
+                let payload: Any?
+                if source.key == keys[2], let local = row["local"] as? [String: Any], let resource {
+                    payload = local[resource == .exercises ? "exercise" : resource == .logs ? "log" : resource == .templates ? "template" : "program"]
+                } else if resource == .logs { payload = row["log"] ?? row }
+                else if resource == .exercises { payload = row["exercise"] }
+                else if resource == .templates { payload = row["template"] }
+                else if resource == .programs { payload = row["program"] }
+                else { payload = nil }
+                var local: SyncConflictValue?
+                if let payload, JSONSerialization.isValidJSONObject(payload), let data = try? JSONSerialization.data(withJSONObject: payload) {
+                    switch resource {
+                    case .logs: local = (try? JSONDecoder().decode(WorkoutLog.self, from: data)).map { .log($0) }
+                    case .exercises: local = (try? JSONDecoder().decode(Exercise.self, from: data)).map { .exercise($0) }
+                    case .templates: local = (try? JSONDecoder().decode(WorkoutTemplate.self, from: data)).map { .template($0) }
+                    case .programs: local = (try? JSONDecoder().decode(TrainingProgram.self, from: data)).map { .program($0) }
+                    case nil: break
+                    }
+                }
+                let itemID = local?.log?.id ?? local?.exercise?.id ?? local?.template?.id ?? local?.program?.id
+                if (payload as? [String: Any])?["deleted"] as? Bool == true || operation != "put" || itemID?.range(of: "^[A-Za-z0-9_-]{1,160}$", options: .regularExpression) == nil { local = nil }
+                if let outerID = (row[source.key == keys[2] ? "itemId" : "id"] as? String), outerID != itemID { local = nil }
+                let preview = (try? JSONSerialization.data(withJSONObject: row, options: [.prettyPrinted, .sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? "Unreadable"
+                return .init(source: source, index: index, state: prior?.state ?? "preserved", preview: preview, resource: resource, operation: operation, local: local, itemID: itemID)
+            }
+        }
+    }
+    static func record(_ record: LegacyRecoveryRecord, owner: String, state: String, conflict: SyncConflictItem?, defaults: UserDefaults) throws {
+        var rows = try read(defaults)
+        if let prior = rows.first(where: { $0.source == record.source && $0.index == record.index }) {
+            guard prior.owner == owner && (prior.state == "preserved" || (prior.state == "set-aside" && state == "preserved")) else { throw LegacyRecoveryError.reviewRequired }
+            rows.removeAll { $0.source == record.source && $0.index == record.index }
+        }
+        rows.append(.init(decisionID: UUID().uuidString, source: record.source, index: record.index, owner: owner, state: state, conflict: conflict))
+        defaults.set(try JSONEncoder().encode(rows), forKey: key)
+    }
+    static func settle(owner: String, retained: [SyncConflictItem], defaults: UserDefaults) throws {
+        var rows = try read(defaults)
+        var changed = false
+        for index in rows.indices where rows[index].owner == owner && rows[index].state == "staged" {
+            if !retained.contains(where: { $0.recoveryID == rows[index].conflict?.recoveryID }) {
+                rows[index].state = "reviewed"; changed = true
+            }
+        }
+        if changed { defaults.set(try JSONEncoder().encode(rows), forKey: key) }
     }
 }

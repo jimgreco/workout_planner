@@ -186,3 +186,9 @@ Docker contexts must exclude root/nested `.env*`, PEM/key files, `.ssh`, and `.a
 including backend and public-asset subdirectories. CI runs the synthetic fixture
 check against the frontend source stage, backend image, and production prebuilt
 frontend, using only a disposable clean Git archive.
+
+## Legacy offline recovery
+
+`docs/offline-account-boundaries.md` describes the explicit review flow. Keep retained v1 bytes immutable. Recovery attribution and staged comparisons live together in `forge.legacyRecoveryReview.v1`; they never enter automatic pending queues. Recovered writes require the reviewed revision, exact account/session fencing and no newer pending change. Do not erase decision receipts to retry a historical record. Set aside is reversible and retains the original; deletion/unknown ownership require separate review.
+
+Recovery requires an existing cloud copy with a positive revision. Logs, exercises, routines and programs can be hard-deleted, so absence cannot distinguish never-saved work from a deliberate deletion. Missing/deleted/unversioned copies are export-only; never issue a recovery write with expectedRevision zero. A lost successful response followed by another client’s deletion must remain a conflict on retry.

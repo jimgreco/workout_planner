@@ -1019,6 +1019,7 @@ struct SyncConflictValue: Codable, Equatable {
 }
 
 struct SyncConflictItem: Codable, Identifiable, Equatable {
+    var recoveryID: String? = nil
     var resource: SyncConflictResource
     var operation: SyncConflictOperation
     var itemId: String

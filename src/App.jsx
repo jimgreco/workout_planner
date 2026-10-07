@@ -50,6 +50,7 @@ import Calendar from './pages/Calendar.jsx';
 import Progress from './pages/Progress.jsx';
 import Logo from './components/Logo.jsx';
 import Modal from './components/Modal.jsx';
+import LegacyRecovery from './components/LegacyRecovery.jsx';
 import { personalBestLabel, logsWithPersonalBests } from './progress.js';
 
 const PAGES = [
@@ -204,6 +205,7 @@ export default function App() {
   const [conflictCount, setConflictCount] = useState(() => pendingConflictCount());
   const [conflicts, setConflicts] = useState(() => getPendingConflicts());
   const [reviewingConflicts, setReviewingConflicts] = useState(false);
+  const [reviewingLegacy, setReviewingLegacy] = useState(false);
   const [resolvingConflictId, setResolvingConflictId] = useState(null);
   const [syncingPending, setSyncingPending] = useState(false);
 
@@ -746,7 +748,8 @@ export default function App() {
         )}
         {hasQuarantinedPendingChanges() && (
           <div className="app-notice warning">
-            <span>Older offline changes are preserved on this device but cannot sync until their account ownership is verified. Contact support before clearing browser data.</span>
+            <span>Older offline changes are preserved on this device. Verify their original account before recovery.</span>
+            <button className="btn btn-secondary btn-sm" onClick={() => setReviewingLegacy(true)}>Review older work</button>
           </div>
         )}
         {pendingSyncCount > 0 && (
@@ -842,6 +845,14 @@ export default function App() {
         )}
       </main>
 
+      {reviewingLegacy && (
+        <Modal title="Recover older offline work" onClose={() => setReviewingLegacy(false)}>
+          <LegacyRecovery key={user?.sub} onClose={() => setReviewingLegacy(false)} onStaged={() => {
+            setConflicts(getPendingConflicts()); setConflictCount(pendingConflictCount());
+            setNotice({ type: 'success', message: 'Staged for sync conflict review. Review the comparison before saving to cloud.' });
+          }} />
+        </Modal>
+      )}
       {reviewingConflicts && (
         <Modal
           title="Review Sync Conflicts"
@@ -870,14 +881,17 @@ export default function App() {
                     <strong>{conflict.local?.name || 'Untitled'}</strong>
                     <small>{formatConflictRevision(conflict.local)}</small>
                     {conflictDetails(conflict.local, conflict.resource).map((line) => <p key={line}>{line}</p>)}
+                    {conflict.recoveryID && <details><summary>Full saved content</summary><pre className="recovery-content">{JSON.stringify(conflict.local, null, 2)}</pre></details>}
                   </div>
                   <div className="conflict-side">
                     <span className="conflict-side-label">Cloud</span>
                     <strong>{conflict.remote?.name || 'Untitled'}</strong>
                     <small>{formatConflictRevision(conflict.remote)}</small>
                     {conflictDetails(conflict.remote, conflict.resource).map((line) => <p key={line}>{line}</p>)}
+                    {conflict.recoveryID && <details><summary>Full cloud content</summary><pre className="recovery-content">{JSON.stringify(conflict.remote, null, 2)}</pre></details>}
                   </div>
                 </div>
+                {conflict.recoveryID && <p>This is recovered older work. Keep This Device writes the saved content to this account; a newer cloud revision will block the write. The original remains in the recovery export.</p>}
                 <div className="conflict-actions">
                   <button
                     className="btn btn-secondary btn-sm"
