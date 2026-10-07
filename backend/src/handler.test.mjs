@@ -993,3 +993,24 @@ test('positive recovery revision cannot resurrect a hard-deleted record after a 
   assert.equal(JSON.parse(retried.body).conflict.actualRevision, 0);
   assert.equal(db.items.has('USER#dev-user-local|EXERCISE#recovery-only'), false);
 });
+
+test('workout setup choice round-trips and legacy saves retain it only in the same account/context', async () => {
+  const headers = { authorization: 'Bearer dev-bypass-token' };
+  const chosen = { exerciseId: 'press', baselineId: 'home', setupProfile: { id: 'home', machine: 'Bench' }, setupSelectionMade: true, targetRIR: 2, sets: [] };
+  const body = { id: 'setup-choice', name: 'Synthetic', date: '2026-10-07', status: 'finished', exerciseItems: [chosen] };
+  let response = await handler(event('PUT', '/logs/setup-choice', body, headers));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).exerciseItems[0].setupSelectionMade, true);
+  const legacy = { ...chosen };
+  delete legacy.setupSelectionMade;
+  response = await handler(event('PUT', '/logs/setup-choice', { ...body, expectedRevision: 1, exerciseItems: [legacy] }, headers));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).exerciseItems[0].setupSelectionMade, true);
+  response = await handler(event('PUT', '/logs/setup-choice', { ...body, expectedRevision: 2, exerciseItems: [{ ...legacy, setupProfile: { id: 'gym', machine: 'Cable' }, baselineId: 'gym' }] }, headers));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).exerciseItems[0].setupSelectionMade, undefined);
+  const other = await createAppSession({ sub: 'other-setup-user', name: 'Synthetic Other', email: 'other@example.invalid' });
+  response = await handler(event('PUT', '/logs/setup-choice', { ...body, expectedRevision: 0, exerciseItems: [legacy] }, { authorization: `Bearer ${other.token}` }));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).exerciseItems[0].setupSelectionMade, undefined);
+});

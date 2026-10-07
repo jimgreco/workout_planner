@@ -279,6 +279,7 @@ struct WorkoutLogView: View {
             onEndRest: endRest,
             onExtendRest: extendRest,
             onChanged: liveCardChanged,
+            onSetupChanged: builderChanged,
             onTextChanged: builderTextChanged,
             onEditExercise: { exercise in editingExercise = exercise }
         )
@@ -446,6 +447,7 @@ struct WorkoutLogView: View {
                 activeExerciseIndex: activeExerciseIndex,
                 activeSetIndex: activeSetIndex,
                 planningMode: isPlanningMode,
+                prepareNewExercise: isEditing ? nil : { prepopulated($0) },
                 onSetCompleted: markSetCompleted,
                 onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
                 onEditExercise: { exercise in editingExercise = exercise },
@@ -809,7 +811,8 @@ struct WorkoutLogView: View {
     }
 
     private func prepopulated(_ item: ExerciseItem, program: TrainingProgram? = nil) -> ExerciseItem {
-        let last = lastFinishedItem(for: item.exerciseId, baselineId: item.baselineId ?? item.setupProfile?.id)
+        let equipment = newWorkoutEquipment(item, exercise: store.exercise(id: item.exerciseId), logs: store.logs)
+        let last = equipment.lastItem
         let isUnilateral = item.useIndividualReps ?? (store.exercise(id: item.exerciseId)?.isUnilateral == true)
         let hitTarget = program != nil ? exerciseHitTarget(templateSets: item.sets, lastSets: last?.sets ?? []) : false
         let hitCap = program != nil ? exerciseHitRepCap(templateSets: item.sets, lastSets: last?.sets ?? [], cap: Double(program?.progression?.maxReps ?? 12)) : false
@@ -870,9 +873,9 @@ struct WorkoutLogView: View {
             description: item.description,
             useIndividualReps: item.useIndividualReps,
             sets: sets,
-            baselineId: last?.baselineId ?? item.baselineId,
-            techniqueNote: last?.techniqueNote ?? item.techniqueNote,
-            setupProfile: store.exercise(id: item.exerciseId)?.currentSetup(last?.setupProfile ?? item.setupProfile),
+            baselineId: equipment.baselineId,
+            techniqueNote: equipment.techniqueNote,
+            setupProfile: equipment.setupProfile,
             targetRIR: item.targetRIR
         )
     }
@@ -1022,18 +1025,6 @@ struct WorkoutLogView: View {
             reps: formatProgressionNumber(targetReps),
             weight: targetWeight > 0 ? formatProgressionNumber(targetWeight) : ""
         )
-    }
-
-    private func lastFinishedItem(for exerciseId: String, baselineId: String? = nil) -> ExerciseItem? {
-        let finished = store.logs
-            .filter { $0.status == "finished" }
-            .sorted { $0.date > $1.date }
-        for log in finished {
-            if let item = log.exerciseItems.first(where: { $0.exerciseId == exerciseId && (baselineId == nil || $0.baselineId == baselineId) }) {
-                return item
-            }
-        }
-        return nil
     }
 
     private func nextProgramWorkout(program: TrainingProgram) -> WorkoutProgramStart? {
@@ -1717,6 +1708,7 @@ private struct WorkoutLiveActivityCard: View {
     let onEndRest: (Int, Int) -> Void
     let onExtendRest: (Int, Int, Int) -> Void
     let onChanged: () -> Void
+    let onSetupChanged: () -> Void
     let onTextChanged: () -> Void
     let onEditExercise: (Exercise) -> Void
     @State private var repModeByExercise: [String: WorkoutLiveRepMode] = [:]
@@ -1995,7 +1987,7 @@ private struct WorkoutLiveActivityCard: View {
                     .padding(.horizontal, 12)
                     .background(Theme.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
 
-                    EquipmentSetupPicker(item: Binding(get: { items[context.exerciseIndex] }, set: { items[context.exerciseIndex] = $0 }), logs: logs, compact: true, onChanged: onChanged)
+                    EquipmentSetupPicker(item: Binding(get: { items[context.exerciseIndex] }, set: { items[context.exerciseIndex] = $0 }), logs: logs, compact: true, onChanged: onSetupChanged)
 
                     Text("Technique note")
                         .font(.caption.weight(.bold))

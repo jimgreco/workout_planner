@@ -1,11 +1,11 @@
 import { pauseWorkout, resumeWorkout, finishWorkoutTiming, formatWorkoutDuration } from '../workoutTiming.js';
-import { currentSetup } from '../equipmentSetups.js';
+import { newWorkoutEquipment } from '../equipmentSetups.js';
 import { activeProgramForDate, routinePrescription } from '../programs.js';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Check, X, Clock, Trophy, Clipboard, Trash2, Pause, Play } from 'lucide-react';
 import WorkoutBuilder from '../components/WorkoutBuilder.jsx';
 import Modal from '../components/Modal.jsx';
-import { saveLog, deleteLog, saveExercise } from '../api.js';
+import { saveLog, deleteLog, saveExercise, getLogs } from '../api.js';
 import { ExerciseFormFields } from './Exercises.jsx';
 import { cleanExerciseForm } from '../exerciseForm.js';
 import { lastWeightTypesByExerciseId } from '../workoutHistory.js';
@@ -18,21 +18,6 @@ import {
   personalBestIdsForWorkout,
   hasPersonalBestContext,
 } from '../progress.js';
-
-/**
- * Find the most recent finished log containing a given exercise and return
- * its entry so we can pre-populate the new entry.
- */
-function getLastItemForExercise(exerciseId, logs, baselineId) {
-  const finished = logs
-    .filter((l) => l.status === 'finished')
-    .sort((a, b) => (b.date > a.date ? 1 : -1));
-  for (const log of finished) {
-    const item = (log.exerciseItems || []).find((i) => i.exerciseId === exerciseId && (!baselineId || i.baselineId === baselineId));
-    if (item) return JSON.parse(JSON.stringify(item));
-  }
-  return null;
-}
 
 function startOfToday() {
   const d = new Date();
@@ -279,7 +264,7 @@ export default function WorkoutLog({
       return;
     }
     // Check for an in-progress workout
-    const active = logs.find((l) => l.status === 'active' || l.status === 'planning');
+    const active = (getLogs() ?? logs).find((l) => l.status === 'active' || l.status === 'planning');
     if (active) {
       setWorkoutId(active.id);
       setName(active.name || '');
@@ -300,7 +285,7 @@ export default function WorkoutLog({
     const program = initialProgram || (active?.schedule.some(day=>day.templateId===initialTemplate.id) ? active : null);
     prescriptionRef.current = routinePrescription(initialTemplate, program, date);
     const templateItems = prescriptionRef.current.exerciseItems.map((item) => {
-      const lastItem = getLastItemForExercise(item.exerciseId, logs, item.baselineId || item.setupProfile?.id);
+      const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs);
       const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
       const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
       const weightType = lastItem?.weightType || item.weightType || 'weight';
@@ -310,9 +295,7 @@ export default function WorkoutLog({
         weightType,
         restTargetSeconds: item.restTargetSeconds,
         supersetGroup: item.supersetGroup,
-        baselineId: lastItem?.baselineId || item.baselineId,
-        techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote,
-        setupProfile: currentSetup(exercises.find(exercise => exercise.id === item.exerciseId), lastItem?.setupProfile ?? item.setupProfile),
+        ...equipmentContext,
         description: item.description,
         useIndividualReps: item.useIndividualReps,
         sets: item.sets.map((s, si) => {
@@ -439,25 +422,22 @@ export default function WorkoutLog({
 
   // ── Handle exercise changes from WorkoutBuilder ──────────────────────────
   function handleItemsChange(newItems) {
-    // If new exercise was added, pre-populate weights from last workout
-    if (newItems.length > items.length) {
-      const addedItem = newItems[newItems.length - 1];
-      const lastItem = getLastItemForExercise(addedItem.exerciseId, logs);
-      
-      newItems = newItems.map((item, i) => {
-        if (i !== newItems.length - 1) return item;
-        const weightType = lastItem?.weightType || item.weightType || 'weight';
-        
-        const merged = item.sets.map((s, si) => {
-          const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
-          if (lastItem && lastItem.sets && si < lastItem.sets.length) {
-            return { reps: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType || weightType };
-          }
-          return { reps: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
-        });
-        return { ...item, sets: merged, weightType, baselineId: lastItem?.baselineId || item.baselineId, techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote, setupProfile: currentSetup(exercises.find(exercise => exercise.id === item.exerciseId), lastItem?.setupProfile ?? item.setupProfile) };
+    // Only newly added/replaced exercise identities receive defaults. Reordering,
+    // refreshes, navigation and explicit clearing keep the current session choice.
+    const existingIDs = new Set(items.map(item => item.exerciseId));
+    if (!isEditing.current) newItems = newItems.map(item => {
+      if (existingIDs.has(item.exerciseId)) return item;
+      const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs);
+      const weightType = lastItem?.weightType || item.weightType || 'weight';
+      const sets = item.sets.map((s, si) => {
+        const targetReps = s.reps || s.placeholderReps || String(settings.defaultReps);
+        if (lastItem?.sets?.[si]) {
+          return { ...s, reps: '', repsLeft: '', repsRight: '', weight: '', placeholderReps: `${lastItem.sets[si].reps} (${targetReps})`, placeholderWeight: lastItem.sets[si].weight, placeholderWeightType: lastItem.weightType || weightType };
+        }
+        return { ...s, reps: '', repsLeft: '', repsRight: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
       });
-    }
+      return { ...item, ...equipmentContext, sets, weightType };
+    });
 
     latestItemsRef.current = newItems;
     setItems(newItems);
@@ -469,7 +449,15 @@ export default function WorkoutLog({
       autoSave(id, { name, date, notes, readiness, items: newItems, startTime: null, status: 'planning' });
     } else if (workoutId) {
       const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
-      scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
+      const data = { name, date, notes, readiness, items: newItems, startTime, status };
+      const setupChanged = newItems.some(item => {
+        const previous = items.find(entry => entry.exerciseId === item.exerciseId);
+        return item.setupSelectionMade && (!previous?.setupSelectionMade || item.setupProfile !== previous?.setupProfile || item.baselineId !== previous?.baselineId);
+      });
+      if (setupChanged) {
+        clearTimeout(saveTimer.current);
+        autoSave(workoutId, data);
+      } else scheduleAutoSave(workoutId, data);
     }
   }
 
@@ -664,7 +652,7 @@ export default function WorkoutLog({
     const newItemsFromTemplate = (t.exerciseItems || [])
       .filter(item => !currentExerciseIds.has(item.exerciseId))
       .map((item) => {
-        const lastItem = getLastItemForExercise(item.exerciseId, logs, item.baselineId || item.setupProfile?.id);
+        const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs);
         const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
         const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
         const weightType = lastItem?.weightType || item.weightType || 'weight';
@@ -674,10 +662,8 @@ export default function WorkoutLog({
           weightType,
           restTargetSeconds: item.restTargetSeconds,
           supersetGroup: item.supersetGroup,
-          baselineId: lastItem?.baselineId || item.baselineId,
-        techniqueNote: lastItem?.techniqueNote ?? item.techniqueNote,
-        setupProfile: currentSetup(exercises.find(exercise => exercise.id === item.exerciseId), lastItem?.setupProfile ?? item.setupProfile),
-        description: item.description,
+          ...equipmentContext,
+          description: item.description,
           useIndividualReps: item.useIndividualReps,
           sets: item.sets.map((s, si) => {
             const targetReps = plannedRepText(s, String(settings.defaultReps));

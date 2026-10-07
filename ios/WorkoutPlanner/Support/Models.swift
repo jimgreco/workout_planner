@@ -278,6 +278,7 @@ struct WorkoutPrescription: Codable, Equatable {
 
 struct ExerciseItem: Codable, Identifiable, Equatable {
     var setupProfile: EquipmentSetup?
+    var setupSelectionMade: Bool?
     var baselineId: String?
     var techniqueNote: String?
     var id: String { exerciseId }
@@ -291,8 +292,9 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     var targetRIR: Int?
     var sets: [WorkoutSet]
 
-    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil, setupProfile: EquipmentSetup? = nil, targetRIR: Int? = nil) {
+    init(exerciseId: String, weightType: String? = "weight", restTargetSeconds: Int? = nil, supersetGroup: String? = nil, description: String? = nil, useIndividualReps: Bool? = nil, sets: [WorkoutSet], baselineId: String? = nil, techniqueNote: String? = nil, setupProfile: EquipmentSetup? = nil, targetRIR: Int? = nil, setupSelectionMade: Bool? = nil) {
         self.setupProfile = setupProfile
+        self.setupSelectionMade = setupSelectionMade
         self.baselineId = baselineId
         self.techniqueNote = techniqueNote
         self.exerciseId = exerciseId
@@ -306,7 +308,7 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case exerciseId, weightType, restTargetSeconds, supersetGroup, description, useIndividualReps, targetRIR, sets, baselineId, techniqueNote, setupProfile
+        case exerciseId, weightType, restTargetSeconds, supersetGroup, description, useIndividualReps, targetRIR, sets, baselineId, techniqueNote, setupProfile, setupSelectionMade
     }
 
     func encode(to encoder: Encoder) throws {
@@ -326,7 +328,48 @@ struct ExerciseItem: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(baselineId, forKey: .baselineId)
         try container.encodeIfPresent(techniqueNote, forKey: .techniqueNote)
         try container.encodeIfPresent(setupProfile, forKey: .setupProfile)
+        try container.encodeIfPresent(setupSelectionMade, forKey: .setupSelectionMade)
     }
+}
+
+struct NewWorkoutEquipment {
+    var setupProfile: EquipmentSetup?
+    var baselineId: String?
+    var techniqueNote: String?
+    var lastItem: ExerciseItem?
+}
+
+// Resolve once, at new-item creation. The account's finished logs are the durable
+// preference; cancelled plans/active drafts never replace it. Session snapshots
+// and historical records must not be passed through this defaulting operation.
+func newWorkoutEquipment(_ item: ExerciseItem, exercise: Exercise?, logs: [WorkoutLog]) -> NewWorkoutEquipment {
+    guard let exercise, exercise.id == item.exerciseId else { return NewWorkoutEquipment() }
+    let finished = logs.filter { $0.status == "finished" }.sorted {
+        let left = $0.endTime ?? $0.startTime ?? $0.date
+        let right = $1.endTime ?? $1.startTime ?? $1.date
+        return left == right ? $0.id > $1.id : left > right
+    }.flatMap(\.exerciseItems).filter { $0.exerciseId == item.exerciseId
+        && ($0.setupSelectionMade == true || $0.sets.contains(where: hasRecordedWorkoutReps)) }
+    let source = finished.first {
+        (item.baselineId == nil || $0.baselineId == item.baselineId)
+            && (item.setupProfile == nil || $0.setupProfile?.id == item.setupProfile?.id)
+    }
+    let requested = item.setupProfile ?? source?.setupProfile
+    let profile = exercise.currentSetup(requested)
+    if let requested, profile == nil {
+        // A deleted setup must not silently fall back to a different machine.
+        return NewWorkoutEquipment(baselineId: item.baselineId == requested.id ? nil : item.baselineId, techniqueNote: item.techniqueNote)
+    }
+    let baseline = item.baselineId ?? source?.baselineId ?? profile?.id
+    let last = finished.first { entry in
+        var current = entry
+        current.setupProfile = profile
+        return entry.sets.contains(where: hasRecordedWorkoutReps)
+            && entry.setupProfile?.id == profile?.id
+            && (entry.baselineId ?? entry.setupProfile?.id) == baseline
+            && smithLoadContext(entry) == smithLoadContext(current)
+    }
+    return NewWorkoutEquipment(setupProfile: profile, baselineId: baseline, techniqueNote: item.techniqueNote ?? source?.techniqueNote, lastItem: last)
 }
 
 // Live Activity actions edit set values, never the app's exercise/set structure.

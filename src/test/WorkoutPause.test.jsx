@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import WorkoutLog from '../pages/WorkoutLog.jsx';
 import { saveLog, deleteLog } from '../api.js';
 vi.mock('../api.js', () => ({
-  getEquipment: vi.fn(() => []), getTemplates: vi.fn(() => []), getExercises: vi.fn(() => []),
+  getLogs: vi.fn(() => undefined), getEquipment: vi.fn(() => []), getTemplates: vi.fn(() => []), getExercises: vi.fn(() => []),
   saveLog: vi.fn(async log => [log]), deleteLog: vi.fn(async () => []), saveExercise: vi.fn(async exercise => [exercise]),
 }));
 const start = Date.parse('2026-10-05T10:00:00Z');

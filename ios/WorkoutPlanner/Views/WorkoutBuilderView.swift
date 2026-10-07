@@ -62,6 +62,7 @@ struct WorkoutBuilderView: View {
     var activeExerciseIndex: Int?
     var activeSetIndex: Int?
     var planningMode = false
+    var prepareNewExercise: ((ExerciseItem) -> ExerciseItem)?
     var onSetCompleted: ((Int, Int) -> Void)?
     var onResetPersonalBest: ((Exercise) -> Void)?
     var onEditExercise: ((Exercise) -> Void)?
@@ -234,14 +235,15 @@ struct WorkoutBuilderView: View {
                     weight: ""
                 )
         }
-        items.append(ExerciseItem(
+        let item = ExerciseItem(
             exerciseId: exercise.id,
             weightType: lastWeightTypeByExerciseId[exercise.id] ?? "weight",
             restTargetSeconds: (defaultRestTargetSeconds ?? 0) > 0 ? defaultRestTargetSeconds : nil,
             description: exercise.description ?? "",
             useIndividualReps: false,
             sets: sets
-        ))
+        )
+        items.append(prepareNewExercise?(item) ?? item)
         onChanged?()
     }
 
@@ -255,6 +257,10 @@ struct WorkoutBuilderView: View {
         let previousWeightType = items[index].weightType ?? "weight"
         let nextWeightType = lastWeightTypeByExerciseId[exercise.id] ?? previousWeightType
         items[index].exerciseId = exercise.id
+        items[index].setupProfile = nil
+        items[index].setupSelectionMade = nil
+        items[index].baselineId = nil
+        items[index].techniqueNote = nil
         if previousWeightType != nextWeightType {
             for setIndex in items[index].sets.indices {
                 let placeholder = items[index].sets[setIndex].placeholderWeight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -264,6 +270,7 @@ struct WorkoutBuilderView: View {
             }
         }
         items[index].weightType = nextWeightType
+        if let prepareNewExercise { items[index] = prepareNewExercise(items[index]) }
         if (items[index].description ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             items[index].description = exercise.description ?? ""
         }
@@ -2116,6 +2123,7 @@ struct EquipmentSetupPicker: View {
         exercise.setups(logs: logs, templates: store.templates, current: item.setupProfile)
     }
     private func useProfile(_ profile: EquipmentSetup?) {
+        item.setupSelectionMade = true
         item.setupProfile = profile; item.baselineId = profile?.id ?? UUID().uuidString
         for index in item.sets.indices { item.sets[index].placeholderWeight = "" }
         onChanged()
@@ -2140,7 +2148,7 @@ struct EquipmentSetupPicker: View {
                 var updated = exercise
                 updated.equipmentSetups = profiles.filter { $0.id != saved.id } + [saved]
                 try await store.saveExercise(updated)
-                if editingExisting { item.setupProfile = saved; onChanged() }
+                if editingExisting { item.setupProfile = saved; item.setupSelectionMade = true; onChanged() }
                 else { useProfile(saved) }
             }
         }

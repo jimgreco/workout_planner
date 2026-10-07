@@ -192,3 +192,20 @@ frontend, using only a disposable clean Git archive.
 `docs/offline-account-boundaries.md` describes the explicit review flow. Keep retained v1 bytes immutable. Recovery attribution and staged comparisons live together in `forge.legacyRecoveryReview.v1`; they never enter automatic pending queues. Recovered writes require the reviewed revision, exact account/session fencing and no newer pending change. Do not erase decision receipts to retry a historical record. Set aside is reversible and retains the original; deletion/unknown ownership require separate review.
 
 Recovery requires an existing cloud copy with a positive revision. Logs, exercises, routines and programs can be hard-deleted, so absence cannot distinguish never-saved work from a deliberate deletion. Missing/deleted/unversioned copies are export-only; never issue a recovery write with expectedRevision zero. A lost successful response followed by another client’s deletion must remain a conflict on retry.
+
+## Remembered workout equipment
+
+`newWorkoutEquipment` in `src/equipmentSetups.js` and `Models.swift` derives the
+last setup from account-owned finished logs, keyed by exercise ID. An occurrence
+qualifies only with recorded reps (including warmups) or `setupSelectionMade:
+true`, which the workout picker sets for an explicit choice, including
+Unspecified. Untouched/skipped defaults, plans and active/discarded sessions do
+not teach a preference. Session time orders usage; editing an old log does not
+promote its `updatedAt`. Explicit routine setup/baseline wins; resolve only on
+new-item creation, never resume/render. Deletion tombstones block defaults
+without rewriting historical snapshots. Current library details win, and changed
+Smith resistance excludes stale load history. Setup choices save immediately;
+resume reads the account's pending intent while requests are in flight. Keep the
+API validator and optional native field aligned. Run
+`ios/Tests/RememberEquipmentSetupCheck.swift` with `Models.swift` and the real
+store `AccountOfflineSyncCheck.swift` for offline and account boundaries.

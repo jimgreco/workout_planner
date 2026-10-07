@@ -632,7 +632,14 @@ export async function deleteLog(id) {
 
 export function getTemplates() { context(); return [...(cache.templates ?? [])].sort((a, b) => a.name.localeCompare(b.name)); }
 export function getPrograms() { context(); return [...(cache.programs ?? [])].sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)) || a.name.localeCompare(b.name)); }
-export function getLogs() { context(); return cache.logs ?? []; }
+export function getLogs() {
+  const captured = context();
+  // A setup choice is durable before its response arrives. Resume the latest
+  // owned intent, including deletions, during rapid navigation or a slow request.
+  const logs = mergePendingLogs(cache.logs ?? [], captured.owner);
+  assertCurrent(captured);
+  return logs;
+}
 
 // A retry acknowledges only the exact change it sent. Replacing the queue from
 // a snapshot would discard edits queued while the network request was pending.

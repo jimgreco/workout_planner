@@ -186,6 +186,62 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         await restoredStore.loadData()
         precondition(!restoredStore.logs.contains { $0.id == paused.id })
         precondition(restoredStore.logs.first?.status == "finished")
+        // Equipment preference uses the same owned snapshot/queue after an offline
+        // finish. A tentative active choice and a discarded session cannot replace it.
+        let setup = EquipmentSetup(id: "home", machine: "Synthetic bench")
+        let setupExercise = Exercise(id: "press", name: "Press", equipmentSetups: [setup])
+        try await restoredStore.saveExercise(setupExercise)
+        let selected = ExerciseItem(exerciseId: "press", sets: [], baselineId: setup.id, setupProfile: setup, targetRIR: 2, setupSelectionMade: true)
+        let selectionLog = WorkoutLog(id: "setup-finished", name: "Synthetic", date: "2026-10-07", exerciseItems: [selected], status: "finished")
+        try await restoredStore.saveLog(selectionLog)
+        func preferred(_ source: WorkoutStore) -> EquipmentSetup? {
+            newWorkoutEquipment(ExerciseItem(exerciseId: "press", sets: []), exercise: source.exercise(id: "press"), logs: source.logs).setupProfile
+        }
+        let setupAuth = AuthManager()
+        let setupStore = WorkoutStore(auth: setupAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+        setupAuth.login("pause-owner")
+        await setupStore.loadData()
+        precondition(setupStore.isUsingOfflineSnapshot && preferred(setupStore) == setup)
+        precondition(setupStore.logs.first { $0.id == selectionLog.id }?.exerciseItems[0].setupSelectionMade == true)
+        var tentative = selectionLog; tentative.id = "setup-discard"; tentative.status = "active"; tentative.date = "2026-10-08"
+        tentative.exerciseItems[0].setupProfile = nil
+        SyntheticProtocol.hold = true
+        let pendingSetupCount = SyntheticProtocol.count()
+        let savingChoice = Task { try await setupStore.saveLog(tentative) }
+        for _ in 0..<10000 { if SyntheticProtocol.count() > pendingSetupCount { break }; await Task.yield() }
+        precondition(setupStore.activeWorkout()?.id == tentative.id)
+        precondition(setupStore.activeWorkout()?.exerciseItems[0].setupProfile == nil)
+        precondition(setupStore.activeWorkout()?.exerciseItems[0].setupSelectionMade == true)
+        precondition(preferred(setupStore) == setup)
+        SyntheticProtocol.finish(fail: true)
+        _ = try await savingChoice.value
+        let pendingDeleteCount = SyntheticProtocol.count()
+        let deletingChoice = Task { try await setupStore.deleteLog(tentative.id) }
+        for _ in 0..<10000 { if SyntheticProtocol.count() > pendingDeleteCount { break }; await Task.yield() }
+        precondition(setupStore.activeWorkout() == nil)
+        SyntheticProtocol.finish(fail: true)
+        try await deletingChoice.value
+        precondition(preferred(setupStore) == setup)
+        // Hold a source load, switch accounts, then release a late offline result.
+        SyntheticProtocol.hold = true
+        let requestCount = SyntheticProtocol.count()
+        let lateLoad = Task { await setupStore.loadData() }
+        for _ in 0..<10000 { if SyntheticProtocol.count() >= requestCount + 1 { break }; await Task.yield() }
+        precondition(SyntheticProtocol.count() == requestCount + 1)
+        setupAuth.login("setup-other")
+        SyntheticProtocol.finish(fail: true)
+        await lateLoad.value
+        precondition(preferred(setupStore) == nil && setupStore.logs.isEmpty)
+        SyntheticProtocol.hold = false
+        setupAuth.login("pause-owner")
+        await setupStore.loadData()
+        precondition(preferred(setupStore) == setup)
+        try await setupStore.deleteEquipmentSetup(exerciseID: "press", setupID: setup.id)
+        precondition(preferred(setupStore) == nil)
+        precondition(setupStore.logs.first { $0.id == selectionLog.id }?.exerciseItems[0].setupProfile == setup)
+        await setupStore.loadData()
+        precondition(preferred(setupStore) == nil)
+        print("PASS equipment preference: explicit choice, offline finish/restart, draft/discard, late source load/account switch, deleted setup and unchanged history")
         // Explicit legacy recovery stages a retained comparison; no historical write.
         let recoveryAuth = AuthManager()
         let recoveryStore = WorkoutStore(auth: recoveryAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)

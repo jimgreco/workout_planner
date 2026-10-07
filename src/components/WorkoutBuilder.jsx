@@ -355,7 +355,7 @@ export default function WorkoutBuilder({
           if (!String(set.placeholderWeight ?? '').trim() || set.placeholderWeightType) return set;
           return { ...set, placeholderWeightType: previousWeightType };
         });
-      return { ...item, exerciseId, weightType, sets, description: item.description || replacement.description || '' };
+      return { ...item, exerciseId, weightType, sets, setupProfile: undefined, setupSelectionMade: undefined, baselineId: undefined, techniqueNote: undefined, description: item.description || replacement.description || '' };
     }));
   }
 
@@ -946,7 +946,7 @@ function EquipmentSetup({ exercise, item, logs, readOnly, onChange, onExercisesC
   const [draft, setDraft] = useState(null);
   function applyProfile(profile) {
     const sets = item.sets.map(set => ({ ...set, placeholderWeight: '', placeholderReps: set.placeholderReps?.match(/\(([^)]+)\)$/)?.[1] || set.placeholderReps }));
-    onChange({ setupProfile: profile, baselineId: profile?.id || crypto.randomUUID(), sets });
+    onChange({ setupProfile: profile, setupSelectionMade: true, baselineId: profile?.id || crypto.randomUUID(), sets });
   }
   const profiles = exerciseSetups(exercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile);
   const deletedCurrent = exercise?.deletedEquipmentSetupIds?.includes(item.setupProfile?.id);
@@ -960,7 +960,7 @@ function EquipmentSetup({ exercise, item, logs, readOnly, onChange, onExercisesC
     const latestExercise = getExercises().find(entry => entry.id === item.exerciseId) || exercise;
     const equipmentSetups = [...exerciseSetups(latestExercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile).filter(entry => entry.id !== profile.id), profile];
     if (latestExercise) onExercisesChanged(await saveExercise({ ...latestExercise, equipmentSetups }));
-    if (draft.id) onChange({ setupProfile: profile });
+    if (draft.id) onChange({ setupProfile: profile, setupSelectionMade: true });
     else applyProfile(profile);
     setDraft(null);
   }

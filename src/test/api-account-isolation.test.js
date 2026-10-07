@@ -164,3 +164,59 @@ it('restores paused timing from its offline queue and preserves resume, finish a
   await initData();
   expect(getLogs()).toEqual([]);
 });
+
+it('equipment choices survive offline queue restart and remain account-bound through late responses and deletion', async () => {
+  const { newWorkoutEquipment } = await import('../equipmentSetups.js');
+  const setup = { id: 'home', machine: 'Synthetic bench' };
+  const exercise = { id: 'press', name: 'Press', equipmentSetups: [setup] };
+  const item = { exerciseId: 'press', setupProfile: setup, baselineId: setup.id, setupSelectionMade: true, targetRIR: 2, sets: [] };
+  const finished = { id: 'setup-session', name: 'Synthetic', date: '2026-10-07', status: 'finished', exerciseItems: [item] };
+  const preference = () => newWorkoutEquipment({ exerciseId: 'press' }, getExercises().find(e => e.id === 'press'), getLogs()).setupProfile;
+  globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('offline'));
+  await saveExercise(exercise); await saveLog(finished);
+  expect(preference()).toEqual(setup);
+  resetData();
+  fetch.mockImplementation(async url => response(url.endsWith('/settings') ? {} : []));
+  await initData();
+  expect(preference()).toEqual(setup);
+  expect(getLogs()[0].exerciseItems[0]).toMatchObject({ setupSelectionMade: true, targetRIR: 2 });
+  // A held default/source load cannot leak into another account, including A→B→A.
+  const held = deferred(); fetch.mockReturnValue(held.promise);
+  const loading = initData();
+  const rejected = expect(loading).rejects.toMatchObject({ name: 'AccountChangedError' });
+  login('B'); resetData();
+  held.resolve(response([finished])); await rejected;
+  expect(preference()).toBeUndefined();
+  expect(getLogs()).toEqual([]);
+  login('A'); resetData();
+  fetch.mockImplementation(async url => response(url.endsWith('/settings') ? {} : []));
+  await initData();
+  expect(preference()).toEqual(setup);
+  fetch.mockRejectedValue(new TypeError('offline'));
+  await saveExercise({ ...exercise, equipmentSetups: [], deletedEquipmentSetupIds: [setup.id] });
+  expect(preference()).toBeUndefined();
+  expect(getLogs()[0].exerciseItems[0].setupProfile).toEqual(setup);
+  resetData();
+  fetch.mockImplementation(async url => response(url.endsWith('/settings') ? {} : []));
+  await initData();
+  expect(preference()).toBeUndefined();
+});
+
+it('resumes the latest pending setup before an older response and hides queued deletion', async () => {
+  const setupA = { id: 'a', machine: 'A' }, setupB = { id: 'b', machine: 'B' };
+  const log = profile => ({ id: 'slow-setup', status: 'active', exerciseItems: [{ exerciseId: 'press', setupProfile: profile, setupSelectionMade: true, sets: [] }] });
+  const first = deferred(), second = deferred();
+  globalThis.fetch = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const older = saveLog(log(setupA));
+  expect(getLogs()[0].exerciseItems[0].setupProfile).toEqual(setupA);
+  const newer = saveLog(log(setupB));
+  expect(getLogs()[0].exerciseItems[0].setupProfile).toEqual(setupB);
+  first.resolve(response(log(setupA))); await older;
+  expect(getLogs()[0].exerciseItems[0].setupProfile).toEqual(setupB);
+  second.resolve(response(log(setupB))); await newer;
+  const deletion = deferred(); fetch.mockReturnValue(deletion.promise);
+  const deleting = deleteLog('slow-setup');
+  expect(getLogs()).toEqual([]);
+  deletion.resolve(response(null, 204)); await deleting;
+  expect(getLogs()).toEqual([]);
+});

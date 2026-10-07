@@ -884,7 +884,8 @@ final class WorkoutStore: ObservableObject {
     }
 
     func activeWorkout() -> WorkoutLog? {
-        logs.first { $0.status == "active" || $0.status == "planning" }
+        // Pending intent wins while the save is still in flight.
+        mergePendingLogs(logs).first { $0.status == "active" || $0.status == "planning" }
     }
 
     func exercise(id: String) -> Exercise? {

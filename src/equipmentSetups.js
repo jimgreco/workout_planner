@@ -1,3 +1,6 @@
+import { hasRecordedReps } from './setEvidence.js';
+import { smithLoadContext } from './weight.js';
+
 export const setupFields = {
   gym: 'Gym',
   machine: 'Equipment / model',
@@ -42,6 +45,34 @@ export function exerciseSetups(exercise, logs = [], templates = [], current) {
 export function currentSetup(exercise, profile) {
   if (exercise?.deletedEquipmentSetupIds?.includes(profile?.id)) return undefined;
   return exercise?.equipmentSetups?.find(entry => entry.id === profile?.id) || profile;
+}
+
+// Call only when creating a new session item, never when rendering/resuming it.
+// Finished logs are the account-owned, offline/synced preference record. Planning
+// and active drafts cannot promote a tentative choice, and an unspecified latest
+// choice must not resurrect an older setup. updatedAt is deliberately ignored:
+// editing an old workout does not make it the most recently performed workout.
+export function newWorkoutEquipment(item, exercise, logs = []) {
+  if (!exercise || exercise.id !== item.exerciseId) return {};
+  const finished = logs.filter(log => log.status === 'finished')
+    .sort((a, b) => (b.endTime || b.startTime || b.date || '').localeCompare(a.endTime || a.startTime || a.date || '') || (b.id || '').localeCompare(a.id || ''))
+    .flatMap(log => log.exerciseItems || []).filter(entry => entry.exerciseId === item.exerciseId
+      && (entry.setupSelectionMade === true || entry.sets?.some(hasRecordedReps)));
+  const source = finished.find(entry => (!item.baselineId || entry.baselineId === item.baselineId)
+    && (!item.setupProfile || entry.setupProfile?.id === item.setupProfile.id));
+  const requested = item.setupProfile || source?.setupProfile;
+  const setupProfile = currentSetup(exercise, requested);
+  if (requested && !setupProfile) {
+    // Do not fall back to some other, older machine after a deletion.
+    return { baselineId: item.baselineId === requested.id ? undefined : item.baselineId, techniqueNote: item.techniqueNote };
+  }
+  const baselineId = item.baselineId || source?.baselineId || setupProfile?.id;
+  const techniqueNote = item.techniqueNote ?? source?.techniqueNote;
+  const lastItem = finished.find(entry => entry.sets?.some(hasRecordedReps)
+    && entry.setupProfile?.id === setupProfile?.id
+    && (entry.baselineId || entry.setupProfile?.id) === baselineId
+    && smithLoadContext(entry) === smithLoadContext({ ...entry, setupProfile }));
+  return { setupProfile, baselineId, techniqueNote, lastItem };
 }
 
 export function removingSetup(exercise, id) {

@@ -332,3 +332,21 @@ test('planned targetRIR is nullable, bounded and distinct from actual effort', (
   assert.equal(restored.templates[0].exerciseItems[0].targetRIR, 2);
   assert.equal(restored.logs[0].exerciseItems[0].targetRIR, 2);
 });
+
+test('explicit equipment selection survives log/export validation; older payloads may omit it', () => {
+  const item = { exerciseId: 'press', sets: [], targetRIR: 2, setupSelectionMade: true };
+  const body = { id: 'setup-session', name: 'Synthetic', date: '2026-10-06', exerciseItems: [item], status: 'finished' };
+  const saved = validateLog(body, body.id);
+  assert.equal(saved.exerciseItems[0].setupSelectionMade, true);
+  assert.equal(saved.exerciseItems[0].targetRIR, 2);
+  const restored = validateImport({ data: { exercises: [], templates: [], logs: [saved] } });
+  assert.equal(restored.logs[0].exerciseItems[0].setupSelectionMade, true);
+  delete item.setupSelectionMade;
+  assert.equal(Object.hasOwn(validateLog(body, body.id).exerciseItems[0], 'setupSelectionMade'), false);
+  item.setupSelectionMade = false;
+  assert.equal(validateLog(body, body.id).exerciseItems[0].setupSelectionMade, false);
+  for (const invalid of ['yes', 1, {}]) {
+    item.setupSelectionMade = invalid;
+    assert.throws(() => validateLog(body, body.id), ValidationError);
+  }
+});
