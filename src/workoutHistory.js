@@ -138,3 +138,10 @@ export function routineExerciseWeightAdvice(item = {}, logs = [], { usesTime = f
   }
   return null;
 }
+export function matchesHistorySearch(log, query, exercises) {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const names = new Map(exercises.map(exercise => [exercise.id, exercise.name]));
+  const text = [log.name, log.date, log.notes, ...(log.exerciseItems ?? []).map(item => names.get(item.exerciseId))]
+    .filter(Boolean).join(' ').toLocaleLowerCase();
+  return terms.every(term => text.includes(term));
+}

@@ -8,10 +8,14 @@ struct HistoryView: View {
     @State private var deleteTarget: WorkoutLog?
     @State private var calendarMonth = Date()
     @State private var selectedDate: String?
+    @State private var search = ""
+    @FocusState private var searchFocused: Bool
+    private var isSearching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var finishedLogs: [WorkoutLog] {
         store.personalBestLogs
             .filter { $0.status == "finished" }
+            .filter { matchesHistorySearch($0, query: search, exercises: store.exercises) }
             .sorted { lhs, rhs in
                 if lhs.date == rhs.date { return (lhs.endTime ?? "") > (rhs.endTime ?? "") }
                 return lhs.date > rhs.date
@@ -27,6 +31,27 @@ struct HistoryView: View {
                         Label("Calendar", systemImage: "calendar").tag(HistoryMode.calendar)
                     }
                     .pickerStyle(.segmented)
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
+                        TextField("Workout, exercise, notes, or date", text: $search)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                            .focused($searchFocused)
+                            .onSubmit { searchFocused = false }
+                            .accessibilityLabel("Search workout history")
+                        if !search.isEmpty {
+                            Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                                .accessibilityLabel("Clear search")
+                        }
+                    }
+                    .padding(12)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                    if isSearching {
+                        Text("\(finishedLogs.count) matching \(finishedLogs.count == 1 ? "workout" : "workouts")")
+                            .font(.caption).foregroundStyle(Theme.muted)
+                    }
 
                     if viewMode == .list {
                         listView
@@ -67,7 +92,7 @@ struct HistoryView: View {
     @ViewBuilder
     private var listView: some View {
         if finishedLogs.isEmpty {
-            EmptyState(icon: "calendar", text: "No finished workouts yet. Complete a workout to see it here!")
+            EmptyState(icon: "calendar", text: isSearching ? "No workouts match your search." : "No finished workouts yet. Complete a workout to see it here!")
         } else {
             VStack(spacing: 12) {
                 ForEach(finishedLogs) { log in
@@ -117,7 +142,7 @@ struct HistoryView: View {
 
                     let logs = logsByDate[selectedDate] ?? []
                     if logs.isEmpty {
-                        EmptyState(icon: "calendar.badge.exclamationmark", text: "No workouts logged on this day.")
+                        EmptyState(icon: "calendar.badge.exclamationmark", text: isSearching ? "No matching workouts on this day." : "No workouts logged on this day.")
                     } else {
                         ForEach(logs) { log in
                             HistoryItemView(

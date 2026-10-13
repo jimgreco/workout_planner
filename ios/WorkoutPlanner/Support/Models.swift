@@ -1,5 +1,12 @@
 import Foundation
 
+func matchesHistorySearch(_ log: WorkoutLog, query: String, exercises: [Exercise]) -> Bool {
+    let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace })
+    let names = log.exerciseItems.compactMap { item in exercises.first { $0.id == item.exerciseId }?.name }
+    let text = ([log.name, log.date, log.notes ?? ""] + names).joined(separator: " ").lowercased()
+    return terms.allSatisfy { text.contains($0) }
+}
+
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self

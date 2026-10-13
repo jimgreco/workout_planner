@@ -1,9 +1,10 @@
 import { formatWorkoutDuration } from '../workoutTiming.js';
 import { useState } from 'react';
-import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil, Trash2, ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil, Trash2, ChevronDown, ChevronRight as ChevronRightIcon, Search } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { deleteLog } from '../api.js';
 import { setLabel } from '../progress.js';
+import { matchesHistorySearch } from '../workoutHistory.js';
 
 const DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -101,12 +102,15 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting]       = useState(false);
+  const [search, setSearch]           = useState('');
+  const isSearching = search.trim().length > 0;
 
   const todayStr = toDateStr(now.getFullYear(), now.getMonth(), now.getDate());
 
   // Only show finished workouts
   const finishedLogs = logs
     .filter((l) => l.status === 'finished')
+    .filter((l) => matchesHistorySearch(l, search, exercises))
     .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
 
   const logsByDate = {};
@@ -167,7 +171,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
       return (
         <div className="empty-state">
           <div className="empty-icon"><CalendarIcon size={48} /></div>
-          <p>No finished workouts yet. Complete a workout to see it here!</p>
+          <p>{isSearching ? 'No workouts match your search.' : 'No finished workouts yet. Complete a workout to see it here!'}</p>
         </div>
       );
     }
@@ -240,7 +244,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
 
             {selectedLogs.length === 0 ? (
               <div className="empty-state" style={{ padding: '20px 0' }}>
-                <p className="text-muted">No workouts logged on this day.</p>
+                <p className="text-muted">{isSearching ? 'No matching workouts on this day.' : 'No workouts logged on this day.'}</p>
               </div>
             ) : (
               <div className="history-list">
@@ -284,6 +288,12 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
           </button>
         </div>
       </div>
+
+      <div className="form-group mb-0" style={{ position: 'relative' }}>
+        <Search size={18} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <input type="search" aria-label="Search workout history" placeholder="Workout, exercise, notes, or date" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 40 }} />
+      </div>
+      {isSearching && <div className="text-muted" role="status" style={{ marginTop: 12 }}>{finishedLogs.length} matching {finishedLogs.length === 1 ? 'workout' : 'workouts'} · <button className="btn btn-sm btn-secondary" onClick={() => setSearch('')}>Clear search</button></div>}
 
       <div style={{ marginTop: 24 }}>
         {view === 'list' ? renderListView() : renderCalendarView()}

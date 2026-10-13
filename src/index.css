@@ -1246,6 +1246,7 @@ label {
 }
 
 input[type="text"],
+input[type="search"],
 input[type="number"],
 input[type="date"],
 select,
@@ -3382,6 +3383,7 @@ h3 {
 }
 
 input[type="text"],
+input[type="search"],
 input[type="number"],
 input[type="date"],
 select,
