@@ -289,12 +289,14 @@ export default function WorkoutBuilder({
           reps: lastSet.reps,
           repsLeft: lastSet.repsLeft,
           repsRight: lastSet.repsRight,
+          repMode: lastSet.repMode,
           weight: lastSet.weight,
           placeholderReps: lastSet.placeholderReps,
           placeholderRepsLeft: lastSet.placeholderRepsLeft,
           placeholderRepsRight: lastSet.placeholderRepsRight,
           placeholderWeight: lastSet.placeholderWeight,
           placeholderWeightType: lastSet.placeholderWeightType,
+          completion: planningMode ? undefined : 'unrecorded',
         }],
       };
     });

@@ -1207,6 +1207,7 @@ private struct ExerciseSetsCard: View {
             item.sets[setIndex].placeholderRepsRight = nil
         } else {
             item.sets[setIndex].reps = value
+            item.sets[setIndex].completion = "recorded"
         }
         onTextChanged?()
     }
@@ -1332,6 +1333,7 @@ private struct ExerciseSetsCard: View {
                                 get: { item.sets[setIndex].repsLeft ?? "" },
                                 set: { value in
                                     item.sets[setIndex].repsLeft = value
+                                    item.sets[setIndex].completion = "recorded"
                                     onTextChanged?()
                                 }
                             ),
@@ -1349,6 +1351,7 @@ private struct ExerciseSetsCard: View {
                                 get: { item.sets[setIndex].repsRight ?? "" },
                                 set: { value in
                                     item.sets[setIndex].repsRight = value
+                                    item.sets[setIndex].completion = "recorded"
                                     onTextChanged?()
                                 }
                             ),
@@ -1635,6 +1638,7 @@ private struct ExerciseSetsCard: View {
                         case .right:
                             item.sets[setIndex].repsRight = value
                         }
+                        item.sets[setIndex].completion = "recorded"
                         onTextChanged?()
                     }
                 ),
@@ -1730,18 +1734,7 @@ private struct ExerciseSetsCard: View {
 
     private func addSet() {
         let last = item.sets.last ?? WorkoutSet(reps: String(defaultReps), weight: "")
-        item.sets.append(WorkoutSet(
-            reps: last.reps ?? (planningMode ? "" : String(defaultReps)),
-            repsLeft: planningMode ? nil : last.repsLeft,
-            repsRight: planningMode ? nil : last.repsRight,
-            repMode: planningMode ? nil : last.repMode,
-            weight: last.weight ?? "",
-            placeholderReps: last.placeholderReps,
-            placeholderRepsLeft: planningMode ? nil : last.placeholderRepsLeft,
-            placeholderRepsRight: planningMode ? nil : last.placeholderRepsRight,
-            placeholderWeight: last.placeholderWeight,
-            placeholderWeightType: last.placeholderWeightType
-        ))
+        item.sets.append(last.additionalSet(planningMode: planningMode, defaultReps: defaultReps))
         onChanged?()
     }
 

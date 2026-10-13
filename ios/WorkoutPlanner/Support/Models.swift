@@ -181,6 +181,25 @@ struct WorkoutSet: Codable, Equatable {
     }
 }
 
+extension WorkoutSet {
+    // Convenience values are suggestions until the added set is entered or completed.
+    func additionalSet(planningMode: Bool, defaultReps: Int) -> WorkoutSet {
+        WorkoutSet(
+            reps: reps ?? (planningMode ? "" : String(defaultReps)),
+            repsLeft: planningMode ? nil : repsLeft,
+            repsRight: planningMode ? nil : repsRight,
+            repMode: planningMode ? nil : repMode,
+            weight: weight ?? "",
+            placeholderReps: placeholderReps,
+            placeholderRepsLeft: planningMode ? nil : placeholderRepsLeft,
+            placeholderRepsRight: planningMode ? nil : placeholderRepsRight,
+            placeholderWeight: placeholderWeight,
+            placeholderWeightType: placeholderWeightType,
+            completion: planningMode ? nil : "unrecorded"
+        )
+    }
+}
+
 struct EquipmentSetup: Codable, Identifiable, Equatable {
     var id = UUID().uuidString
     var name = ""

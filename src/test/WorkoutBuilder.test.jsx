@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import WorkoutBuilder from '../components/WorkoutBuilder';
+import { isWorkingSet } from '../setEvidence.js';
 vi.mock('../api.js', () => ({
   getExercises: () => [],
   getTemplates: () => [],
@@ -197,6 +198,18 @@ describe('WorkoutBuilder', () => {
     const updated = onChange.mock.calls[0][0];
     expect(updated[0].sets[1].reps).toBe('8');
     expect(updated[0].sets[1].weight).toBe('135');
+    expect(isWorkingSet(updated[0].sets[1])).toBe(false);
+  });
+
+  it('records an added set only after the user enters its reps', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={onChange} />);
+    fireEvent.click(screen.getByText(/Add Set/i));
+    const added = onChange.mock.lastCall[0];
+    expect(added[0].sets.filter(isWorkingSet)).toHaveLength(1);
+    rerender(<WorkoutBuilder exercises={exercises} items={added} onChange={onChange} />);
+    fireEvent.change(screen.getAllByDisplayValue('8')[1], { target: { value: '9' } });
+    expect(onChange.mock.lastCall[0][0].sets.filter(isWorkingSet)).toHaveLength(2);
   });
 
   it('adds an exercise from the searchable exercise field', () => {

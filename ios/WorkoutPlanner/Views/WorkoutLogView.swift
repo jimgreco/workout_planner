@@ -2303,6 +2303,7 @@ private struct WorkoutLiveActivityCard: View {
             },
             set: { value in
                 set.wrappedValue[keyPath: keyPath] = String(max(0, value))
+                set.wrappedValue.completion = "recorded"
                 onTextChanged()
             }
         )
@@ -2327,6 +2328,7 @@ private struct WorkoutLiveActivityCard: View {
                     set.wrappedValue.repsRight = nil
                     set.wrappedValue.repMode = repMode.rawValue
                 }
+                set.wrappedValue.completion = "recorded"
                 onTextChanged()
             }
         )
