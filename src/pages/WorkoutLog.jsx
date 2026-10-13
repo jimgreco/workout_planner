@@ -401,9 +401,11 @@ export default function WorkoutLog({
   // ── Start the workout (planning → active) ────────────────────────────────
   function handleStartWorkout() {
     if (!workoutId) return;
+    blurActiveEditableElement();
+    clearTimeout(saveTimer.current);
     const now = new Date().toISOString();
     setStartTime(now);
-    autoSave(workoutId, { name, date, notes, readiness, items, startTime: now, status: 'active' });
+    autoSave(workoutId, { name, date, notes, readiness, items: latestItemsRef.current, startTime: now, status: 'active' });
   }
 
   function handleTogglePause() {

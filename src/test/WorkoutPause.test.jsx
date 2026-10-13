@@ -22,6 +22,18 @@ beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(star
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('Pause/Resume workout control', () => {
+  it('does not let a pending planning autosave undo Start Workout', async () => {
+    render(<WorkoutLog {...props} logs={[{ ...activeLog, startTime: null, status: 'planning' }]} />);
+    fireEvent.change(screen.getByPlaceholderText('e.g. Monday Push Day'), { target: { value: 'Updated workout' } });
+    fireEvent.blur(screen.getByPlaceholderText('e.g. Monday Push Day'));
+    await tick(100);
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Start Workout', exact: true })[0]));
+    expect(lastSaved()).toMatchObject({ name: 'Updated workout', status: 'active', startTime: new Date(start + 60100).toISOString() });
+    await tick(1000);
+    expect(lastSaved()).toMatchObject({ name: 'Updated workout', status: 'active', startTime: new Date(start + 60100).toISOString() });
+    expect(saveLog).toHaveBeenCalledOnce();
+  });
+
   it('toggles one control, freezes rest/elapsed, restores, and finishes while paused', async () => {
     const view = render(<WorkoutLog {...props} logs={[activeLog]} />);
     await tick(0);
