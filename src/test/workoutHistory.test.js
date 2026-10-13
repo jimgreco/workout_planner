@@ -72,6 +72,49 @@ describe('routineExerciseNeedsWeightIncrease', () => {
     expect(routineExerciseNeedsWeightIncrease(item, [log])).toBe(false);
   });
 
+  it.each(['11', '', '12 (8-12)'])('requires each recorded side to reach a shared rep cap: %s', (repsLeft) => {
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    Object.assign(log.exerciseItems[0].sets[1], { repsLeft, repsRight: '12', repMode: 'separateSides' });
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(false);
+    log.exerciseItems[0].sets[1].repsLeft = '12';
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(true);
+  });
+
+  it('uses a side-specific cap ahead of the shared target', () => {
+    const target = { ...rangeRoutineItem, sets: [{ placeholderReps: '8-12', placeholderRepsLeft: '10-15' }] };
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    log.exerciseItems[0].sets = [{ weight: '25', repsLeft: '12', repsRight: '12' }];
+    expect(routineExerciseNeedsWeightIncrease(target, [log])).toBe(false);
+    log.exerciseItems[0].sets[0].repsLeft = '15';
+    expect(routineExerciseNeedsWeightIncrease(target, [log])).toBe(true);
+  });
+
+  it('aligns the final working set when the previous workout includes extra warmups', () => {
+    const log = finishedLog({ date: '2026-05-20', reps: '11' });
+    log.exerciseItems[0].sets[0].reps = '12';
+    log.exerciseItems[0].sets.unshift({ setType: 'warmup', reps: '15', weight: '50' });
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(false);
+    log.exerciseItems[0].sets[2].reps = '12';
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(true);
+  });
+
+  it('ignores newly added warmups without treating missing working sets as complete', () => {
+    const target = { ...rangeRoutineItem, sets: [{ setType: 'warmup', placeholderReps: '8-12' }, ...rangeRoutineItem.sets] };
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    expect(routineExerciseNeedsWeightIncrease(target, [log])).toBe(true);
+    expect(routineExerciseNeedsWeightIncrease({ ...target, sets: [{ setType: 'warmup', placeholderReps: '8-12' }] }, [log])).toBe(false);
+    log.exerciseItems[0].sets.pop();
+    log.exerciseItems[0].sets.unshift({ setType: 'warmup', reps: '15', weight: '50' });
+    expect(routineExerciseNeedsWeightIncrease(rangeRoutineItem, [log])).toBe(false);
+  });
+
+  it.each(['12-8', '0-12', 'bad-12'])('ignores an invalid rep range: %s', placeholderReps => {
+    const target = { ...rangeRoutineItem, sets: [{ placeholderReps }] };
+    const log = finishedLog({ date: '2026-05-20', reps: '12' });
+    log.exerciseItems[0].sets = [{ reps: '12', weight: '100' }];
+    expect(routineExerciseNeedsWeightIncrease(target, [log])).toBe(false);
+  });
+
   it.each(['skipped', 'unrecorded'])('ignores %s sets with retained reps', (completion) => {
     const log = finishedLog({ date: '2026-05-20', reps: '12' });
     log.exerciseItems[0].sets[1].completion = completion;

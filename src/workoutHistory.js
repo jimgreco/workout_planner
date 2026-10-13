@@ -22,29 +22,6 @@ function repTargetText(value) {
   return text;
 }
 
-function repRangeMax(value) {
-  const text = repTargetText(value);
-  const match = text.match(/^\s*\d+(?:\.\d+)?\s*[-–]\s*(\d+(?:\.\d+)?)\s*$/);
-  if (!match) return null;
-  const max = Number.parseFloat(match[1]);
-  return Number.isFinite(max) ? max : null;
-}
-
-function repNumber(value) {
-  const match = cleanedText(value).match(/^\d+(?:\.\d+)?/);
-  if (!match) return null;
-  const number = Number.parseFloat(match[0]);
-  return Number.isFinite(number) ? number : null;
-}
-
-function firstRepRangeMax(values) {
-  for (const value of values) {
-    const max = repRangeMax(value);
-    if (max !== null) return max;
-  }
-  return null;
-}
-
 function lastFinishedExerciseItem(exerciseId, logs = []) {
   const finished = [...logs]
     .filter((log) => log.status === 'finished')
@@ -55,26 +32,6 @@ function lastFinishedExerciseItem(exerciseId, logs = []) {
     if (item) return item;
   }
   return null;
-}
-
-function loggedRepValue(set = {}) {
-  return Math.max(
-    repNumber(set.reps) ?? 0,
-    repNumber(set.repsLeft) ?? 0,
-    repNumber(set.repsRight) ?? 0,
-  );
-}
-
-function loggedSideRepValue(set = {}, side) {
-  const sideValue = side === 'left' ? set.repsLeft : set.repsRight;
-  return repNumber(sideValue) ?? repNumber(set.reps) ?? 0;
-}
-
-function routineLastSetRepCaps(set = {}) {
-  const common = firstRepRangeMax([set.placeholderReps, set.reps]);
-  const left = firstRepRangeMax([set.placeholderRepsLeft, set.repsLeft]);
-  const right = firstRepRangeMax([set.placeholderRepsRight, set.repsRight]);
-  return { common, left, right };
 }
 
 export function lastWeightTypesByExerciseId(logs = []) {
@@ -96,26 +53,27 @@ export function lastWeightTypesByExerciseId(logs = []) {
 
 export function routineExerciseNeedsWeightIncrease(item = {}, logs = []) {
   if (!item.exerciseId || item.weightType === 'none' || !item.sets?.length) return false;
-
-  const targetSet = item.sets.at(-1);
-  const caps = routineLastSetRepCaps(targetSet);
-  if (caps.common === null && caps.left === null && caps.right === null) return false;
-
+  const targets = item.sets.filter(set => set.setType !== 'warmup');
+  const targetSet = targets.at(-1);
+  if (!targetSet) return false;
   const lastItem = lastFinishedExerciseItem(item.exerciseId, logs);
   if (!lastItem?.sets?.length || lastItem.weightType === 'none') return false;
-  if (lastItem.sets.length < item.sets.length) return false;
-
-  const loggedSet = lastItem.sets[item.sets.length - 1];
+  const recorded = lastItem.sets.filter(set => set.setType !== 'warmup');
+  const loggedSet = recorded[targets.length - 1];
   if (!loggedSet || !isWorkingSet(loggedSet)) return false;
   if (personalBestContext(item) !== personalBestContext(lastItem)) return false;
 
-  if (caps.common !== null) {
-    return loggedRepValue(loggedSet) >= caps.common;
-  }
-
+  // A shared range applies to each side. Side targets override it, and an
+  // explicitly blank side must not inherit a stale common rep count.
+  const hasSides = usesSideReps(targetSet) || usesSideReps(loggedSet);
   const checks = [];
-  if (caps.left !== null) checks.push(loggedSideRepValue(loggedSet, 'left') >= caps.left);
-  if (caps.right !== null) checks.push(loggedSideRepValue(loggedSet, 'right') >= caps.right);
+  for (const side of hasSides ? ['Left', 'Right'] : ['']) {
+    const range = targetRange(targetSet, side);
+    if (!range) continue;
+    const value = side ? loggedSet[`reps${side}`] ?? loggedSet.reps : loggedSet.reps;
+    const reps = recordedRepNumber(value);
+    checks.push(reps !== null && reps >= range.max);
+  }
   return checks.length > 0 && checks.every(Boolean);
 }
 
@@ -136,6 +94,11 @@ function recordedRepNumber(value) {
   const text = cleanedText(value);
   const number = Number(text);
   return text && Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function usesSideReps(set) {
+  return set.repMode === 'separateSides' || set.repMode === 'linkedSides'
+    || ['repsLeft', 'repsRight', 'placeholderRepsLeft', 'placeholderRepsRight'].some(key => cleanedText(set[key]));
 }
 
 // Compare prescribed working-set positions, so an inserted warmup or a new

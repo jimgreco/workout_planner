@@ -835,31 +835,6 @@ private func workoutRepTargetText(_ value: String?) -> String {
     return text
 }
 
-private func workoutRepRangeMax(_ value: String?) -> Double? {
-    let text = workoutRepTargetText(value)
-    let parts = text
-        .split(maxSplits: 1, omittingEmptySubsequences: false) { $0 == "-" || $0 == "–" }
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-    guard parts.count == 2, !parts[1].isEmpty else { return nil }
-    return Double(parts[1])
-}
-
-private func workoutRepNumber(_ value: String?) -> Double? {
-    let text = workoutCleanedText(value)
-    let prefix = text.prefix { character in
-        character.isNumber || character == "."
-    }
-    guard !prefix.isEmpty else { return nil }
-    return Double(prefix)
-}
-
-private func workoutFirstRepRangeMax(_ values: [String?]) -> Double? {
-    for value in values {
-        if let max = workoutRepRangeMax(value) { return max }
-    }
-    return nil
-}
-
 private func workoutLastFinishedItem(exerciseId: String, logs: [WorkoutLog]) -> ExerciseItem? {
     let finishedLogs = logs
         .filter { $0.status == "finished" }
@@ -873,47 +848,31 @@ private func workoutLastFinishedItem(exerciseId: String, logs: [WorkoutLog]) -> 
     return nil
 }
 
-private func workoutLoggedRepValue(_ set: WorkoutSet) -> Double {
-    max(workoutRepNumber(set.reps) ?? 0, workoutRepNumber(set.repsLeft) ?? 0, workoutRepNumber(set.repsRight) ?? 0)
-}
-
-private func workoutLoggedSideRepValue(_ set: WorkoutSet, left: Bool) -> Double {
-    workoutRepNumber(left ? set.repsLeft : set.repsRight) ?? workoutRepNumber(set.reps) ?? 0
-}
-
-private func workoutRoutineLastSetRepCaps(_ set: WorkoutSet) -> (common: Double?, left: Double?, right: Double?) {
-    (
-        common: workoutFirstRepRangeMax([set.placeholderReps, set.reps]),
-        left: workoutFirstRepRangeMax([set.placeholderRepsLeft, set.repsLeft]),
-        right: workoutFirstRepRangeMax([set.placeholderRepsRight, set.repsRight])
-    )
+private func workoutUsesSideReps(_ set: WorkoutSet) -> Bool {
+    set.repMode == "separateSides" || set.repMode == "linkedSides"
+        || [set.repsLeft, set.repsRight, set.placeholderRepsLeft, set.placeholderRepsRight].contains { !workoutCleanedText($0).isEmpty }
 }
 
 func routineExerciseNeedsWeightIncrease(_ item: ExerciseItem, logs: [WorkoutLog]) -> Bool {
-    guard item.weightType != "none",
-          !item.exerciseId.isEmpty,
-          let targetSet = item.sets.last
-    else { return false }
-
-    let caps = workoutRoutineLastSetRepCaps(targetSet)
-    guard caps.common != nil || caps.left != nil || caps.right != nil else { return false }
+    guard item.weightType != "none", !item.exerciseId.isEmpty else { return false }
+    let targets = item.sets.filter { $0.setType != "warmup" }
+    guard let targetSet = targets.last else { return false }
     guard let lastItem = workoutLastFinishedItem(exerciseId: item.exerciseId, logs: logs),
-          lastItem.weightType != "none",
-          lastItem.sets.count >= item.sets.count
+          lastItem.weightType != "none"
     else { return false }
-
-    let loggedSet = lastItem.sets[item.sets.count - 1]
+    let recorded = lastItem.sets.filter { $0.setType != "warmup" }
+    guard recorded.count >= targets.count else { return false }
+    let loggedSet = recorded[targets.count - 1]
     guard isRecordedWorkingSet(loggedSet), personalBestContext(item) == personalBestContext(lastItem) else { return false }
-    if let common = caps.common {
-        return workoutLoggedRepValue(loggedSet) >= common
-    }
 
+    // Shared ranges apply to both sides; explicit blanks remain missing evidence.
+    let hasSides = workoutUsesSideReps(targetSet) || workoutUsesSideReps(loggedSet)
     var checks: [Bool] = []
-    if let left = caps.left {
-        checks.append(workoutLoggedSideRepValue(loggedSet, left: true) >= left)
-    }
-    if let right = caps.right {
-        checks.append(workoutLoggedSideRepValue(loggedSet, left: false) >= right)
+    for side in hasSides ? ["left", "right"] : [""] {
+        guard let range = workoutTargetRange(targetSet, side: side) else { continue }
+        let value = side == "left" ? (loggedSet.repsLeft ?? loggedSet.reps) : side == "right" ? (loggedSet.repsRight ?? loggedSet.reps) : loggedSet.reps
+        guard let reps = Double(workoutCleanedText(value)), reps.isFinite, reps > 0 else { return false }
+        checks.append(reps >= range.max)
     }
     return !checks.isEmpty && checks.allSatisfy { $0 }
 }

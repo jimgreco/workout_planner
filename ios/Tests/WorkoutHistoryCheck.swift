@@ -11,6 +11,43 @@ struct WorkoutHistoryCheck {
             ])
         }
         precondition(needsIncrease(recorded))
+        for reps in ["11", "", "12 (8-12)"] {
+            var sideEvidence = recorded
+            sideEvidence.sets[0].repMode = "separateSides"
+            sideEvidence.sets[0].repsLeft = reps
+            sideEvidence.sets[0].repsRight = "12"
+            precondition(!needsIncrease(sideEvidence), "Both sides must reach a shared cap without using stale common reps")
+            sideEvidence.sets[0].repsLeft = "12"
+            precondition(needsIncrease(sideEvidence))
+        }
+        var stricterSide = routine
+        stricterSide.sets[0].placeholderRepsLeft = "10-15"
+        var sideEvidence = recorded
+        sideEvidence.sets[0].repsLeft = "12"
+        sideEvidence.sets[0].repsRight = "12"
+        precondition(!needsIncrease(sideEvidence, routine: stricterSide))
+        sideEvidence.sets[0].repsLeft = "15"
+        precondition(needsIncrease(sideEvidence, routine: stricterSide))
+        var twoWorkingTargets = routine
+        twoWorkingTargets.sets.append(routine.sets[0])
+        var extraWarmup = recorded
+        extraWarmup.sets = [WorkoutSet(reps: "15", weight: "50", setType: "warmup"), recorded.sets[0], WorkoutSet(reps: "11", weight: "100")]
+        precondition(!needsIncrease(extraWarmup, routine: twoWorkingTargets), "A warmup must not move the cap check to an earlier working set")
+        extraWarmup.sets[2].reps = "12"
+        precondition(needsIncrease(extraWarmup, routine: twoWorkingTargets))
+        var addedWarmupTarget = routine
+        addedWarmupTarget.sets.insert(WorkoutSet(placeholderReps: "8-12", setType: "warmup"), at: 0)
+        precondition(needsIncrease(recorded, routine: addedWarmupTarget))
+        var warmupOnly = addedWarmupTarget
+        warmupOnly.sets.removeLast()
+        precondition(!needsIncrease(recorded, routine: warmupOnly))
+        extraWarmup.sets.removeLast()
+        precondition(!needsIncrease(extraWarmup, routine: twoWorkingTargets), "Warmups cannot satisfy missing working sets")
+        for range in ["12-8", "0-12", "bad-12"] {
+            var invalidTarget = routine
+            invalidTarget.sets[0].placeholderReps = range
+            precondition(!needsIncrease(recorded, routine: invalidTarget))
+        }
         for completion in ["skipped", "unrecorded"] {
             var item = recorded
             item.sets[0].completion = completion

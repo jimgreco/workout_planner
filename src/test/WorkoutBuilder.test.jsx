@@ -60,6 +60,24 @@ describe('WorkoutBuilder', () => {
     expect(screen.getByLabelText(/bench press: increase weight next time/i)).toBeInTheDocument();
   });
 
+  it.each([true, false])('only shows Add weight when both sides reach the final working-set cap (planningMode=%s)', planningMode => {
+    const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ placeholderReps: '8-12' }] }];
+    const logs = [{ id: 'last', date: '2026-10-12', status: 'finished', exerciseItems: [{
+      exerciseId: 'ex1', weightType: 'weight', sets: [
+        { reps: '15', weight: '25', setType: 'warmup' },
+        { repsLeft: '11', repsRight: '12', repMode: 'separateSides', weight: '50' },
+      ],
+    }] }];
+    const { rerender } = render(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} planningMode={planningMode} logs={logs} />);
+    expect(screen.queryByLabelText(/increase weight next time/i)).not.toBeInTheDocument();
+    const completed = [{ ...logs[0], exerciseItems: [{ ...logs[0].exerciseItems[0], sets: [
+      logs[0].exerciseItems[0].sets[0],
+      { ...logs[0].exerciseItems[0].sets[1], repsLeft: '12' },
+    ] }] }];
+    rerender(<WorkoutBuilder exercises={exercises} items={items} onChange={() => {}} planningMode={planningMode} logs={completed} />);
+    expect(screen.getByLabelText(/bench press: increase weight next time/i)).toHaveTextContent('Add weight');
+  });
+
   it.each([true, false])('shows a lower-weight explanation when planningMode=%s without changing inputs', (planningMode) => {
     const onChange = vi.fn();
     const items = [{ exerciseId: 'ex1', weightType: 'weight', sets: [{ placeholderReps: '10-15', weight: '' }] }];

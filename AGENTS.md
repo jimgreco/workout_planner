@@ -158,6 +158,11 @@ Native timing regression: `swiftc ios/WorkoutPlanner/Support/Models.swift ios/Te
 
 Weight advice lives in `src/workoutHistory.js` and the matching helpers in `Models.swift`. A recorded, weighted working set below its prescribed range produces a Lower weight cue, ahead of the existing Add weight cue. Align working-set positions while excluding warmups, skip missing/skipped/unrecorded evidence, check side reps separately, and retain setup/baseline/weight-mode/Smith context matching. Use the latest finished occurrence; bodyweight and timed exercises have no weight cue. Advice never edits loads or treats blank RIR as failure. Live Activity decrease reasons travel per exercise so widget navigation cannot carry them to another movement. Native autosaves must not downgrade a finished workout to active/planning after delayed field callbacks.
 
+Add weight checks the last prescribed working-set position, excluding warmups in
+both the routine and history. A shared rep range applies to each recorded side;
+side-specific ranges override it. Explicitly blank sides remain missing evidence,
+and malformed or reversed ranges cannot produce an increase cue.
+
 ## Smith load recording
 
 `smith_double` means plates on one side x 2 plus `setupProfile.smithBarWeight` (machine-specific unloaded resistance in pounds, optional 0–500). Missing/null means unknown; explicit zero is valid. Preserve setup snapshots in logs/prescriptions. Unknown Smith totals must not generate volume/estimated-max/PR values; working sets still count and raw plates remain visible. Use `src/weight.js` and native `effectiveRecordedWeight` consistently. Different Smith resistance snapshots are separate comparison contexts. Never default Smith resistance to the standard barbell 45 lb. Native regression check: `swiftc ios/WorkoutPlanner/Support/Models.swift ios/Tests/SmithWeightCheck.swift -o /tmp/repmixburn-smith-check && /tmp/repmixburn-smith-check`.
