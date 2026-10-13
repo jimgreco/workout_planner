@@ -652,9 +652,10 @@ export function validateImport(body) {
     assertObject(gym, `gyms[${index}]`);
     return validateGym(gym, gym.id);
   });
-  if (new Set(gyms.map((gym) => gym.id)).size !== gyms.length) fail('gym IDs must be unique');
   const equipment = importArray(data.equipment, 'equipment', 1000).map((item) => validateEquipment(item, item.id));
-  if (new Set(equipment.map((item) => item.id)).size !== equipment.length) fail('equipment IDs must be unique');
+  for (const [collection, items] of Object.entries({ exercises, templates, logs, programs, gyms, equipment })) {
+    if (new Set(items.map((item) => item.id)).size !== items.length) fail(`${collection} IDs must be unique within the import file.`);
+  }
   return { mode, exportedAt, exercises, templates, logs, programs, gyms, equipment, settings };
 }
 

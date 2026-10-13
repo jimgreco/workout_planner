@@ -728,6 +728,17 @@ final class WorkoutStore: ObservableObject {
     }
 
     func importData(_ payload: RepMixBurnExportPayload, mode: RepMixBurnImportMode) async throws -> RepMixBurnImportResult {
+        let collections: [(String, [String])] = [
+            ("exercises", payload.exercises?.map(\.id) ?? []),
+            ("templates", payload.templates?.map(\.id) ?? []),
+            ("logs", payload.logs?.map(\.id) ?? []),
+            ("programs", payload.programs?.map(\.id) ?? []),
+            ("gyms", payload.gyms?.map(\.id) ?? []),
+            ("equipment", payload.equipment?.map(\.id) ?? []),
+        ]
+        for (collection, ids) in collections where Set(ids).count != ids.count {
+            throw WorkoutAPIError.server(400, "\(collection) IDs must be unique within the import file.", requestID: nil, conflict: nil)
+        }
         if usesLocalData {
             return try importLocalData(payload, mode: mode)
         }

@@ -62,6 +62,34 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         let legacy = Data("[{\"id\":\"unknown-owner\"}]".utf8)
         for key in ["forge.pendingResourceChanges.v1", "forge.pendingWorkoutLogSaves.v1", "forge.pendingConflicts.v1"] { defaults.set(legacy, forKey: key) }
         auth.login("B")
+        let duplicateExercise = Exercise(id: "repeated", name: "Bench", muscleGroup: "Chest")
+        let duplicateTemplate = WorkoutTemplate(id: "repeated", name: "Push")
+        let duplicateLog = WorkoutLog(id: "repeated", name: "Session", date: "2026-10-12")
+        let duplicateProgram = TrainingProgram(id: "repeated", name: "Plan", schedule: [], startDate: "2026-10-12")
+        let duplicateGym = Gym(id: "repeated", name: "Gym")
+        let duplicateEquipment = GymEquipment(id: "repeated", name: "Bar")
+        let duplicateImports: [(String, RepMixBurnExportPayload)] = [
+            ("exercises", .init(exercises: [duplicateExercise, duplicateExercise])),
+            ("templates", .init(templates: [duplicateTemplate, duplicateTemplate])),
+            ("logs", .init(logs: [duplicateLog, duplicateLog])),
+            ("programs", .init(programs: [duplicateProgram, duplicateProgram])),
+            ("gyms", .init(gyms: [duplicateGym, duplicateGym])),
+            ("equipment", .init(equipment: [duplicateEquipment, duplicateEquipment])),
+        ]
+        let beforeImport = SyntheticProtocol.count()
+        for demo in [false, true] {
+            auth.isDemoMode = demo
+            for mode in [RepMixBurnImportMode.merge, .emptyOnly] {
+                for (collection, payload) in duplicateImports {
+                    do { _ = try await store.importData(payload, mode: mode); preconditionFailure("Duplicate import silently replaced a row") }
+                    catch { precondition(error.localizedDescription.contains("\(collection) IDs must be unique")) }
+                }
+            }
+        }
+        auth.isDemoMode = false
+        precondition(SyntheticProtocol.count() == beforeImport)
+        precondition(store.exercises.isEmpty && store.templates.isEmpty && store.logs.isEmpty && store.programs.isEmpty && store.gyms.isEmpty)
+        print("PASS duplicate import IDs reject every collection before cloud requests or local writes, in merge and empty-account modes")
         let log = WorkoutLog(id: "b-workout", name: "Synthetic B", date: "2026-10-03", exerciseItems: [ExerciseItem(exerciseId: "bench", sets: [WorkoutSet(reps: "", placeholderReps: "6-10")], targetRIR: 2)])
         _ = try await store.saveLog(log)
         precondition(store.pendingSyncCount == 1)

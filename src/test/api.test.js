@@ -590,6 +590,14 @@ describe('account and support', () => {
     expect(preview.targetIsEmpty).toBe(false);
   });
 
+  it.each(['exercises', 'templates', 'logs', 'programs', 'gyms', 'equipment'])('rejects duplicate %s IDs within a backup before preview or import', async collection => {
+    const data = { [collection]: [{ id: 'same', name: 'First' }, { id: 'same', name: 'Second' }] };
+    globalThis.fetch = vi.fn();
+    expect(() => previewImportData(data)).toThrow(`${collection} IDs must be unique`);
+    await expect(importData(data, 'merge')).rejects.toThrow(`${collection} IDs must be unique`);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('importData posts the import envelope and refreshes the cache', async () => {
     const imported = { exercises: [EX], templates: [TMPL], logs: [LOG], programs: [PROGRAM] };
     mockFetch({

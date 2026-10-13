@@ -400,6 +400,29 @@ test('program routes persist repeating cycle schedules', async () => {
   assert.equal(db.items.has('USER#dev-user-local|PROGRAM#strength'), false);
 });
 
+for (const [collection, item] of Object.entries({
+  exercises: { id: 'bench', name: 'Bench', muscleGroup: 'Chest' },
+  templates: { id: 'push', name: 'Push', exerciseItems: [] },
+  logs: { id: 'done', name: 'Done', date: '2026-01-02', exerciseItems: [], status: 'finished' },
+  programs: { id: 'program', name: 'Push Plan', startDate: '2026-01-01', schedule: [{ id: 'day-1', templateId: 'push' }] },
+  gyms: { id: 'gym', name: 'Gym', equipment: [] },
+  equipment: { id: 'bar', name: 'Bar', category: 'Free weights', details: '' },
+})) {
+  test(`import rejects repeated ${collection} IDs before writing any account data`, async () => {
+    for (const mode of ['merge', 'emptyOnly']) {
+      const db = fakeDb();
+      __setTestDb(db);
+      const result = await handler(event('POST', '/import', {
+        mode,
+        data: { settings: { defaultSets: 5, defaultReps: 6 }, [collection]: [item, { ...item, name: 'Conflicting row' }] },
+      }, { Authorization: 'Bearer dev-bypass-token' }));
+      assert.equal(result.statusCode, 400);
+      assert.match(JSON.parse(result.body).error, /IDs must be unique/);
+      assert.equal(db.items.size, 0);
+    }
+  });
+}
+
 test('import restores Rep, Mix, Burn export data into an empty account', async () => {
   const db = fakeDb();
   __setTestDb(db);

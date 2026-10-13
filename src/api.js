@@ -891,6 +891,15 @@ export async function exportData() {
   return data;
 }
 
+function requireUniqueImportIds(data) {
+  for (const collection of ['exercises', 'templates', 'logs', 'programs', 'gyms', 'equipment']) {
+    const items = data?.[collection];
+    if (Array.isArray(items) && new Set(items.map(item => item?.id)).size !== items.length) {
+      throw new Error(`${collection} IDs must be unique within the import file.`);
+    }
+  }
+}
+
 export function previewImportData(data, current = {
   exercises: getExercises(),
   templates: getTemplates(),
@@ -902,6 +911,7 @@ export function previewImportData(data, current = {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Import file must be a Rep, Mix, Burn JSON export.');
   }
+  requireUniqueImportIds(data);
   const gyms = Array.isArray(data.gyms) ? data.gyms : [];
   const equipment = Array.isArray(data.equipment) ? data.equipment : [];
   const exercises = Array.isArray(data.exercises) ? data.exercises : [];
@@ -1079,6 +1089,7 @@ function importDataLocally(data, mode) {
 
 export async function importData(data, mode = 'merge') {
   const captured = context();
+  requireUniqueImportIds(data);
   if (DEV_BYPASS && !BASE_URL) {
     const result = importDataLocally(data, mode);
     dispatchSyncStatus();
