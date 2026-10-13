@@ -2118,7 +2118,7 @@ struct EquipmentSetupPicker: View {
     private func useProfile(_ profile: EquipmentSetup?) {
         item.setupSelectionMade = true
         item.setupProfile = profile; item.baselineId = profile?.id ?? UUID().uuidString
-        for index in item.sets.indices { item.sets[index].placeholderWeight = "" }
+        item.sets = item.sets.map { $0.clearingComparisonHints() }
         onChanged()
     }
     var body: some View {

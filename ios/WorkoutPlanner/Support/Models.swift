@@ -182,6 +182,16 @@ struct WorkoutSet: Codable, Equatable {
 }
 
 extension WorkoutSet {
+    func clearingComparisonHints() -> WorkoutSet {
+        var copy = self
+        copy.placeholderReps = placeholderReps.map(workoutRepTargetText)
+        copy.placeholderRepsLeft = placeholderRepsLeft.map(workoutRepTargetText)
+        copy.placeholderRepsRight = placeholderRepsRight.map(workoutRepTargetText)
+        copy.placeholderWeight = ""
+        copy.placeholderWeightType = nil
+        return copy
+    }
+
     var historyStatusPrefix: String {
         switch completion {
         case "skipped": return "Skipped · "

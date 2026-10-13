@@ -47,6 +47,15 @@ export function currentSetup(exercise, profile) {
   return exercise?.equipmentSetups?.find(entry => entry.id === profile?.id) || profile;
 }
 
+// A new comparison context keeps the prescription and actual entries, but drops
+// suggestions copied from the old machine or technique.
+export function clearComparisonHints(set) {
+  const goal = value => value?.match(/\(([^)]*)\)\s*$/)?.[1]?.trim() ?? value;
+  return { ...set, placeholderReps: goal(set.placeholderReps),
+    placeholderRepsLeft: goal(set.placeholderRepsLeft), placeholderRepsRight: goal(set.placeholderRepsRight),
+    placeholderWeight: '', placeholderWeightType: undefined };
+}
+
 // Call only when creating a new session item, never when rendering/resuming it.
 // Finished logs are the account-owned, offline/synced preference record. Planning
 // and active drafts cannot promote a tentative choice, and an unspecified latest

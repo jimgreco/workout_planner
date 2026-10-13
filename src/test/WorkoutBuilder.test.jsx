@@ -636,6 +636,24 @@ describe('equipment setup editing', () => {
   const profile = { id: 'setup-1', name: 'Home bench', seat: '3' };
   const item = { ...oneItem[0], setupProfile: profile, baselineId: 'baseline-1' };
 
+  it.each(['setup', 'baseline'])('clears historical hints for a new %s without rewriting recorded sets or targets', change => {
+    const nextProfile = { id: 'setup-2', name: 'Gym bench' };
+    const set = { reps: '8', repsLeft: '8', repsRight: '7', weight: '35', repMode: 'separateSides',
+      placeholderReps: '12 (8-12)', placeholderRepsLeft: '10 (6-10)', placeholderRepsRight: '9 (7-11)',
+      placeholderWeight: '40', placeholderWeightType: 'double', rir: '0', completion: 'recorded', restDuration: 90 };
+    const current = { ...item, sets: [set] };
+    const logs = [{ id: 'past', status: 'finished', exerciseItems: [current] }];
+    const onChange = vi.fn();
+    render(<WorkoutBuilder exercises={[{ ...exercises[0], equipmentSetups: [profile, nextProfile] }]} items={[current]} logs={logs} onChange={onChange} />);
+    if (change === 'setup') fireEvent.change(screen.getByLabelText('Equipment setup'), { target: { value: nextProfile.id } });
+    else fireEvent.click(screen.getByRole('button', { name: 'Start new technique baseline' }));
+    const updated = onChange.mock.calls.at(-1)[0][0];
+    expect(updated.sets[0]).toEqual({ ...set, placeholderReps: '8-12', placeholderRepsLeft: '6-10', placeholderRepsRight: '7-11', placeholderWeight: '', placeholderWeightType: undefined });
+    expect(updated.baselineId).not.toBe(current.baselineId);
+    expect(logs[0].exerciseItems[0]).toEqual(current);
+    expect(set.placeholderRepsRight).toBe('9 (7-11)');
+  });
+
   it('edits details without changing identity, baseline, sets, or history', async () => {
     const onChange = vi.fn();
     const logs = [{ exerciseItems: [item] }];

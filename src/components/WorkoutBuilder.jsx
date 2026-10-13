@@ -1,7 +1,7 @@
 import { targetRIRForSet, setTargetGoalLabel } from '../targetRIR.js';
 import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
 import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
-import { exerciseSetups, setupLabel, removingSetup } from '../equipmentSetups.js';
+import { exerciseSetups, setupLabel, removingSetup, clearComparisonHints } from '../equipmentSetups.js';
 import { saveExercise, getExercises, getTemplates } from '../api.js';
 import { completionLabel, normalizedRir } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
@@ -562,7 +562,7 @@ export default function WorkoutBuilder({
                   </label>
                   {item.weightType === 'smith_double' && <small>Enter plates on one side. Set Smith bar resistance in Equipment setup; leave it unknown until confirmed. Unknown resistance is excluded from total-load volume and PRs.</small>}
                   {item.baselineId && <small>New comparison baseline · {item.baselineId.slice(0, 10)}</small>}
-                  {!readOnly && <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateItem(idx, { baselineId: `${new Date().toISOString().slice(0, 10)}_${crypto.randomUUID()}` })}>Start new technique baseline</button>}
+                  {!readOnly && <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateItem(idx, { baselineId: `${new Date().toISOString().slice(0, 10)}_${crypto.randomUUID()}`, sets: item.sets.map(clearComparisonHints) })}>Start new technique baseline</button>}
                   <small>Use a new baseline after changing technique or equipment. Past workouts stay unchanged.</small>
                 </div>}
                 {(item.description || !readOnly) && (
@@ -947,7 +947,7 @@ export default function WorkoutBuilder({
 function EquipmentSetup({ exercise, item, logs, readOnly, onChange, onExercisesChanged }) {
   const [draft, setDraft] = useState(null);
   function applyProfile(profile) {
-    const sets = item.sets.map(set => ({ ...set, placeholderWeight: '', placeholderReps: set.placeholderReps?.match(/\(([^)]+)\)$/)?.[1] || set.placeholderReps }));
+    const sets = item.sets.map(clearComparisonHints);
     onChange({ setupProfile: profile, setupSelectionMade: true, baselineId: profile?.id || crypto.randomUUID(), sets });
   }
   const profiles = exerciseSetups(exercise || { id: item.exerciseId }, logs, getTemplates(), item.setupProfile);

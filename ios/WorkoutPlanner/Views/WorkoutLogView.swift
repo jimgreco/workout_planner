@@ -2001,6 +2001,7 @@ private struct WorkoutLiveActivityCard: View {
                     .background(Theme.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
                     Button("Start new technique baseline") {
                         items[context.exerciseIndex].baselineId = DateHelpers.todayString() + "_" + UUID().uuidString
+                        items[context.exerciseIndex].sets = items[context.exerciseIndex].sets.map { $0.clearingComparisonHints() }
                         onChanged()
                     }
                     .font(.caption.weight(.semibold))

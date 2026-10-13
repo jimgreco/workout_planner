@@ -61,6 +61,18 @@ import Foundation
         precondition(resolve(item, [restored]).setupProfile == home)
         precondition(restored.exerciseItems[0].targetRIR == 2 && restored.exerciseItems[0].sets[0].rir == "0")
         precondition(item.setupProfile == nil && item.targetRIR == 2 && latest.exerciseItems[0].setupProfile == gym)
+        let recorded = WorkoutSet(reps: "8", repsLeft: "8", repsRight: "7", repMode: "separateSides", weight: "35", placeholderReps: "12 (8-12)", placeholderRepsLeft: "10 (6-10)", placeholderRepsRight: "9 (7-11)", placeholderWeight: "40", placeholderWeightType: "double", restDuration: 90, rir: "0", completion: "recorded")
+        var expected = recorded
+        expected.placeholderReps = "8-12"
+        expected.placeholderRepsLeft = "6-10"
+        expected.placeholderRepsRight = "7-11"
+        expected.placeholderWeight = ""
+        expected.placeholderWeightType = nil
+        precondition(recorded.clearingComparisonHints() == expected)
+        precondition(recorded.placeholderRepsRight == "9 (7-11)")
+        let targetOnly = WorkoutSet(placeholderReps: "6-10")
+        precondition(targetOnly.clearingComparisonHints().placeholderReps == "6-10")
+        precondition(targetOnly.clearingComparisonHints().placeholderRepsLeft == nil)
         print("PASS remembered setup: chronology, prescriptions/baselines, unspecified/deleted, latest library/Smith, stable identity, drafts, serialization and unchanged history/RIR")
     }
 }
