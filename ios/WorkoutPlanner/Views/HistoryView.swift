@@ -275,11 +275,11 @@ private struct HistoryItemView: View {
         let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
         let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
         if weightType == "none" {
-            return "\(typePrefix)\(reps) \(unit)\(effortSuffix)"
+            return "\(set.historyStatusPrefix)\(typePrefix)\(reps) \(unit)\(effortSuffix)"
         }
         let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
         let suffix = weightType == "smith_double" ? " lbs (Smith + 2x)" : weightType == "bar_double" ? " lbs (bar + 2x)" : weightType == "double" ? " lbs (2x)" : " lbs"
-        return "\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
+        return "\(set.historyStatusPrefix)\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
     }
 
     private func repsLabel(for set: WorkoutSet) -> String {

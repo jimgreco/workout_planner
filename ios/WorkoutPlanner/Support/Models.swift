@@ -182,6 +182,14 @@ struct WorkoutSet: Codable, Equatable {
 }
 
 extension WorkoutSet {
+    var historyStatusPrefix: String {
+        switch completion {
+        case "skipped": return "Skipped · "
+        case "unrecorded": return "Not recorded · "
+        default: return ""
+        }
+    }
+
     // Convenience values are suggestions until the added set is entered or completed.
     func additionalSet(planningMode: Bool, defaultReps: Int) -> WorkoutSet {
         WorkoutSet(

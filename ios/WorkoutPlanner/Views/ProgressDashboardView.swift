@@ -723,10 +723,10 @@ func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool = false) ->
     ].compactMap { $0 }.joined(separator: " · ")
     let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
     let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
-    guard weightType != "none" else { return "\(typePrefix)\(reps) \(unit)\(effortSuffix)" }
+    guard weightType != "none" else { return "\(set.historyStatusPrefix)\(typePrefix)\(reps) \(unit)\(effortSuffix)" }
     let weight = (set.weight?.isEmpty == false) ? "\(trimmed(number(set.weight))) lb" : "-"
     let suffix = weightType == "smith_double" ? " (Smith + 2x)" : weightType == "bar_double" ? " (bar + 2x)" : weightType == "double" ? " (2x)" : ""
-    return "\(typePrefix)\(reps) x \(weight)\(suffix)\(effortSuffix)"
+    return "\(set.historyStatusPrefix)\(typePrefix)\(reps) x \(weight)\(suffix)\(effortSuffix)"
 }
 
 private func setRepsLabel(_ set: WorkoutSet) -> String {

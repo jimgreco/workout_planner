@@ -60,6 +60,15 @@ const logs = [
 ];
 
 describe('progress calculations', () => {
+  it('labels retained inputs from skipped and unrecorded sets without implying they were performed', () => {
+    const skipped = { repsLeft: '8', repsRight: '7', weight: '25', setType: 'warmup', rir: '0', completion: 'skipped' };
+    expect(setLabel(skipped, 'double')).toBe('Skipped · Warmup · 8/7 x 25 lb (2x) · RIR 0');
+    expect(setLabel({ reps: '45', completion: 'unrecorded' }, 'none', true)).toBe('Not recorded · 45 secs');
+    expect(setLabel({ reps: '8', weight: '100', completion: 'recorded' })).toBe('8 x 100 lb');
+    expect(setLabel({ reps: '8', weight: '100' })).toBe('8 x 100 lb');
+    expect(skipped.completion).toBe('skipped');
+  });
+
   it('summarizes finished workout volume and ignores active drafts', () => {
     const progress = buildProgress(logs, exercises, 'all');
 

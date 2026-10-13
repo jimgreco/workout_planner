@@ -181,6 +181,7 @@ export function personalBestIdsForWorkout(log, logs = [], exercises = []) {
 }
 
 export function setLabel(set, weightType = 'weight', usesTime = false) {
+  const statusPrefix = set.completion === 'skipped' ? 'Skipped · ' : set.completion === 'unrecorded' ? 'Not recorded · ' : '';
   const reps = set.repsLeft || set.repsRight
     ? `${set.repsLeft || '—'}/${set.repsRight || '—'}`
     : (set.reps || '—');
@@ -193,10 +194,10 @@ export function setLabel(set, weightType = 'weight', usesTime = false) {
     normalizedRir(set.rir) !== null ? `RIR ${normalizedRir(set.rir)}` : '',
   ].filter(Boolean).join(' · ');
   const effortSuffix = effort ? ` · ${effort}` : '';
-  if (weightType === 'none') return `${typePrefix}${reps} ${unit}${effortSuffix}`;
+  if (weightType === 'none') return `${statusPrefix}${typePrefix}${reps} ${unit}${effortSuffix}`;
   const weight = set.weight ? `${formatWeight(set.weight)} lb` : '—';
   const suffix = weightType === 'smith_double' ? ' (Smith + 2x)' : weightType === 'bar_double' ? ' (bar + 2x)' : weightType === 'double' ? ' (2x)' : '';
-  return `${typePrefix}${reps} x ${weight}${suffix}${effortSuffix}`;
+  return `${statusPrefix}${typePrefix}${reps} x ${weight}${suffix}${effortSuffix}`;
 }
 
 export function estimateOneRepMax(weight, reps) {
