@@ -31,6 +31,19 @@ struct WorkoutSetRIRCheck {
         precondition(addedRoundTrip.historyStatusPrefix == "Not recorded · ")
         precondition(bestPersonalBestCandidate(from: [addedRoundTrip], weightType: "weight") == nil)
         precondition(restored.additionalSet(planningMode: true, defaultReps: 8).completion == nil)
+        for unilateral in [false, true] {
+            let newSet = WorkoutSet.newExerciseSet(planningMode: false, defaultReps: 10, isUnilateral: unilateral)
+            let newRoundTrip = try decoder.decode(WorkoutSet.self, from: encoder.encode(newSet))
+            precondition(newRoundTrip.reps == "10")
+            precondition(newRoundTrip.repsLeft == (unilateral ? "10" : nil))
+            precondition(newRoundTrip.repsRight == (unilateral ? "10" : nil))
+            precondition(!isRecordedWorkingSet(newRoundTrip), "Adding an exercise to history must not invent performed sets")
+            var entered = newRoundTrip
+            entered.completion = "recorded"
+            precondition(isRecordedWorkingSet(entered))
+            let planned = WorkoutSet.newExerciseSet(planningMode: true, defaultReps: 10, isUnilateral: unilateral)
+            precondition(planned.reps == "" && planned.placeholderReps == "10" && planned.completion == nil)
+        }
         set.rir = WorkoutSet.normalizedRir("")
         let cleared = try decoder.decode(WorkoutSet.self, from: encoder.encode(set))
         precondition(cleared.rir == nil)

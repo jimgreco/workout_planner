@@ -223,6 +223,7 @@ export default function WorkoutBuilder({
         reps: String(repCount),
         ...(useSideReps ? { repsLeft: String(repCount), repsRight: String(repCount) } : {}),
         weight: '',
+        completion: planningMode ? undefined : 'unrecorded',
       })),
       weightType,
       description: exercise?.description || '',

@@ -182,6 +182,20 @@ struct WorkoutSet: Codable, Equatable {
 }
 
 extension WorkoutSet {
+    static func newExerciseSet(planningMode: Bool, defaultReps: Int, isUnilateral: Bool) -> WorkoutSet {
+        if planningMode {
+            return WorkoutSet(reps: "", weight: "", placeholderReps: String(defaultReps))
+        }
+        return WorkoutSet(
+            reps: String(defaultReps),
+            repsLeft: isUnilateral ? String(defaultReps) : nil,
+            repsRight: isUnilateral ? String(defaultReps) : nil,
+            repMode: isUnilateral ? "separateSides" : nil,
+            weight: "",
+            completion: "unrecorded"
+        )
+    }
+
     func clearingComparisonHints() -> WorkoutSet {
         var copy = self
         copy.placeholderReps = placeholderReps.map(workoutRepTargetText)

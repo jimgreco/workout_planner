@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import WorkoutLog from '../pages/WorkoutLog.jsx';
 import { saveLog, saveExercise } from '../api.js';
+import { isWorkingSet } from '../setEvidence.js';
 
 vi.mock('../api.js', () => ({
   getLogs: vi.fn(() => undefined), getEquipment: vi.fn(() => []),
@@ -50,6 +51,26 @@ function buildProgram(overrides = {}) {
 describe('WorkoutLog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('does not invent completed sets when adding an exercise to workout history', async () => {
+    const saved = { id: 'finished', name: 'Yesterday', date: '2026-10-11', status: 'finished',
+      startTime: 1791720000000, endTime: 1791723600000,
+      exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '8', weight: '100', completion: 'recorded' }] }] };
+    render(<WorkoutLog exercises={[...exercises, { id: 'row', name: 'Single Arm Row', muscleGroup: 'Back', isUnilateral: true }]}
+      templates={[]} logs={[saved]} programs={[]} editingLog={saved} settings={settings}
+      onLogsChanged={() => {}} onExercisesChanged={() => {}} onClearEditing={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText('Search exercises to add…'), { target: { value: 'Single Arm Row (Back)' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(saveLog).toHaveBeenCalled());
+    const result = saveLog.mock.calls.at(-1)[0];
+    expect(result.status).toBe('finished');
+    expect(result.exerciseItems[0]).toEqual(saved.exerciseItems[0]);
+    expect(result.exerciseItems[1].sets).toHaveLength(3);
+    for (const set of result.exerciseItems[1].sets) {
+      expect(set).toMatchObject({ reps: '10', repsLeft: '10', repsRight: '10', completion: 'unrecorded' });
+      expect(isWorkingSet(set)).toBe(false);
+    }
   });
 
   it.each([

@@ -221,19 +221,7 @@ struct WorkoutBuilderView: View {
         let setCount = exercise.defaultSets ?? defaultSets
         let repCount = exercise.defaultReps ?? defaultReps
         let sets = (0..<setCount).map { _ in
-            planningMode
-                ? WorkoutSet(
-                    reps: "",
-                    weight: "",
-                    placeholderReps: String(repCount)
-                )
-                : WorkoutSet(
-                    reps: String(repCount),
-                    repsLeft: exercise.isUnilateral == true ? String(repCount) : nil,
-                    repsRight: exercise.isUnilateral == true ? String(repCount) : nil,
-                    repMode: exercise.isUnilateral == true ? "separateSides" : nil,
-                    weight: ""
-                )
+            WorkoutSet.newExerciseSet(planningMode: planningMode, defaultReps: repCount, isUnilateral: exercise.isUnilateral == true)
         }
         let item = ExerciseItem(
             exerciseId: exercise.id,
