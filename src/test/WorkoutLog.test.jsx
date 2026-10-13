@@ -52,6 +52,26 @@ describe('WorkoutLog', () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ['America/New_York', '2026-10-13T01:30:00Z', '2026-10-12'],
+    ['Pacific/Auckland', '2026-10-12T11:30:00Z', '2026-10-13'],
+  ])('dates new workouts by the local calendar in %s', async (timezone, now, expectedDay) => {
+    vi.stubEnv('TZ', timezone);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(now));
+    try {
+      const { container } = render(<WorkoutLog exercises={exercises} templates={templates}
+        initialTemplate={templates[0]} logs={[]} programs={[]} settings={settings}
+        onLogsChanged={() => {}} onExercisesChanged={() => {}} onClearTemplate={() => {}} />);
+      await waitFor(() => expect(saveLog).toHaveBeenCalledOnce());
+      expect(container.querySelector('input[type="date"]')).toHaveValue(expectedDay);
+      expect(saveLog.mock.calls[0][0].date).toBe(expectedDay);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('starts planning from an active program workout', async () => {
     render(
       <WorkoutLog

@@ -204,7 +204,7 @@ export default function WorkoutLog({
   editingLog,
   onClearEditing,
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateKey(new Date());
 
   // ── State ────────────────────────────────────────────────────────────────────
   const prescriptionRef = useRef(null);
