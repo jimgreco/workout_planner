@@ -675,7 +675,16 @@ final class WorkoutStore: ObservableObject {
             ))
         }
         guard let api else { throw WorkoutAPIError.missingConfiguration }
-        return try await api.exportData()
+        func requireCompleteBackup() throws {
+            if pendingLogQueue.count > 0 || pendingResourceQueue.count > 0 || !syncConflicts.isEmpty {
+                throw WorkoutExportError.pendingChanges
+            }
+        }
+        try requireCompleteBackup()
+        let data = try await api.exportData()
+        try api.checkSession()
+        try requireCompleteBackup()
+        return data
     }
 
     private var hasEditedEquipment: Bool {
@@ -1535,6 +1544,13 @@ private enum AccountOfflineKey {
         // Hex UTF-8 is injective, filesystem-safe and never uses profile emails.
         let suffix = ownerID.map { Data($0.utf8).map { String(format: "%02x", $0) }.joined() } ?? "signed-out"
         return prefix + "." + suffix
+    }
+}
+
+private enum WorkoutExportError: LocalizedError {
+    case pendingChanges
+    var errorDescription: String? {
+        "Sync pending changes and resolve conflicts before exporting. Your latest edits are not yet in the cloud backup."
     }
 }
 

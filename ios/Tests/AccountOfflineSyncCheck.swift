@@ -66,6 +66,10 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         _ = try await store.saveLog(log)
         precondition(store.pendingSyncCount == 1)
         precondition(store.logs.first?.exerciseItems.first?.targetRIR == 2)
+        let beforeExport = SyntheticProtocol.count()
+        do { _ = try await store.exportData(); preconditionFailure("Incomplete cloud backup was exported") }
+        catch { precondition(error.localizedDescription.contains("Sync pending changes and resolve conflicts before exporting")) }
+        precondition(SyntheticProtocol.count() == beforeExport && store.pendingSyncCount == 1)
         let queuedData = defaults.dictionaryRepresentation().first { $0.key.hasPrefix("forge.pendingWorkoutLogSaves.v2") }!.value as! Data
         let queued = try JSONSerialization.jsonObject(with: queuedData) as! [[String: Any]]
         let queuedPayload = queued[0]["log"] as! [String: Any]
@@ -264,6 +268,10 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         try await recovering.value
         precondition(SyntheticProtocol.count() == firstReadCount + 1)
         precondition(recoveryStore.pendingSyncCount == 0 && recoveryStore.pendingConflictCount == 1)
+        let beforeConflictExport = SyntheticProtocol.count()
+        do { _ = try await recoveryStore.exportData(); preconditionFailure("Unresolved comparison was omitted from export") }
+        catch { precondition(error.localizedDescription.contains("resolve conflicts before exporting")) }
+        precondition(SyntheticProtocol.count() == beforeConflictExport)
         let comparison = recoveryStore.syncConflicts[0]
         precondition(comparison.local?.log == original && comparison.actualRevision == 7)
         precondition(comparison.local?.log?.exerciseItems[0].targetRIR == 2)
@@ -338,6 +346,26 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         do { try await reviewRace.value; preconditionFailure("Set-aside decision was ignored") } catch {}
         precondition(reloaded.pendingConflictCount == 0 && SyntheticProtocol.count() == reviewRaceCount + 1)
         print("PASS missing/deleted recovery containment and in-flight set-aside/return review fencing")
+        auth.login("export-clean")
+        SyntheticProtocol.hold = true
+        let exportCount = SyntheticProtocol.count()
+        let exporting = Task { try await store.exportData() }
+        while SyntheticProtocol.count() == exportCount { await Task.yield() }
+        SyntheticProtocol.hold = false
+        try await store.saveLog(WorkoutLog(id: "export-pending", name: "Unsynced addition", date: "2026-10-12"))
+        SyntheticProtocol.finish(body: "{\"logs\":[]}")
+        do { _ = try await exporting.value; preconditionFailure("Export ignored work queued during download") }
+        catch { precondition(error.localizedDescription.contains("Sync pending changes and resolve conflicts before exporting")) }
+        precondition(store.pendingSyncCount == 1)
+        auth.login("export-other")
+        SyntheticProtocol.hold = true
+        let cleanCount = SyntheticProtocol.count()
+        let cleanExport = Task { try await store.exportData() }
+        while SyntheticProtocol.count() == cleanCount { await Task.yield() }
+        SyntheticProtocol.finish(body: "{\"logs\":[]}")
+        let exported = try await cleanExport.value
+        precondition(String(decoding: exported, as: UTF8.self) == "{\"logs\":[]}")
+        print("PASS backup completeness: queued writes block export before and after download, remain durable, and do not block another account")
         print("PASS legacy recovery: exact source retention, explicit attribution, staged comparison, pause/RIR preservation, reload, duplicate decisions, cross-account export and stale-read fencing")
         print("PASS pause offline lifecycle: queued pause, full store recreation, offline resume/finish/discard and reload")
         print("PASS native account isolation: durable owner queues, sign-out reset, legacy quarantine, late success/failure/401, A-B-A, interrupted flush, ordered edits, durable queued deletion and account-switch fencing")

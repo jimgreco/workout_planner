@@ -879,7 +879,16 @@ export function getLogsByDate(dateStr) {
 export async function exportData() {
   const captured = context();
   if (DEV_BYPASS && !BASE_URL) return { exportedAt: new Date().toISOString(), exercises: getExercises(), templates: getTemplates(), logs: getLogs(), programs: getPrograms(), gyms: getGyms(), equipment: getEquipment(), settings: getSettings() };
-  return request('GET', '/export', undefined, captured);
+  const requireCompleteBackup = () => {
+    if (readPendingLogQueue(captured.owner).length || readPendingResourceQueue(captured.owner).length || readPendingConflicts(captured.owner).length) {
+      throw new Error('Sync pending changes and resolve conflicts before exporting. Your latest edits are not yet in the cloud backup.');
+    }
+  };
+  requireCompleteBackup();
+  const data = await request('GET', '/export', undefined, captured);
+  assertCurrent(captured);
+  requireCompleteBackup();
+  return data;
 }
 
 export function previewImportData(data, current = {

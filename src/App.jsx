@@ -445,6 +445,11 @@ export default function App() {
       setLastExportAt(exportedAt);
       setNotice({ type: 'success', message: `Export downloaded. Last export: ${formatBackupTimestamp(exportedAt)}.` });
       setShowUserMenu(false);
+    } catch (err) {
+      if (err.name !== 'AuthError' && err.name !== 'AccountChangedError') {
+        setNotice({ type: 'error', message: err.message || 'Export could not be completed. Try again.' });
+        setShowUserMenu(false);
+      }
     } finally {
       setAccountBusy(false);
     }

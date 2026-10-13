@@ -538,6 +538,37 @@ describe('account and support', () => {
     await expect(exportData()).resolves.toEqual(payload);
   });
 
+  it.each(['workout', 'routine deletion'])('does not export a misleading backup while a %s is queued', async kind => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Offline'));
+    if (kind === 'workout') await saveLog(LOG); else await deleteTemplate(TMPL.id);
+    const queued = pendingChangeCount();
+    mockFetch({ 'GET /export': () => ({ body: { logs: [] } }) });
+    await expect(exportData()).rejects.toThrow('Sync pending changes and resolve conflicts before exporting');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(pendingChangeCount()).toBe(queued);
+  });
+
+  it('rechecks pending work after an export response arrives', async () => {
+    let finishExport;
+    globalThis.fetch = vi.fn((url) => {
+      if (url.endsWith('/export')) return new Promise(resolve => { finishExport = resolve; });
+      return Promise.reject(new TypeError('Offline'));
+    });
+    const exporting = exportData();
+    await saveLog(LOG);
+    finishExport({ ok: true, status: 200, json: async () => ({ logs: [] }) });
+    await expect(exporting).rejects.toThrow('Sync pending changes and resolve conflicts before exporting');
+    expect(pendingChangeCount()).toBe(1);
+  });
+
+  it('requires conflict resolution before exporting even with no pending write', async () => {
+    localStorage.setItem('forge.pendingConflicts.v2:test-owner', JSON.stringify([{ id: 'exercise-conflict', resource: 'exercises', itemId: EX.id }]));
+    mockFetch({ 'GET /export': () => ({ body: { exercises: [EX] } }) });
+    expect(pendingChangeCount()).toBe(0);
+    await expect(exportData()).rejects.toThrow('resolve conflicts before exporting');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('previewImportData summarizes imported data and duplicate IDs', () => {
     const preview = previewImportData({
       exportedAt: '2026-06-08T20:15:00.000Z',
