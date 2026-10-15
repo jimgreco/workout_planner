@@ -142,6 +142,14 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
     spec = APPS[app]
     services = spec['services']
     home = Path(home or Path.home())
+    app_version = None
+    if app == 'workouts':
+        try:
+            app_version = json.loads((home / spec['directory'] / 'package.json').read_text())['version']
+        except (OSError, ValueError, KeyError):
+            raise RuntimeError('Workouts source package version is missing or invalid') from None
+        if not isinstance(app_version, str) or not re.fullmatch(r'\d+\.\d+\.\d+', app_version):
+            raise RuntimeError('Workouts source package version must be a release version')
     live = {}
     contract = None
     chains = {}
@@ -218,7 +226,7 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
     for service in services:
         rollback[service] = service.replace('_', '-') + '-rollback:' + stamp + '-' + live[service]['Id'][:12]
         execute(['docker', 'tag', live[service]['Image'], rollback[service]])
-        metadata = {'APP_BUILD': sha[:7]} if app == 'macros' else ({'GIT_COMMIT': sha[:7], 'BUILD_TIME': build_time} if service == 'workout_api' else {})
+        metadata = {'APP_BUILD': sha[:7]} if app == 'macros' else ({'GIT_COMMIT': sha[:7], 'BUILD_TIME': build_time, 'APP_VERSION': app_version} if service == 'workout_api' else {})
         overlay['services'][service] = {'image': service.replace('_', '-') + '-release:' + sha, 'environment': metadata}
         if app == 'workouts' and service == 'workout':
             overlay['services'][service]['build'] = {'target': 'frontend-prebuilt'}
@@ -236,7 +244,8 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
                 configured = envmap(configured)
             intended = {**new_defaults, **{k: str(v) for k, v in configured.items() if v is not None}, **overlay['services'][service]['environment']}
             actual = envmap(live[service]['Config'].get('Env'))
-            changed = sorted(k for k in set(intended) | set(actual) if k not in spec['metadata'] and intended.get(k) != actual.get(k))
+            allowed_metadata = spec['metadata'] + (['APP_VERSION'] if service == 'workout_api' else [])
+            changed = sorted(k for k in set(intended) | set(actual) if k not in allowed_metadata and intended.get(k) != actual.get(k))
             if changed:
                 raise RuntimeError('New image environment drift for ' + service + ': ' + ', '.join(changed))
         execute(selected + ['up', '-d', '--no-deps', '--no-build', '--force-recreate'] + services)

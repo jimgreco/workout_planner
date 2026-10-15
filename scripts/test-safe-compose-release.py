@@ -24,10 +24,13 @@ class SafeReleaseTests(unittest.TestCase):
                 (home / 'docker-compose.override.yml').write_text('existing durable override')
             appdir = home / release.APPS[app]['directory']
             appdir.mkdir()
+            (appdir / 'package.json').write_text(json.dumps({'version': 'invalid' if drift == 'invalid-version' else '1.3.0'}))
             commands = []
             services = release.APPS[app]['services']
             env = {'NODE_ENV': 'production', 'SECRET': 'synthetic-local-value', 'PATH': '/usr/bin'}
             config = {'services': {name: {'build': {'context': str(appdir)}, 'environment': {'NODE_ENV': 'production', 'SECRET': 'synthetic-local-value'}} for name in services}}
+            if drift == 'version-config':
+                config['services']['workout_api']['environment']['APP_VERSION'] = '1.2.0'
             if drift == 'scoped-env':
                 config['services'][services[0]]['depends_on'] = {'db': {'condition': 'service_started'}}
                 config['services']['db'] = {'image': 'synthetic-db'}
@@ -39,9 +42,12 @@ class SafeReleaseTests(unittest.TestCase):
                     return args[-1].split('=')[-1] + '-container'
                 if args[:2] == ['docker', 'inspect']:
                     name = args[2].removesuffix('-container')
-                    return json.dumps([{'Id': 'a' * 64, 'Image': name + '-old-image', 'Config': {'Env': [k+'='+v for k,v in env.items()], 'Labels': {'com.docker.compose.project': 'existing', 'com.docker.compose.project.working_dir': str(home), 'com.docker.compose.project.config_files': str(recorded), 'com.docker.compose.config-hash': 'scoped-hash' if drift == 'scoped-env' else 'known-hash'}}}])
+                    actual_env = {**env, **({'APP_VERSION': '1.2.0'} if name == 'workout_api' and drift in ('version-config', 'version-image') else {})}
+                    return json.dumps([{'Id': 'a' * 64, 'Image': name + '-old-image', 'Config': {'Env': [k+'='+v for k,v in actual_env.items()], 'Labels': {'com.docker.compose.project': 'existing', 'com.docker.compose.project.working_dir': str(home), 'com.docker.compose.project.config_files': str(recorded), 'com.docker.compose.config-hash': 'scoped-hash' if drift == 'scoped-env' else 'known-hash'}}}])
                 if args[:3] == ['docker', 'image', 'inspect']:
                     defaults = {'PATH': '/usr/bin'}
+                    if drift in ('version-config', 'version-image') and args[3].startswith(('workout_api-', 'workout-api-')):
+                        defaults['APP_VERSION'] = '1.3.0' if '-release:' in args[3] else '1.2.0'
                     if drift == 'image' and '-release:' in args[3]:
                         defaults['ADDED_SECURITY_OPTION'] = 'unsafe'
                     return json.dumps([{'Config': {'Env': [k+'='+v for k,v in defaults.items()]}}])
@@ -69,7 +75,21 @@ class SafeReleaseTests(unittest.TestCase):
             self.assertEqual(len(overlays), 1)
             self.assertNotIn('SECRET', overlays[0].read_text())
             self.assertFalse((home / '.env').exists())
-            return commands, None, overlays
+            return commands, None, [json.loads(path.read_text()) for path in overlays]
+
+    def test_workouts_version_metadata_replaces_old_image_or_compose_version(self):
+        for drift in ('version-image', 'version-config'):
+            with self.subTest(source=drift):
+                commands, error, overlays = self.exercise('workouts', drift)
+                self.assertIsNone(error)
+                self.assertTrue(any('up' in c for c in commands))
+                self.assertEqual(overlays[0]['services']['workout_api']['environment']['APP_VERSION'], '1.3.0')
+                self.assertNotIn('APP_VERSION', overlays[0]['services']['workout']['environment'])
+
+    def test_invalid_source_version_stops_before_any_release_commands(self):
+        commands, error, _ = self.exercise('workouts', 'invalid-version')
+        self.assertIn('source package version', error)
+        self.assertEqual(commands, [])
 
     def test_targeted_recreate_and_rollback_images(self):
         for app in release.APPS:
@@ -116,10 +136,12 @@ class SafeReleaseTests(unittest.TestCase):
         self.assertFalse(any('up' in c or 'build' in c or 'tag' in c for c in commands))
 
     def test_new_image_environment_drift_blocks_restart(self):
-        commands, error, _ = self.exercise('macros', 'image')
-        self.assertIn('ADDED_SECURITY_OPTION', error)
-        self.assertFalse(any('up' in c for c in commands))
-        self.assertTrue(any('tag' in c for c in commands))
+        for app in release.APPS:
+            with self.subTest(app=app):
+                commands, error, _ = self.exercise(app, 'image')
+                self.assertIn('ADDED_SECURITY_OPTION', error)
+                self.assertFalse(any('up' in c for c in commands))
+                self.assertTrue(any('tag' in c for c in commands))
 
 
 class ScopedHashTests(unittest.TestCase):
