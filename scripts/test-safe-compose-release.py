@@ -43,11 +43,15 @@ class SafeReleaseTests(unittest.TestCase):
                 if args[:2] == ['docker', 'inspect']:
                     name = args[2].removesuffix('-container')
                     actual_env = {**env, **({'APP_VERSION': '1.2.0'} if name == 'workout_api' and drift in ('version-config', 'version-image') else {})}
+                    if drift == 'nginx-image' and name == 'workout':
+                        actual_env.update({'NGINX_VERSION': '1.27.0', 'NJS_VERSION': '0.8.0'})
                     return json.dumps([{'Id': 'a' * 64, 'Image': name + '-old-image', 'Config': {'Env': [k+'='+v for k,v in actual_env.items()], 'Labels': {'com.docker.compose.project': 'existing', 'com.docker.compose.project.working_dir': str(home), 'com.docker.compose.project.config_files': str(recorded), 'com.docker.compose.config-hash': 'scoped-hash' if drift == 'scoped-env' else 'known-hash'}}}])
                 if args[:3] == ['docker', 'image', 'inspect']:
                     defaults = {'PATH': '/usr/bin'}
                     if drift in ('version-config', 'version-image') and args[3].startswith(('workout_api-', 'workout-api-')):
                         defaults['APP_VERSION'] = '1.3.0' if '-release:' in args[3] else '1.2.0'
+                    if drift == 'nginx-image' and args[3].startswith(('workout-old-', 'workout-release:')):
+                        defaults.update({'NGINX_VERSION': '1.29.0', 'NJS_VERSION': '0.9.0'} if '-release:' in args[3] else {'NGINX_VERSION': '1.27.0', 'NJS_VERSION': '0.8.0'})
                     if drift == 'image' and '-release:' in args[3]:
                         defaults['ADDED_SECURITY_OPTION'] = 'unsafe'
                     return json.dumps([{'Config': {'Env': [k+'='+v for k,v in defaults.items()]}}])
@@ -90,6 +94,21 @@ class SafeReleaseTests(unittest.TestCase):
         commands, error, _ = self.exercise('workouts', 'invalid-version')
         self.assertIn('source package version', error)
         self.assertEqual(commands, [])
+
+    def test_frontend_image_package_metadata_can_advance_without_other_config_changes(self):
+        commands, error, _ = self.exercise('workouts', 'nginx-image')
+        self.assertIsNone(error)
+        self.assertTrue(any('up' in c for c in commands))
+
+    def test_image_metadata_exception_rejects_overrides_other_services_and_missing_defaults(self):
+        old = {'NGINX_VERSION': '1.27.0', 'NJS_VERSION': '0.8.0', 'OTHER': 'old'}
+        new = {'NGINX_VERSION': '1.29.0', 'NJS_VERSION': '0.9.0', 'OTHER': 'new'}
+        self.assertEqual(release.image_version_metadata('workout', {}, old, old, new), {'NGINX_VERSION', 'NJS_VERSION'})
+        self.assertEqual(release.image_version_metadata('workout', {'NGINX_VERSION': '1.27.0', 'NJS_VERSION': None}, old, old, new), set())
+        self.assertEqual(release.image_version_metadata('workout_api', {}, old, old, new), set())
+        self.assertEqual(release.image_version_metadata('workout', {}, {**old, 'NGINX_VERSION': 'custom'}, old, new), {'NJS_VERSION'})
+        self.assertEqual(release.image_version_metadata('workout', {}, old, {}, new), set())
+        self.assertEqual(release.image_version_metadata('workout', {}, old, old, {}), set())
 
     def test_targeted_recreate_and_rollback_images(self):
         for app in release.APPS:

@@ -33,6 +33,14 @@ def envmap(values):
     return dict(item.split('=', 1) for item in values or [] if '=' in item)
 
 
+def image_version_metadata(service, configured, actual, old_defaults, new_defaults):
+    if service != 'workout':
+        return set()
+    return {key for key in ('NGINX_VERSION', 'NJS_VERSION')
+            if key not in configured and key in old_defaults and key in new_defaults
+            and actual.get(key) == old_defaults[key]}
+
+
 def decoded_config(compose, execute):
     # Compose v1 emits YAML. Parse locally; never print resolved configuration.
     source = execute(compose + ['config'])
@@ -200,6 +208,7 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
                 original += ['-f', str(Path(path) if Path(path).is_absolute() else Path(workdir) / path)]
             verify_extended_model(decoded_config(original, execute), config, service)
     verify_live_hashes(compose, compose_base, config, live, services, execute)
+    old_image_defaults = {}
     for service in services:
         item = live[service]
         svc = config['services'][service]
@@ -208,6 +217,7 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
         if context is None or Path(context).resolve() != (home / spec['directory']).resolve():
             raise RuntimeError('Unexpected build context for ' + service)
         old_defaults = envmap(json.loads(execute(['docker', 'image', 'inspect', item['Image']]))[0]['Config'].get('Env'))
+        old_image_defaults[service] = old_defaults
         configured = svc.get('environment') or {}
         if isinstance(configured, list):
             configured = envmap(configured)
@@ -245,6 +255,7 @@ def release(app, sha, execute=run, home=None, preflight_only=False):
             intended = {**new_defaults, **{k: str(v) for k, v in configured.items() if v is not None}, **overlay['services'][service]['environment']}
             actual = envmap(live[service]['Config'].get('Env'))
             allowed_metadata = spec['metadata'] + (['APP_VERSION'] if service == 'workout_api' else [])
+            allowed_metadata += list(image_version_metadata(service, configured, actual, old_image_defaults[service], new_defaults))
             changed = sorted(k for k in set(intended) | set(actual) if k not in allowed_metadata and intended.get(k) != actual.get(k))
             if changed:
                 raise RuntimeError('New image environment drift for ' + service + ': ' + ', '.join(changed))
