@@ -4,7 +4,7 @@ import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil
 import Modal from '../components/Modal.jsx';
 import { deleteLog } from '../api.js';
 import { setLabel } from '../progress.js';
-import { matchesHistorySearch } from '../workoutHistory.js';
+import { matchesHistorySearch, workoutSummary } from '../workoutHistory.js';
 
 const DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -23,6 +23,15 @@ function formatDateNice(dateStr) {
 }
 
 function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, onDeleteLog }) {
+  const [copyStatus, setCopyStatus] = useState('');
+  async function copySummary() {
+    try {
+      await navigator.clipboard.writeText(workoutSummary(log, exercises));
+      setCopyStatus('Workout summary copied.');
+    } catch {
+      setCopyStatus('Could not copy. Check clipboard access and try again.');
+    }
+  }
   const d = new Date(log.date + 'T00:00:00');
   const dayName = DAY_NAMES[d.getDay()];
   const duration = log.startTime && log.endTime ? formatWorkoutDuration(log) : '—';
@@ -80,6 +89,7 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
             </p>
           )}
           <div className="history-item-actions">
+            <button className="btn btn-secondary btn-sm" onClick={copySummary}>Copy summary</button>
             <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); onEditLog(log); }}>
               <Pencil size={14} /> Edit
             </button>
@@ -87,6 +97,7 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
               <Trash2 size={16} color="var(--danger)" />
             </button>
           </div>
+          {copyStatus && <p role="status" className="text-muted">{copyStatus}</p>}
         </div>
       )}
     </div>

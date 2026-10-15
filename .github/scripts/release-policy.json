@@ -39,7 +39,7 @@
       "push": null
     }
   },
-  "marketingVersion": "1.2",
+  "marketingVersion": "1.3",
   "apiOrigin": "https://repmixburn.com/api",
   "infoPlists": [
     "ios/WorkoutPlanner/Info.plist",

@@ -1,5 +1,6 @@
 import { isWorkingSet } from './setEvidence.js';
-import { personalBestContext } from './progress.js';
+import { personalBestContext, setLabel } from './progress.js';
+import { formatWorkoutDuration } from './workoutTiming.js';
 const WEIGHT_TYPES = new Set(['weight', 'double', 'bar_double', 'smith_double', 'none']);
 
 function logSortKey(log = {}) {
@@ -144,4 +145,18 @@ export function matchesHistorySearch(log, query, exercises) {
   const text = [log.name, log.date, log.notes, ...(log.exerciseItems ?? []).map(item => names.get(item.exerciseId))]
     .filter(Boolean).join(' ').toLocaleLowerCase();
   return terms.every(term => text.includes(term));
+}
+
+export function workoutSummary(log, exercises) {
+  const lines = [log.name, `Date: ${log.date}`];
+  if (log.startTime && log.endTime) lines.push(`Duration: ${formatWorkoutDuration(log)}`);
+  for (const item of log.exerciseItems ?? []) {
+    const exercise = exercises.find(entry => entry.id === item.exerciseId);
+    lines.push('', exercise?.name || 'Unknown exercise');
+    for (const [index, set] of (item.sets ?? []).entries()) {
+      lines.push(`Set ${index + 1}: ${setLabel(set, item.weightType, exercise?.usesTime)}`);
+    }
+  }
+  if (log.notes) lines.push('', `Notes: ${log.notes}`);
+  return lines.join('\n');
 }

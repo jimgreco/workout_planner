@@ -3,6 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import Calendar from '../pages/Calendar.jsx';
 
 describe('workout history', () => {
+  it('copies a summary and reports clipboard failures without changing the workout', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    render(<Calendar logs={[{ id: 'copy', name: 'Copy session', date: '2026-10-15', status: 'finished', notes: 'Good session', exerciseItems: [] }]} exercises={[]} onUpdate={vi.fn()} onEditLog={vi.fn()} />);
+    fireEvent.click(screen.getByText('Copy session'));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy summary' }));
+    expect(await screen.findByText('Workout summary copied.')).toBeVisible();
+    expect(writeText).toHaveBeenCalledWith('Copy session\nDate: 2026-10-15\n\nNotes: Good session');
+    writeText.mockRejectedValueOnce(new Error('Denied'));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy summary' }));
+    expect(await screen.findByText('Could not copy. Check clipboard access and try again.')).toBeVisible();
+  });
   it('searches names, exercises, notes and dates with all words, and clears without changing history', () => {
     const logs = [
       { id: 'push', name: 'Push session', date: '2026-10-12', status: 'finished', notes: 'Hotel vacation', exerciseItems: [{ exerciseId: 'bench', sets: [] }] },

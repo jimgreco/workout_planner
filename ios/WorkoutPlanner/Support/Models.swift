@@ -1,5 +1,54 @@
 import Foundation
 
+func workoutSummary(_ log: WorkoutLog, exercises: [Exercise]) -> String {
+    var lines = [log.name, "Date: \(log.date)"]
+    if log.startTime != nil && log.endTime != nil {
+        lines.append("Duration: \(formatDuration(startTime: log.startTime, endTime: log.endTime, pausedDurationMs: log.pausedDurationMs))")
+    }
+    for item in log.exerciseItems {
+        let exercise = exercises.first { $0.id == item.exerciseId }
+        lines += ["", exercise?.name ?? "Unknown exercise"]
+        for (index, set) in item.sets.enumerated() {
+            lines.append("Set \(index + 1): \(historySetLabel(set, weightType: item.weightType, usesTime: exercise?.usesTime ?? false))")
+        }
+    }
+    if let notes = log.notes, !notes.isEmpty { lines += ["", "Notes: \(notes)"] }
+    return lines.joined(separator: "\n")
+}
+
+func historySetLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool) -> String {
+    let reps = historyRepsLabel(for: set)
+    let unit = usesTime ? "secs" : "reps"
+    let effort = [
+        set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
+        set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
+    ].compactMap { $0 }.joined(separator: " · ")
+    let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
+    let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
+    if weightType == "none" {
+        return "\(set.historyStatusPrefix)\(typePrefix)\(reps) \(unit)\(effortSuffix)"
+    }
+    let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
+    let suffix = weightType == "smith_double" ? " lbs (Smith + 2x)" : weightType == "bar_double" ? " lbs (bar + 2x)" : weightType == "double" ? " lbs (2x)" : " lbs"
+    return "\(set.historyStatusPrefix)\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
+}
+
+private func historyRepsLabel(for set: WorkoutSet) -> String {
+    let reps = historyCleaned(set.reps)
+    let left = historyCleaned(set.repsLeft)
+    let right = historyCleaned(set.repsRight)
+
+    if let left, let right {
+        return left == right ? left : "\(left)/\(right)"
+    }
+    return left ?? right ?? reps ?? "-"
+}
+
+private func historyCleaned(_ value: String?) -> String? {
+    let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return text.isEmpty ? nil : text
+}
+
 func matchesHistorySearch(_ log: WorkoutLog, query: String, exercises: [Exercise]) -> Bool {
     let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace })
     let names = log.exerciseItems.compactMap { item in exercises.first { $0.id == item.exerciseId }?.name }

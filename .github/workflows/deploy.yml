@@ -121,7 +121,7 @@ jobs:
           VITE_API_URL: /api
           VITE_DEV_BYPASS_AUTH: "false"
           VITE_GIT_COMMIT: ${{ github.sha }}
-          VITE_APP_VERSION: ${{ vars.APP_VERSION || '1.2.0' }}
+          VITE_APP_VERSION: ${{ vars.APP_VERSION || '1.3.0' }}
         run: |
           set -euo pipefail
           VITE_GOOGLE_CLIENT_ID="$(ssh -i ~/.ssh/workout_planner_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes -o ConnectTimeout=30 "$EC2_USER@$EC2_HOST" 'python3 -' <<'PYTHON'

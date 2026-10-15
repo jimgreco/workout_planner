@@ -180,6 +180,7 @@ private struct HistoryItemView: View {
     let onToggle: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+    @State private var copied = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -240,7 +241,7 @@ private struct HistoryItemView: View {
                                 FlowLayout(spacing: 6) {
                                     ForEach(item.sets.indices, id: \.self) { index in
                                         let set = item.sets[index]
-                                        Text(setLabel(set, weightType: item.weightType, usesTime: exercise.usesTime == true))
+                                        Text(historySetLabel(set, weightType: item.weightType, usesTime: exercise.usesTime == true))
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(Theme.text)
                                             .padding(.horizontal, 8)
@@ -266,6 +267,14 @@ private struct HistoryItemView: View {
                     }
 
                     HStack(spacing: 8) {
+                        Button {
+                            UIPasteboard.general.string = workoutSummary(log, exercises: exercises)
+                            copied = true
+                        } label: {
+                            Text(copied ? "Copied" : "Copy summary")
+                        }
+                        .buttonStyle(SecondaryButtonStyle(compact: true))
+                        .accessibilityLabel(copied ? "Workout summary copied" : "Copy workout summary")
                         Button(action: onEdit) {
                             Label("Edit", systemImage: "pencil")
                         }
@@ -290,38 +299,7 @@ private struct HistoryItemView: View {
         .shadow(color: .black.opacity(isExpanded ? 0.08 : 0.04), radius: isExpanded ? 7 : 3, x: 0, y: 1)
     }
 
-    private func setLabel(_ set: WorkoutSet, weightType: String?, usesTime: Bool) -> String {
-        let reps = repsLabel(for: set)
-        let unit = usesTime ? "secs" : "reps"
-        let effort = [
-            set.rpe?.isEmpty == false ? "RPE \(set.rpe!)" : nil,
-            set.rir?.isEmpty == false ? "RIR \(set.rir!)" : nil,
-        ].compactMap { $0 }.joined(separator: " · ")
-        let effortSuffix = effort.isEmpty ? "" : " · \(effort)"
-        let typePrefix = set.setType == nil || set.setType == "working" ? "" : "\(setTypeLabel(set.setType)) · "
-        if weightType == "none" {
-            return "\(set.historyStatusPrefix)\(typePrefix)\(reps) \(unit)\(effortSuffix)"
-        }
-        let weight = (set.weight?.isEmpty == false ? set.weight : "-") ?? "-"
-        let suffix = weightType == "smith_double" ? " lbs (Smith + 2x)" : weightType == "bar_double" ? " lbs (bar + 2x)" : weightType == "double" ? " lbs (2x)" : " lbs"
-        return "\(set.historyStatusPrefix)\(typePrefix)\(reps) x \(weight)\(weight == "-" ? "" : suffix)\(effortSuffix)"
-    }
 
-    private func repsLabel(for set: WorkoutSet) -> String {
-        let reps = cleaned(set.reps)
-        let left = cleaned(set.repsLeft)
-        let right = cleaned(set.repsRight)
-
-        if let left, let right {
-            return left == right ? left : "\(left)/\(right)"
-        }
-        return left ?? right ?? reps ?? "-"
-    }
-
-    private func cleaned(_ value: String?) -> String? {
-        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return text.isEmpty ? nil : text
-    }
 }
 
 private struct CalendarGrid: View {
