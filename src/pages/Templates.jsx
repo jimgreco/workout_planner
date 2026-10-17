@@ -14,6 +14,7 @@ import {
   Play,
   Plus,
   RefreshCcw,
+  Search,
   Settings,
   SkipForward,
   Target,
@@ -40,6 +41,7 @@ import {
   upcomingProgramSchedule as buildUpcomingProgramSchedule,
 } from '../programs.js';
 import { lastWeightTypesByExerciseId, routineExerciseWeightAdvice } from '../workoutHistory.js';
+import { filterRoutines } from '../routineSearch.js';
 
 const PROGRESSION_TYPES = [
   { value: 'double_progression', label: 'Reps, then weight' },
@@ -401,6 +403,7 @@ export default function Templates({
 }) {
   const [modal, setModal]               = useState(null); // null | 'add' | 'edit' | 'view' | 'settings' | 'program'
   const [routineError, setRoutineError] = useState('');
+  const [routineSearch, setRoutineSearch] = useState('');
   const [brief, setBrief] = useState(null);
   const [form, setForm]                 = useState(emptyTemplate());
   const [programError, setProgramError] = useState('');
@@ -420,6 +423,11 @@ export default function Templates({
   const showRoutines = mode === 'all' || mode === 'routines';
   const showExerciseLibrary = mode === 'all';
   const pageTitle = mode === 'routines' ? 'Routines' : 'Program';
+  const isSearchingRoutines = routineSearch.trim().length > 0;
+  const visibleRoutines = useMemo(
+    () => filterRoutines(templates, routineSearch, exercises),
+    [templates, routineSearch, exercises],
+  );
 
   const activeProgram = useMemo(
     () => activeProgramForDate(programs),
@@ -1133,6 +1141,20 @@ export default function Templates({
           <p>{templates.length === 1 ? '1 routine' : `${templates.length} routines`}</p>
         </div>
 
+        {templates.length > 0 && (
+          <div className="routine-search">
+            <div className="form-group mb-0" style={{ position: 'relative' }}>
+              <Search size={18} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input type="search" aria-label="Search routines" placeholder="Routine, exercise, or muscle group" value={routineSearch} onChange={(event) => setRoutineSearch(event.target.value)} style={{ paddingLeft: 40 }} />
+            </div>
+            {isSearchingRoutines && (
+              <div className="text-muted" role="status" style={{ marginTop: 12 }}>
+                {visibleRoutines.length} matching {visibleRoutines.length === 1 ? 'routine' : 'routines'} · <button className="btn btn-sm btn-secondary" onClick={() => setRoutineSearch('')}>Clear routine search</button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="routine-list">
         {templates.length === 0 && (
           <div className="empty-state">
@@ -1146,7 +1168,14 @@ export default function Templates({
           </div>
         )}
 
-        {templates.map((t) => (
+        {templates.length > 0 && visibleRoutines.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-icon"><Search size={48} /></div>
+            <p>No routines match your search. Try a routine name, description, exercise, or muscle group.</p>
+          </div>
+        )}
+
+        {visibleRoutines.map((t) => (
           <div key={t.id} className="card">
             <div className="card-header">
               <div style={{ flex: 1, minWidth: 0 }}>

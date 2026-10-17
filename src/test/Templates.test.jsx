@@ -60,6 +60,39 @@ describe('Routines page', () => {
     vi.clearAllMocks();
   });
 
+  it('searches routines, clears the filter, and starts the original prescription without saving', () => {
+    const templates = [
+      { id: 'push', name: 'Push Day', description: 'Quick hotel workout', exerciseItems: [{ exerciseId: 'bench', targetRIR: 2, baselineId: 'controlled', sets: [{ reps: '8', weight: '100' }] }] },
+      { id: 'legs', name: 'Legs Day', description: '', exerciseItems: [{ exerciseId: 'squat', sets: [] }] },
+    ];
+    const onStartWorkout = vi.fn();
+    render(<Templates mode="routines" templates={templates} exercises={exercises} settings={{ defaultSets: 3, defaultReps: 10 }} onUpdate={() => {}} onSettingsUpdate={() => {}} onStartWorkout={onStartWorkout} />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search routines' }), { target: { value: '  HOTEL chest ' } });
+    expect(screen.getByRole('heading', { name: 'Push Day' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Legs Day' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('1 matching routine');
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(onStartWorkout).toHaveBeenCalledWith(templates[0]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear routine search' }));
+    expect(screen.getByRole('searchbox', { name: 'Search routines' })).toHaveValue('');
+    expect(screen.getByRole('heading', { name: 'Legs Day' })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(saveTemplate).not.toHaveBeenCalled();
+    expect(saveLog).not.toHaveBeenCalled();
+  });
+
+  it('shows a search empty state without offering duplicate starter routines', () => {
+    render(<Templates mode="routines" templates={[{ id: 'push', name: 'Push Day', exerciseItems: [] }]} exercises={exercises} settings={{ defaultSets: 3, defaultReps: 10 }} onUpdate={() => {}} onSettingsUpdate={() => {}} onStartWorkout={() => {}} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search routines' }), { target: { value: 'cycling' } });
+    expect(screen.getByText(/No routines match your search/)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('0 matching routines');
+    expect(screen.queryByRole('button', { name: /Add Starter Routines/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear routine search' }));
+    expect(screen.getByRole('heading', { name: 'Push Day' })).toBeInTheDocument();
+  });
+
   it('creates starter routines from the exercise library', async () => {
     const onUpdate = vi.fn();
     render(
@@ -285,7 +318,7 @@ describe('Routines page', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /manage .*push day/i }));
-    fireEvent.change(screen.getByLabelText(/routine/i), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /^routine$/i }), { target: { value: '' } });
 
     await waitFor(() => expect(saveProgram).toHaveBeenCalledOnce());
     expect(saveProgram.mock.calls[0][0]).toMatchObject({

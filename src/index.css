@@ -458,6 +458,9 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   line-height: 1.35;
   text-align: right;
 }
+.routine-search {
+  margin-bottom: 14px;
+}
 .routine-list {
   display: flex;
   flex-direction: column;

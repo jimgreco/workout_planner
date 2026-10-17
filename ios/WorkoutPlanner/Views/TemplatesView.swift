@@ -16,6 +16,16 @@ struct TemplatesView: View {
     @State private var deleteProgramTarget: TrainingProgram?
     @State private var isSaving = false
     @State private var selectedTab: ProgramTab = .program
+    @State private var routineSearch = ""
+    @FocusState private var routineSearchFocused: Bool
+
+    private var isSearchingRoutines: Bool {
+        !routineSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var visibleRoutines: [WorkoutTemplate] {
+        filterRoutines(store.templates, query: routineSearch, exercises: store.exercises)
+    }
 
     private var programCountLabel: String {
         store.programs.count == 1 ? "1 program" : "\(store.programs.count) programs"
@@ -232,6 +242,31 @@ struct TemplatesView: View {
                 subtitle: routineCountLabel
             )
 
+            if !store.templates.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
+                    TextField("Routine, exercise, or muscle group", text: $routineSearch)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .focused($routineSearchFocused)
+                        .onSubmit { routineSearchFocused = false }
+                        .accessibilityLabel("Search routines")
+                        .accessibilityHint("Matches routine names, descriptions, exercises, and muscle groups.")
+                    if !routineSearch.isEmpty {
+                        Button { routineSearch = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .accessibilityLabel("Clear routine search")
+                    }
+                }
+                .padding(12)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+
+                if isSearchingRoutines {
+                    Text("\(visibleRoutines.count) matching \(visibleRoutines.count == 1 ? "routine" : "routines")")
+                        .font(.caption).foregroundStyle(Theme.muted)
+                }
+            }
+
             if store.templates.isEmpty {
                 VStack(spacing: 10) {
                     EmptyState(icon: "square.grid.2x2", text: "No routines yet. Tap + to save your favorite workouts.")
@@ -245,9 +280,11 @@ struct TemplatesView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(isSaving || store.exercises.isEmpty)
                 }
+            } else if visibleRoutines.isEmpty {
+                EmptyState(icon: "magnifyingglass", text: "No routines match your search. Try a routine name, description, exercise, or muscle group.")
             } else {
                 VStack(spacing: 10) {
-                    ForEach(store.templates) { template in
+                    ForEach(visibleRoutines) { template in
                         TemplateCard(
                             template: template,
                             exercises: store.exercises,

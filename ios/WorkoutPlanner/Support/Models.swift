@@ -56,6 +56,20 @@ func matchesHistorySearch(_ log: WorkoutLog, query: String, exercises: [Exercise
     return terms.allSatisfy { text.contains($0) }
 }
 
+func filterRoutines(_ templates: [WorkoutTemplate], query: String, exercises: [Exercise]) -> [WorkoutTemplate] {
+    let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace })
+    guard !terms.isEmpty else { return templates }
+    let exercisesById = Dictionary(exercises.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+    return templates.filter { template in
+        let exerciseText = template.exerciseItems.flatMap { item -> [String] in
+            guard let exercise = exercisesById[item.exerciseId] else { return [] }
+            return [exercise.name, exercise.muscleGroup]
+        }
+        let text = ([template.name, template.description ?? ""] + exerciseText).joined(separator: " ").lowercased()
+        return terms.allSatisfy { text.contains($0) }
+    }
+}
+
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
