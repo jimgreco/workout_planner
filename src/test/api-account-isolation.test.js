@@ -220,3 +220,37 @@ it('resumes the latest pending setup before an older response and hides queued d
   deletion.resolve(response(null, 204)); await deleting;
   expect(getLogs()).toEqual([]);
 });
+
+it('restores routine equipment overrides after offline relaunch only for the owning account', async () => {
+  const { newWorkoutEquipment } = await import('../equipmentSetups.js');
+  const prescribed = { id: 'routine-setup', machine: 'Synthetic cable' };
+  const selected = { id: 'chosen-setup', machine: 'Synthetic dumbbells' };
+  const exercise = { id: 'shared-exercise-id', name: 'Press', equipmentSetups: [prescribed, selected] };
+  const item = { exerciseId: exercise.id, setupProfile: prescribed, baselineId: prescribed.id, sets: [] };
+  const template = { id: 'shared-routine-id', updatedAt: '2026-10-07T08:00:00Z', exerciseItems: [item] };
+  const finished = { id: 'a-routine', date: '2026-10-07', startTime: '2026-10-07T12:00:00Z', status: 'finished',
+    prescription: { templateId: template.id, exerciseItems: [item] },
+    exerciseItems: [{ ...item, setupProfile: selected, baselineId: selected.id, setupSelectionMade: true }] };
+  const preference = () => newWorkoutEquipment(item, getExercises().find(e => e.id === exercise.id), getLogs(), template);
+  const reload = async () => {
+    resetData();
+    fetch.mockImplementation(async url => response(url.endsWith('/settings') ? {} : []));
+    await initData();
+    fetch.mockRejectedValue(new TypeError('offline'));
+  };
+  globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('offline'));
+  await saveExercise(exercise); await saveLog(finished);
+  await reload();
+  expect(preference().setupProfile).toEqual(selected);
+  login('B'); resetData();
+  await saveExercise(exercise);
+  expect(preference().setupProfile).toEqual(prescribed);
+  expect(getLogs()).toEqual([]);
+  login('A'); await reload();
+  expect(preference().setupProfile).toEqual(selected);
+  await saveExercise({ ...exercise, equipmentSetups: [prescribed], deletedEquipmentSetupIds: [selected.id] });
+  await reload();
+  expect(preference().setupProfile).toBeUndefined();
+  expect(preference().baselineId).toBeUndefined();
+  expect(getLogs()[0]).toMatchObject(finished);
+});

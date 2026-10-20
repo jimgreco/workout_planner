@@ -63,3 +63,72 @@ it('does not learn unused/skipped automatic defaults, but remembers an explicit 
   unused.exerciseItems[0].setupProfile = undefined;
   expect(resolve([used, unused]).setupProfile).toBeUndefined();
 });
+
+describe('equipment overrides from an unchanged routine', () => {
+  const prescribed = { ...item, setupProfile: home, baselineId: home.id };
+  const template = { id: 'routine', updatedAt: '2026-10-06T08:00:00.000Z', exerciseItems: [prescribed] };
+  const completed = (time, profile = gym) => ({ ...log(time, profile), startTime: `2026-10-06T${time}:00:00Z`,
+    prescription: { templateId: template.id, exerciseItems: [prescribed] } });
+  const remember = (logs, routine = template, ex = exercise) => newWorkoutEquipment(routine.exerciseItems[0], ex, logs, routine);
+
+  it('restores the finished override and its baseline without rewriting the prescription or history', () => {
+    const history = [completed('14')];
+    history[0].exerciseItems[0].techniqueNote = 'Smith setup';
+    const before = JSON.stringify({ history, template });
+    expect(remember(history)).toMatchObject({ setupProfile: gym, baselineId: gym.id, techniqueNote: 'Smith setup', lastItem: history[0].exerciseItems[0] });
+    expect(JSON.stringify({ history, template })).toBe(before);
+  });
+
+  it('gives a newly edited routine or a changed prescribed comparison context priority', () => {
+    expect(remember([completed('14')], { ...template, updatedAt: '2026-10-06T14:00:00.001Z' }).setupProfile).toEqual(home);
+    for (const change of [{ baselineId: 'new-technique' }, { techniqueNote: 'New depth' }, { setupProfile: { id: 'new-machine' } }]) {
+      const changed = { ...template, exerciseItems: [{ ...prescribed, ...change }] };
+      expect(remember([completed('14')], changed).setupProfile).toEqual(changed.exerciseItems[0].setupProfile);
+    }
+  });
+
+  it('requires the same routine and its original prescription, with a trustworthy edit boundary', () => {
+    const history = completed('14');
+    for (const prescription of [undefined, { ...history.prescription, templateId: 'other-routine' }, { ...history.prescription, exerciseItems: [] }]) {
+      expect(remember([{ ...history, prescription }]).setupProfile).toEqual(home);
+    }
+    expect(remember([{ ...history, startTime: undefined }]).setupProfile).toEqual(home);
+    expect(remember([history], { ...template, updatedAt: 'invalid' }).setupProfile).toEqual(home);
+    expect(remember([history], { ...template, updatedAt: undefined }).setupProfile).toEqual(gym);
+    history.prescription.exerciseItems = [{ ...prescribed, techniqueNote: null }];
+    expect(remember([history]).setupProfile).toEqual(gym);
+  });
+
+  it('does not revive an older override after the latest routine used a different prescription', () => {
+    const newer = completed('18');
+    newer.prescription = { ...newer.prescription, exerciseItems: [{ ...prescribed, baselineId: 'other-context' }] };
+    expect(remember([completed('14'), newer]).setupProfile).toEqual(home);
+  });
+
+  it('remembers explicit Unspecified and never falls back to the prescribed setup after deletion', () => {
+    const cleared = completed('18');
+    cleared.exerciseItems[0] = { ...item, sets: [], setupSelectionMade: true, baselineId: 'unspecified-baseline' };
+    expect(remember([completed('14'), cleared])).toMatchObject({ setupProfile: undefined, baselineId: 'unspecified-baseline', lastItem: undefined });
+    expect(remember([completed('14')], template, removingSetup(exercise, gym.id))).toEqual({ baselineId: undefined, techniqueNote: undefined });
+    expect(newWorkoutEquipment(prescribed, undefined, [completed('14')], template)).toEqual({});
+  });
+
+  it('ignores unused drafts and retains an explicit technique baseline when equipment did not change', () => {
+    const unused = completed('18', home);
+    unused.exerciseItems[0].sets = [{ reps: '8', completion: 'skipped' }];
+    expect(remember([completed('14'), unused]).setupProfile).toEqual(gym);
+    expect(remember([{ ...completed('18'), status: 'active' }]).setupProfile).toEqual(home);
+    const technique = { ...template, exerciseItems: [{ ...prescribed, baselineId: 'technique' }] };
+    const sameMachine = completed('14', home);
+    sameMachine.prescription = { ...sameMachine.prescription, exerciseItems: technique.exerciseItems };
+    expect(remember([sameMachine], technique).baselineId).toBe('technique');
+  });
+
+  it('uses current setup details and rejects old Smith loads after resistance changes', () => {
+    const history = completed('14');
+    history.exerciseItems[0].weightType = 'smith_double';
+    const updated = { ...gym, smithBarWeight: 25, seat: '3' };
+    expect(remember([history], template, { ...exercise, equipmentSetups: [home, updated] })).toMatchObject({ setupProfile: updated, baselineId: gym.id, lastItem: undefined });
+    expect(remember([history], template, { id: 'press' }).setupProfile).toEqual(gym);
+  });
+});

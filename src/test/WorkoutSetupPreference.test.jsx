@@ -67,6 +67,31 @@ describe('workout equipment defaults in the start/log UI', () => {
     expect(saved().exerciseItems[0]).toMatchObject({ setupProfile: home, targetRIR: 3, setupSelectionMade: true });
     expect(saved().prescription.exerciseItems[0].setupProfile).toEqual(gym);
   });
+  it.each(['initial', 'dropdown'].flatMap(path => [home.id, ''].map(choice => [path, choice])))('remembers a finished %s routine choice "%s" after relaunch', async (path, choice) => {
+    const routine = { ...template, updatedAt: '2026-10-07T08:00:00.000Z' };
+    const launch = async logs => {
+      const view = render(<WorkoutLog {...props} templates={[routine]} logs={logs} initialTemplate={path === 'initial' ? routine : undefined} />);
+      if (path === 'dropdown') {
+        fireEvent.change(screen.getByRole('option', { name: 'Routine', exact: true }).closest('select'), { target: { value: routine.id } });
+      }
+      await tick(); await click('Start Workout');
+      return view;
+    };
+    const first = await launch(props.logs);
+    expect(screen.getByLabelText('Equipment setup')).toHaveValue(gym.id);
+    await choose(choice);
+    await click('Pause'); await click('Resume'); await click('Finish Workout');
+    const finished = JSON.parse(JSON.stringify(saved()));
+    expect(finished.status).toBe('finished');
+    expect(finished.prescription.exerciseItems[0].setupProfile).toEqual(gym);
+    first.unmount();
+    vi.setSystemTime(new Date('2026-10-08T12:00:00Z'));
+    await launch([...props.logs, finished]);
+    expect(screen.getByLabelText('Equipment setup')).toHaveValue(choice);
+    expect(saved().exerciseItems[0]).toMatchObject({ baselineId: finished.exerciseItems[0].baselineId, targetRIR: 3 });
+    expect(saved().prescription.exerciseItems[0].setupProfile).toEqual(gym);
+    expect(template.exerciseItems[0].setupProfile).toEqual(gym);
+  });
   it('cancelled setup editor and discarded session do not promote a tentative choice', async () => {
     render(<WorkoutLog {...props} />);
     await add(); await click('Start Workout');

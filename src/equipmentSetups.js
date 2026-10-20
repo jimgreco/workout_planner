@@ -56,27 +56,50 @@ export function clearComparisonHints(set) {
     placeholderWeight: '', placeholderWeightType: undefined };
 }
 
+const teachesEquipment = entry => entry.setupSelectionMade === true || entry.sets?.some(hasRecordedReps);
+
+function routineEquipmentOverride(item, template, finishedLogs) {
+  if (!template?.id || (!item.setupProfile && !item.baselineId)) return undefined;
+  const previous = finishedLogs.find(log => log.prescription?.templateId === template.id
+    && log.exerciseItems?.some(entry => entry.exerciseId === item.exerciseId && teachesEquipment(entry)));
+  const prescribed = previous?.prescription?.exerciseItems?.find(entry => entry.exerciseId === item.exerciseId);
+  if (!prescribed || prescribed.setupProfile?.id !== item.setupProfile?.id
+    || (prescribed.baselineId ?? undefined) !== (item.baselineId ?? undefined)
+    || (prescribed.techniqueNote ?? undefined) !== (item.techniqueNote ?? undefined)) return undefined;
+  // A routine edited since that workout began is a new prescription. The saved
+  // prescription also fences legacy routines without an updatedAt timestamp.
+  if (template.updatedAt != null) {
+    const editedAt = Date.parse(template.updatedAt), startedAt = Date.parse(previous.startTime);
+    if (!Number.isFinite(editedAt) || !Number.isFinite(startedAt) || editedAt > startedAt) return undefined;
+  }
+  const selected = previous.exerciseItems.find(entry => entry.exerciseId === item.exerciseId && teachesEquipment(entry));
+  // A technique-only change must not erase an explicit routine baseline.
+  return selected.setupProfile?.id !== prescribed.setupProfile?.id ? selected : undefined;
+}
+
 // Call only when creating a new session item, never when rendering/resuming it.
 // Finished logs are the account-owned, offline/synced preference record. Planning
 // and active drafts cannot promote a tentative choice, and an unspecified latest
 // choice must not resurrect an older setup. updatedAt is deliberately ignored:
 // editing an old workout does not make it the most recently performed workout.
-export function newWorkoutEquipment(item, exercise, logs = []) {
+export function newWorkoutEquipment(item, exercise, logs = [], template) {
   if (!exercise || exercise.id !== item.exerciseId) return {};
-  const finished = logs.filter(log => log.status === 'finished')
-    .sort((a, b) => (b.endTime || b.startTime || b.date || '').localeCompare(a.endTime || a.startTime || a.date || '') || (b.id || '').localeCompare(a.id || ''))
-    .flatMap(log => log.exerciseItems || []).filter(entry => entry.exerciseId === item.exerciseId
-      && (entry.setupSelectionMade === true || entry.sets?.some(hasRecordedReps)));
-  const source = finished.find(entry => (!item.baselineId || entry.baselineId === item.baselineId)
+  const finishedLogs = logs.filter(log => log.status === 'finished')
+    .sort((a, b) => (b.endTime || b.startTime || b.date || '').localeCompare(a.endTime || a.startTime || a.date || '') || (b.id || '').localeCompare(a.id || ''));
+  const finished = finishedLogs.flatMap(log => log.exerciseItems || [])
+    .filter(entry => entry.exerciseId === item.exerciseId && teachesEquipment(entry));
+  const override = routineEquipmentOverride(item, template, finishedLogs);
+  const context = override || item;
+  const source = override || finished.find(entry => (!item.baselineId || entry.baselineId === item.baselineId)
     && (!item.setupProfile || entry.setupProfile?.id === item.setupProfile.id));
-  const requested = item.setupProfile || source?.setupProfile;
+  const requested = override ? override.setupProfile : item.setupProfile || source?.setupProfile;
   const setupProfile = currentSetup(exercise, requested);
   if (requested && !setupProfile) {
     // Do not fall back to some other, older machine after a deletion.
-    return { baselineId: item.baselineId === requested.id ? undefined : item.baselineId, techniqueNote: item.techniqueNote };
+    return { baselineId: context.baselineId === requested.id ? undefined : context.baselineId, techniqueNote: context.techniqueNote };
   }
-  const baselineId = item.baselineId || source?.baselineId || setupProfile?.id;
-  const techniqueNote = item.techniqueNote ?? source?.techniqueNote;
+  const baselineId = context.baselineId || source?.baselineId || setupProfile?.id;
+  const techniqueNote = context.techniqueNote ?? source?.techniqueNote;
   const lastItem = finished.find(entry => entry.sets?.some(hasRecordedReps)
     && entry.setupProfile?.id === setupProfile?.id
     && (entry.baselineId || entry.setupProfile?.id) === baselineId

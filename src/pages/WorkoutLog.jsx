@@ -285,7 +285,7 @@ export default function WorkoutLog({
     const program = initialProgram || (active?.schedule.some(day=>day.templateId===initialTemplate.id) ? active : null);
     prescriptionRef.current = routinePrescription(initialTemplate, program, date);
     const templateItems = prescriptionRef.current.exerciseItems.map((item) => {
-      const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs);
+      const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs, initialTemplate);
       const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
       const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
       const weightType = lastItem?.weightType || item.weightType || 'weight';
@@ -654,7 +654,7 @@ export default function WorkoutLog({
     const newItemsFromTemplate = (t.exerciseItems || [])
       .filter(item => !currentExerciseIds.has(item.exerciseId))
       .map((item) => {
-        const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs);
+        const { lastItem, ...equipmentContext } = newWorkoutEquipment(item, exercises.find(exercise => exercise.id === item.exerciseId), logs, t);
         const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
         const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
         const weightType = lastItem?.weightType || item.weightType || 'weight';

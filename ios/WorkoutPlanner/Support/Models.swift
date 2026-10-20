@@ -460,28 +460,54 @@ struct NewWorkoutEquipment {
     var lastItem: ExerciseItem?
 }
 
+private func teachesEquipment(_ item: ExerciseItem) -> Bool {
+    item.setupSelectionMade == true || item.sets.contains(where: hasRecordedWorkoutReps)
+}
+
+private func routineEquipmentOverride(_ item: ExerciseItem, template: WorkoutTemplate?, finishedLogs: [WorkoutLog]) -> ExerciseItem? {
+    guard let template, item.setupProfile != nil || item.baselineId != nil,
+          let previous = finishedLogs.first(where: { log in
+              log.prescription?.templateId == template.id
+                  && log.exerciseItems.contains { $0.exerciseId == item.exerciseId && teachesEquipment($0) }
+          }),
+          let prescribed = previous.prescription?.exerciseItems.first(where: { $0.exerciseId == item.exerciseId }),
+          prescribed.setupProfile?.id == item.setupProfile?.id,
+          prescribed.baselineId == item.baselineId, prescribed.techniqueNote == item.techniqueNote
+    else { return nil }
+    // A later routine edit is a new prescription; the snapshot also fences
+    // legacy routines without an updatedAt timestamp.
+    if let updatedAt = template.updatedAt {
+        guard let editedAt = workoutTimestamp(updatedAt), let startedAt = workoutTimestamp(previous.startTime), editedAt <= startedAt else { return nil }
+    }
+    let selected = previous.exerciseItems.first { $0.exerciseId == item.exerciseId && teachesEquipment($0) }
+    // Changing technique alone must not erase an explicit routine baseline.
+    return selected?.setupProfile?.id != prescribed.setupProfile?.id ? selected : nil
+}
+
 // Resolve once, at new-item creation. The account's finished logs are the durable
 // preference; cancelled plans/active drafts never replace it. Session snapshots
 // and historical records must not be passed through this defaulting operation.
-func newWorkoutEquipment(_ item: ExerciseItem, exercise: Exercise?, logs: [WorkoutLog]) -> NewWorkoutEquipment {
+func newWorkoutEquipment(_ item: ExerciseItem, exercise: Exercise?, logs: [WorkoutLog], template: WorkoutTemplate? = nil) -> NewWorkoutEquipment {
     guard let exercise, exercise.id == item.exerciseId else { return NewWorkoutEquipment() }
-    let finished = logs.filter { $0.status == "finished" }.sorted {
+    let finishedLogs = logs.filter { $0.status == "finished" }.sorted {
         let left = $0.endTime ?? $0.startTime ?? $0.date
         let right = $1.endTime ?? $1.startTime ?? $1.date
         return left == right ? $0.id > $1.id : left > right
-    }.flatMap(\.exerciseItems).filter { $0.exerciseId == item.exerciseId
-        && ($0.setupSelectionMade == true || $0.sets.contains(where: hasRecordedWorkoutReps)) }
-    let source = finished.first {
+    }
+    let finished = finishedLogs.flatMap(\.exerciseItems).filter { $0.exerciseId == item.exerciseId && teachesEquipment($0) }
+    let override = routineEquipmentOverride(item, template: template, finishedLogs: finishedLogs)
+    let context = override ?? item
+    let source = override ?? finished.first {
         (item.baselineId == nil || $0.baselineId == item.baselineId)
             && (item.setupProfile == nil || $0.setupProfile?.id == item.setupProfile?.id)
     }
-    let requested = item.setupProfile ?? source?.setupProfile
+    let requested = override != nil ? override?.setupProfile : item.setupProfile ?? source?.setupProfile
     let profile = exercise.currentSetup(requested)
     if let requested, profile == nil {
         // A deleted setup must not silently fall back to a different machine.
-        return NewWorkoutEquipment(baselineId: item.baselineId == requested.id ? nil : item.baselineId, techniqueNote: item.techniqueNote)
+        return NewWorkoutEquipment(baselineId: context.baselineId == requested.id ? nil : context.baselineId, techniqueNote: context.techniqueNote)
     }
-    let baseline = item.baselineId ?? source?.baselineId ?? profile?.id
+    let baseline = context.baselineId ?? source?.baselineId ?? profile?.id
     let last = finished.first { entry in
         var current = entry
         current.setupProfile = profile
@@ -490,7 +516,7 @@ func newWorkoutEquipment(_ item: ExerciseItem, exercise: Exercise?, logs: [Worko
             && (entry.baselineId ?? entry.setupProfile?.id) == baseline
             && smithLoadContext(entry) == smithLoadContext(current)
     }
-    return NewWorkoutEquipment(setupProfile: profile, baselineId: baseline, techniqueNote: item.techniqueNote ?? source?.techniqueNote, lastItem: last)
+    return NewWorkoutEquipment(setupProfile: profile, baselineId: baseline, techniqueNote: context.techniqueNote ?? source?.techniqueNote, lastItem: last)
 }
 
 // Live Activity actions edit set values, never the app's exercise/set structure.

@@ -73,6 +73,65 @@ import Foundation
         let targetOnly = WorkoutSet(placeholderReps: "6-10")
         precondition(targetOnly.clearingComparisonHints().placeholderReps == "6-10")
         precondition(targetOnly.clearingComparisonHints().placeholderRepsLeft == nil)
+        var routineItem = item
+        routineItem.setupProfile = home; routineItem.baselineId = home.id
+        let routine = WorkoutTemplate(id: "routine", name: "Synthetic routine", exerciseItems: [routineItem], updatedAt: "2026-10-06T08:00:00.000Z")
+        var completed = latest
+        completed.startTime = "2026-10-06T14:00:00Z"
+        completed.prescription = .make(template: routine, program: nil, day: completed.date)
+        let original = completed
+        func remember(_ history: [WorkoutLog], _ template: WorkoutTemplate = routine) -> NewWorkoutEquipment {
+            newWorkoutEquipment(template.exerciseItems[0], exercise: exercise, logs: history, template: template)
+        }
+        precondition(remember([completed]).setupProfile == gym && remember([completed]).baselineId == gym.id)
+        precondition(remember([completed]).lastItem == completed.exerciseItems[0])
+        var edited = routine; edited.updatedAt = "2026-10-06T14:00:00.001Z"
+        precondition(remember([completed], edited).setupProfile == home)
+        edited = routine; edited.exerciseItems[0].baselineId = "new-technique"
+        precondition(remember([completed], edited).baselineId == "new-technique" && remember([completed], edited).setupProfile == home)
+        edited = routine; edited.exerciseItems[0].techniqueNote = "New depth"
+        precondition(remember([completed], edited).setupProfile == home)
+        edited = routine; edited.exerciseItems[0].setupProfile = EquipmentSetup(id: "new-machine")
+        precondition(remember([completed], edited).setupProfile?.id == "new-machine")
+        var wrongSource = completed; wrongSource.prescription?.templateId = "other-routine"
+        precondition(remember([wrongSource]).setupProfile == home)
+        wrongSource = completed; wrongSource.prescription = nil
+        precondition(remember([wrongSource]).setupProfile == home)
+        wrongSource = completed; wrongSource.startTime = nil
+        precondition(remember([wrongSource]).setupProfile == home)
+        edited = routine; edited.updatedAt = "invalid"
+        precondition(remember([completed], edited).setupProfile == home)
+        edited.updatedAt = nil
+        precondition(remember([completed], edited).setupProfile == gym)
+        var newer = completed; newer.endTime = "2026-10-06T18:00:00Z"
+        newer.prescription?.exerciseItems[0].baselineId = "other-context"
+        precondition(remember([completed, newer]).setupProfile == home)
+        newer.prescription = completed.prescription
+        newer.exerciseItems[0].sets = []
+        newer.exerciseItems[0].setupProfile = nil
+        newer.exerciseItems[0].baselineId = "unspecified-baseline"
+        newer.exerciseItems[0].setupSelectionMade = true
+        let cleared = try JSONDecoder().decode(WorkoutLog.self, from: JSONEncoder().encode(newer))
+        precondition(remember([completed, cleared]).setupProfile == nil && remember([completed, cleared]).baselineId == "unspecified-baseline")
+        newer.exerciseItems[0].setupSelectionMade = nil
+        newer.exerciseItems[0].sets = [WorkoutSet(reps: "8", completion: "skipped")]
+        precondition(remember([completed, newer]).setupProfile == gym)
+        newer.status = "active"
+        precondition(remember([newer]).setupProfile == home)
+        edited = routine; edited.exerciseItems[0].baselineId = "technique"
+        var sameMachine = completed; sameMachine.exerciseItems[0].setupProfile = home
+        sameMachine.prescription = .make(template: edited, program: nil, day: completed.date)
+        precondition(remember([sameMachine], edited).baselineId == "technique")
+        var smith = completed; smith.exerciseItems[0].weightType = "smith_double"
+        exercise.equipmentSetups = [home, editedSmith]
+        precondition(remember([smith]).setupProfile == editedSmith && remember([smith]).lastItem == nil)
+        exercise.equipmentSetups = []
+        precondition(remember([completed]).setupProfile == gym)
+        exercise.removeSetup(gym.id)
+        precondition(remember([completed]).setupProfile == nil && remember([completed]).baselineId == nil)
+        precondition(newWorkoutEquipment(routineItem, exercise: nil, logs: [completed], template: routine).setupProfile == nil)
+        precondition(completed == original && routine.exerciseItems[0] == routineItem)
+        print("PASS routine equipment: finished override, edited prescription fencing, baseline, unspecified, deletion, missing library/exercise, Smith and unchanged history")
         print("PASS remembered setup: chronology, prescriptions/baselines, unspecified/deleted, latest library/Smith, stable identity, drafts, serialization and unchanged history/RIR")
     }
 }

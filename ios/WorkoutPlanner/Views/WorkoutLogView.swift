@@ -790,7 +790,7 @@ struct WorkoutLogView: View {
         let existingIds = Set(replace ? [] : items.map(\.exerciseId))
         let templateItems = planned.exerciseItems
             .filter { !existingIds.contains($0.exerciseId) }
-            .map { item in prepopulated(item, program: program) }
+            .map { item in prepopulated(item, program: program, template: template) }
 
         guard !templateItems.isEmpty else { return }
         if replace {
@@ -810,8 +810,8 @@ struct WorkoutLogView: View {
         saveNow(status: "planning")
     }
 
-    private func prepopulated(_ item: ExerciseItem, program: TrainingProgram? = nil) -> ExerciseItem {
-        let equipment = newWorkoutEquipment(item, exercise: store.exercise(id: item.exerciseId), logs: store.logs)
+    private func prepopulated(_ item: ExerciseItem, program: TrainingProgram? = nil, template: WorkoutTemplate? = nil) -> ExerciseItem {
+        let equipment = newWorkoutEquipment(item, exercise: store.exercise(id: item.exerciseId), logs: store.logs, template: template)
         let last = equipment.lastItem
         let isUnilateral = item.useIndividualReps ?? (store.exercise(id: item.exerciseId)?.isUnilateral == true)
         let hitTarget = program != nil ? exerciseHitTarget(templateSets: item.sets, lastSets: last?.sets ?? []) : false

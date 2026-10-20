@@ -13,8 +13,20 @@ accepting a suggested default without using it, skipping the exercise, cancellin
 a setup editor, or discarding a plan/workout does not teach a new preference.
 Finishing commits the choice. Existing eligible history works without a migration.
 
-An explicit routine setup or technique baseline takes priority over remembered
-history. Only newly created exercise items receive defaults. Resumed sessions,
+An unchanged routine remembers the equipment override from its latest eligible
+finished occurrence of that exercise, including an explicit **Unspecified**.
+The original saved prescription must match the current routine's setup ID,
+baseline and technique note. When the routine has an `updatedAt` timestamp, it
+must be valid and no later than that workout's valid start time. A later edit,
+missing prescription, different routine or changed comparison context keeps the
+routine's explicit constraint. Legacy routines without an edit timestamp still
+require matching prescription provenance. A technique-only change on the same
+equipment cannot override an explicitly prescribed technique baseline.
+
+This uses existing finished logs and prescription snapshots; no additional
+preference record, migration or historical rewrite is needed. Both routine launch
+paths pass the current routine into the resolver. Only newly created exercise
+items receive defaults. Resumed sessions,
 current choices, saved prescriptions and historical snapshots are not redefaulted.
 Substitution clears the replaced movement's setup and resolves the new exercise ID.
 Session end/start time (then date and ID) determines most recent use; an old
@@ -34,11 +46,13 @@ but only for the same exercise/setup/baseline in the same existing resource.
 
 ## Validation and release
 
-- Web: `npm test -- --maxWorkers=2` (290 tests), lint and production build.
+- Web: `npm test -- --maxWorkers=1`, lint and production build.
   Tests exercise both routine launch paths, manual add/substitution, editable and
   unspecified choices, immediate saves/held responses, remounts, editor cancel,
-  discard, deleted setups, unchanged history, Pause/Resume and target RIR.
-- Backend: `npm --prefix backend test -- --test-concurrency=2` (83 tests).
+  discard, deleted setups, unchanged history, Pause/Resume and target RIR. Routine
+  regression cases cover edited prescriptions, explicit Unspecified, deleted
+  overrides, same-ID account isolation and finish/relaunch on both launch paths.
+- Backend contract checks: `npm --prefix backend test -- --test-concurrency=1`.
   Includes validation/import round-trip, old-client preservation and account scope.
 - Native: `RememberEquipmentSetupCheck`, `AccountOfflineSyncCheck`, target/actual
   RIR, pause, Smith, contextual PB and workout-persistence checks. The real store
@@ -48,14 +62,16 @@ but only for the same exercise/setup/baseline in the same existing resource.
 - Unsigned Debug simulator build, generic simulator destination, isolated
   DerivedData and copied package sources, `-jobs 2`.
 
-The Mac is locked; computer-use inspection reported that it could not unlock it.
-Native visual/physical acceptance is therefore unverified. Web tests prove
-persistence through offline saves and pending-queue reload, not a fully offline
-cold browser launch: the existing web bootstrap still requires API access.
+The October 20 correction also passed a synthetic iPhone simulator journey using
+the real store, views and resolver: choose different equipment, record a set,
+finish, terminate/relaunch, and start the same routine. The fixture blocks all API
+requests and restores persisted account-owned data; it never seeds finished logs.
+Physical-device and production-account acceptance remain separate release gates.
+Web tests prove offline saves and pending-queue reload; a cold browser launch
+still requires the existing API bootstrap.
 
-No push, deployment or TestFlight upload is part of this work. Release the API
-validator before or with the updated clients; the older API rejects the new field.
-The feature is based on unpublished recovery candidate
-`d08afd9845894290907c6b6b2e732a0adabea31d` and must retain its Pause/Resume, RIR and
-account-recovery changes. The release coordinator's direct-user approval gate
-remains in effect.
+This correction uses fields already supported by the API and needs no new schema
+or historical data migration. No push, deployment or TestFlight upload is part of
+the implementation validation. Main pushes currently trigger TestFlight, so a
+local commit is not release authorization. Retain the release coordinator's
+direct-user approval gate.

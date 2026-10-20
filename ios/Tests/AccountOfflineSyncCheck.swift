@@ -221,13 +221,19 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         // Equipment preference uses the same owned snapshot/queue after an offline
         // finish. A tentative active choice and a discarded session cannot replace it.
         let setup = EquipmentSetup(id: "home", machine: "Synthetic bench")
-        let setupExercise = Exercise(id: "press", name: "Press", equipmentSetups: [setup])
+        let prescribedSetup = EquipmentSetup(id: "routine-setup", machine: "Synthetic cable")
+        let setupExercise = Exercise(id: "press", name: "Press", equipmentSetups: [setup, prescribedSetup])
         try await restoredStore.saveExercise(setupExercise)
         let selected = ExerciseItem(exerciseId: "press", sets: [], baselineId: setup.id, setupProfile: setup, targetRIR: 2, setupSelectionMade: true)
-        let selectionLog = WorkoutLog(id: "setup-finished", name: "Synthetic", date: "2026-10-07", exerciseItems: [selected], status: "finished")
+        let prescribedItem = ExerciseItem(exerciseId: "press", sets: [], baselineId: prescribedSetup.id, setupProfile: prescribedSetup, targetRIR: 2)
+        let routine = WorkoutTemplate(id: "routine", name: "Synthetic routine", exerciseItems: [prescribedItem], updatedAt: "2026-10-07T08:00:00.000Z")
+        let selectionLog = WorkoutLog(id: "setup-finished", name: "Synthetic", date: "2026-10-07", exerciseItems: [selected], startTime: "2026-10-07T12:00:00Z", status: "finished", prescription: .make(template: routine, program: nil, day: "2026-10-07"))
         try await restoredStore.saveLog(selectionLog)
         func preferred(_ source: WorkoutStore) -> EquipmentSetup? {
-            newWorkoutEquipment(ExerciseItem(exerciseId: "press", sets: []), exercise: source.exercise(id: "press"), logs: source.logs).setupProfile
+            let manual = newWorkoutEquipment(ExerciseItem(exerciseId: "press", sets: []), exercise: source.exercise(id: "press"), logs: source.logs).setupProfile
+            let repeated = newWorkoutEquipment(prescribedItem, exercise: source.exercise(id: "press"), logs: source.logs, template: routine).setupProfile
+            precondition(manual == repeated)
+            return repeated
         }
         let setupAuth = AuthManager()
         let setupStore = WorkoutStore(auth: setupAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
@@ -265,12 +271,15 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         await lateLoad.value
         precondition(preferred(setupStore) == nil && setupStore.logs.isEmpty)
         SyntheticProtocol.hold = false
+        try await setupStore.saveExercise(setupExercise)
+        precondition(newWorkoutEquipment(prescribedItem, exercise: setupStore.exercise(id: "press"), logs: setupStore.logs, template: routine).setupProfile == prescribedSetup)
         setupAuth.login("pause-owner")
         await setupStore.loadData()
         precondition(preferred(setupStore) == setup)
         try await setupStore.deleteEquipmentSetup(exerciseID: "press", setupID: setup.id)
         precondition(preferred(setupStore) == nil)
         precondition(setupStore.logs.first { $0.id == selectionLog.id }?.exerciseItems[0].setupProfile == setup)
+        precondition(setupStore.logs.first { $0.id == selectionLog.id }?.prescription == selectionLog.prescription)
         await setupStore.loadData()
         precondition(preferred(setupStore) == nil)
         print("PASS equipment preference: explicit choice, offline finish/restart, draft/discard, late source load/account switch, deleted setup and unchanged history")
