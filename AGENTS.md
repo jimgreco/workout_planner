@@ -146,6 +146,15 @@ must start with `completion: unrecorded` and no rest/RIR/RPE evidence. Explicit 
 entry or Complete records the row; untouched added sets must not inflate progress.
 Persist each latest log intent in its account-owned pending queue before waiting for older writes. Capture the API/session and store generation at enqueue time; reject work after an account reset before sending or applying its result. `AccountOfflineSyncCheck.swift` covers queued edits/deletions and account switches with the real store/API.
 
+Repeat last set (`src/repeatSet.js` and `ExerciseItem.repeatingLastSet`) is an
+active-workout convenience only. Prefill the first eligible unfinished row from
+the nearest earlier recorded row of the same set type. Never infer evidence from
+placeholders, skipped/unrecorded sets, or another workout. Copy actual reps,
+side mode and raw load; preserve targets and item/setup identity. The destination
+stays unrecorded, with no copied RIR/RPE/rest evidence. Repeated taps do not advance
+or complete it. Pause blocks this action; history and routine editing omit it.
+Native regression: compile `Models.swift` with `ios/Tests/RepeatLastSetCheck.swift`.
+
 
 ## Workout pause timing
 

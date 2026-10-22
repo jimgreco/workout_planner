@@ -3703,3 +3703,12 @@ input:focus, select:focus, textarea:focus {
 .legacy-recovery code { overflow-wrap: anywhere; }
 
 .recovery-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; font-size: .8rem; }
+.repeat-set-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.repeat-set-action .btn { min-height: 44px; }
+.repeat-set-action small { color: var(--text-muted); }

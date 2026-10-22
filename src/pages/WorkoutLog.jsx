@@ -1035,6 +1035,7 @@ export default function WorkoutLog({
         advancedMode={settings.advancedMode}
         lastWeightTypeByExerciseId={lastWeightTypeByExerciseId}
         planningMode={isPlanningMode}
+        allowRepeatSet={isActive && !isEditing.current && !finishModal}
         onEditExercise={(exercise) => setExerciseForm({ ...exercise })}
         logs={logs}
       />

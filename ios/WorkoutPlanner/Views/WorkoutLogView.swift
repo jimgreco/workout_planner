@@ -447,6 +447,7 @@ struct WorkoutLogView: View {
                 activeExerciseIndex: activeExerciseIndex,
                 activeSetIndex: activeSetIndex,
                 planningMode: isPlanningMode,
+                allowRepeatSet: !isEditing && startTime != nil && finishSummary == nil,
                 prepareNewExercise: isEditing ? nil : { prepopulated($0) },
                 onSetCompleted: markSetCompleted,
                 onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
@@ -2029,6 +2030,28 @@ private struct WorkoutLiveActivityCard: View {
                     .foregroundStyle(Theme.accent)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let plan = context.item.repeatLastSetPlan, plan.targetIndex == context.setIndex {
+                Button {
+                    guard pausedAt == nil,
+                          items.indices.contains(context.exerciseIndex),
+                          items[context.exerciseIndex].repeatLastSetPlan?.targetIndex == context.setIndex
+                    else { return }
+                    focusedField = nil
+                    items[context.exerciseIndex] = items[context.exerciseIndex].repeatingLastSet()
+                    repModeByExercise.removeValue(forKey: repModeKey(for: context))
+                    onSetupChanged()
+                } label: {
+                    Label("Repeat last set", systemImage: "arrow.counterclockwise")
+                        .frame(minHeight: 32)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .accessibilityIdentifier("live-repeat-last-set")
+                .accessibilityHint("Prefill this set from set \(plan.sourceIndex + 1). Review, then log it.")
+                Text("Set \(plan.sourceIndex + 1) → \(plan.targetIndex + 1) · Review, then log")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
             }
 
             HStack(spacing: 10) {

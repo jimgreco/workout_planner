@@ -19,6 +19,31 @@ const oneItem = [
 ];
 
 describe('WorkoutBuilder', () => {
+  it('repeats the previous set without recording it, starting rest, or advancing on repeated taps', () => {
+    const items = [{ exerciseId: 'ex1', targetRIR: 2, sets: [
+      { reps: '8', weight: '135', rir: '1', completion: 'recorded', restStartTime: 1000 },
+      { reps: '', weight: '', completion: 'unrecorded' },
+    ] }];
+    const onChange = vi.fn();
+    const onSetCompleted = vi.fn();
+    const props = { exercises, items, onChange, onSetCompleted, allowRepeatSet: true };
+    const { rerender } = render(<WorkoutBuilder {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Repeat last set for Bench Press' }));
+    const next = onChange.mock.lastCall[0];
+    expect(next[0].sets[1]).toMatchObject({ reps: '8', weight: '135', completion: 'unrecorded', rir: null, restStartTime: null });
+    expect(onSetCompleted).not.toHaveBeenCalled();
+    rerender(<WorkoutBuilder {...props} items={next} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Repeat last set for Bench Press' }));
+    expect(onChange.mock.lastCall[0]).toEqual(next);
+    rerender(<WorkoutBuilder {...props} items={next} pausedAt={2000} />);
+    expect(screen.getByRole('button', { name: 'Repeat last set for Bench Press' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Repeat last set for Bench Press' }));
+    expect(onChange).toHaveBeenCalledTimes(2);
+    for (const extra of [{ readOnly: true }, { planningMode: true }, { allowRepeatSet: false }]) {
+      rerender(<WorkoutBuilder {...props} {...extra} />);
+      expect(screen.queryByRole('button', { name: 'Repeat last set for Bench Press' })).not.toBeInTheDocument();
+    }
+  });
   it('renders exercise name and muscle group badge', () => {
     render(<WorkoutBuilder exercises={exercises} items={oneItem} onChange={() => {}} />);
     expect(screen.getAllByText('Bench Press')[0]).toBeInTheDocument();

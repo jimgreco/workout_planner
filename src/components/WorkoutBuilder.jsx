@@ -8,6 +8,7 @@ import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
 import { personalBestLabel, personalBestForItem, hasPersonalBestContext } from '../progress.js';
 import { routineExerciseWeightAdvice } from '../workoutHistory.js';
+import { repeatLastSetPlan, repeatingLastSet } from '../repeatSet.js';
 
 /**
  * WorkoutBuilder — reusable component for building a workout's exercise list.
@@ -199,6 +200,7 @@ export default function WorkoutBuilder({
   onResetPersonalBest,
   onEditExercise,
   planningMode = false,
+  allowRepeatSet = false,
   lastWeightTypeByExerciseId = {},
   logs = [],
   onExercisesChanged = () => {},
@@ -458,6 +460,7 @@ export default function WorkoutBuilder({
         const compactUsesRange = Boolean(compactRepsRange);
         const weightAdvice = routineExerciseWeightAdvice(item, logs, ex);
         const best = personalBestForItem(item, logs, ex.personalBest);
+        const repeatPlan = allowRepeatSet && !planningMode && !readOnly ? repeatLastSetPlan(item.sets) : null;
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
           + (!readOnly && !planningMode ? 1 : 0)
@@ -893,6 +896,19 @@ export default function WorkoutBuilder({
             </table>
             )}
 
+            {repeatPlan && (
+              <div className="repeat-set-action">
+                <button type="button" className="btn btn-secondary btn-sm" disabled={pausedAt != null}
+                  aria-label={`Repeat last set for ${ex.name}`}
+                  onClick={() => {
+                    if (pausedAt != null) return;
+                    onChange(items.map((entry, index) => index === idx ? repeatingLastSet(entry) : entry));
+                  }}>
+                  <RotateCcw size={14} /> Repeat last set
+                </button>
+                <small>Set {repeatPlan.sourceIndex + 1} → {repeatPlan.targetIndex + 1} · Review, then complete</small>
+              </div>
+            )}
             {!readOnly && (!planningMode || item.useIndividualReps) && (
               <button
                 className="btn btn-secondary btn-sm"

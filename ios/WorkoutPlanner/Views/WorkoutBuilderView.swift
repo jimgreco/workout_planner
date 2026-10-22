@@ -62,6 +62,7 @@ struct WorkoutBuilderView: View {
     var activeExerciseIndex: Int?
     var activeSetIndex: Int?
     var planningMode = false
+    var allowRepeatSet = false
     var prepareNewExercise: ((ExerciseItem) -> ExerciseItem)?
     var onSetCompleted: ((Int, Int) -> Void)?
     var onResetPersonalBest: ((Exercise) -> Void)?
@@ -88,6 +89,7 @@ struct WorkoutBuilderView: View {
                         readOnly: readOnly,
                         showWeight: showWeight,
                         planningMode: planningMode,
+                        allowRepeatSet: allowRepeatSet,
                         advancedMode: advancedMode,
                         replacementExercises: replacementExercises(for: index),
                         canMoveUp: index > 0,
@@ -473,6 +475,7 @@ private extension View {
 }
 
 private struct ExerciseSetsCard: View {
+    @Environment(\.workoutPausedAt) private var pausedAt
     let exercise: Exercise
     @Binding var item: ExerciseItem
     @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
@@ -482,6 +485,7 @@ private struct ExerciseSetsCard: View {
     let readOnly: Bool
     let showWeight: Bool
     let planningMode: Bool
+    let allowRepeatSet: Bool
     let advancedMode: Bool
     let replacementExercises: [Exercise]
     let canMoveUp: Bool
@@ -644,6 +648,27 @@ private struct ExerciseSetsCard: View {
                     ForEach(item.sets.indices, id: \.self) { setIndex in
                         setRow(setIndex)
                     }
+                }
+            }
+
+            if allowRepeatSet && !readOnly && !planningMode, let plan = item.repeatLastSetPlan {
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        guard pausedAt == nil else { return }
+                        focusedField = nil
+                        item = item.repeatingLastSet()
+                        onChanged?()
+                    } label: {
+                        Label("Repeat last set", systemImage: "arrow.counterclockwise")
+                            .frame(minHeight: 32)
+                    }
+                    .buttonStyle(SecondaryButtonStyle(compact: true))
+                    .disabled(pausedAt != nil)
+                    .accessibilityLabel("Repeat last set for \(exercise.name)")
+                    .accessibilityHint("Prefill set \(plan.targetIndex + 1) from set \(plan.sourceIndex + 1). Review, then complete.")
+                    Text("Set \(plan.sourceIndex + 1) → \(plan.targetIndex + 1) · Review, then complete")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
                 }
             }
 

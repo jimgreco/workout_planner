@@ -53,6 +53,35 @@ describe('WorkoutLog', () => {
     vi.clearAllMocks();
   });
 
+  it('saves a repeated active set as unrecorded and restores that state when resumed', async () => {
+    const active = { id: 'active-repeat', name: 'Repeat fixture', date: todayKey(), status: 'active', startTime: Date.now() - 60000,
+      exerciseItems: [{ exerciseId: 'bench', targetRIR: 2, sets: [
+        { reps: '8', weight: '100', completion: 'recorded', restDuration: 60, rir: '0' },
+        { reps: '', weight: '', completion: 'unrecorded' },
+      ] }] };
+    const props = { exercises, templates: [], programs: [], settings, onLogsChanged: () => {}, onExercisesChanged: () => {} };
+    const view = render(<WorkoutLog {...props} logs={[active]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Repeat last set for Bench Press' }));
+    await waitFor(() => expect(saveLog).toHaveBeenCalled());
+    const persisted = saveLog.mock.lastCall[0];
+    expect(persisted.status).toBe('active');
+    expect(persisted.exerciseItems[0].sets[1]).toMatchObject({ reps: '8', weight: '100', completion: 'unrecorded', rir: null, restStartTime: null });
+    expect(persisted.exerciseItems[0].sets.filter(isWorkingSet)).toHaveLength(1);
+    view.unmount();
+    render(<WorkoutLog {...props} logs={[JSON.parse(JSON.stringify(persisted))]} />);
+    expect(screen.getByLabelText('Status for set 2 of Bench Press')).toHaveValue('unrecorded');
+    expect(screen.getByLabelText('Weight for set 2 of Bench Press')).toHaveValue(100);
+    expect(screen.getByRole('button', { name: 'Repeat last set for Bench Press' })).toBeEnabled();
+  });
+
+  it('does not offer repeat while editing a finished workout', () => {
+    const log = { id: 'finished-repeat', name: 'History', date: todayKey(), status: 'finished', startTime: Date.now() - 60000,
+      exerciseItems: [{ exerciseId: 'bench', sets: [{ reps: '8', weight: '100', completion: 'recorded' }, { reps: '', completion: 'unrecorded' }] }] };
+    render(<WorkoutLog exercises={exercises} templates={[]} logs={[log]} settings={settings} editingLog={log}
+      onLogsChanged={() => {}} onExercisesChanged={() => {}} onClearEditing={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Repeat last set for Bench Press' })).not.toBeInTheDocument();
+  });
+
   it('does not invent completed sets when adding an exercise to workout history', async () => {
     const saved = { id: 'finished', name: 'Yesterday', date: '2026-10-11', status: 'finished',
       startTime: 1791720000000, endTime: 1791723600000,

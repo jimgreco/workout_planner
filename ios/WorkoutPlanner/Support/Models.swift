@@ -460,6 +460,47 @@ struct NewWorkoutEquipment {
     var lastItem: ExerciseItem?
 }
 
+struct RepeatLastSetPlan: Equatable {
+    let sourceIndex: Int
+    let targetIndex: Int
+}
+
+extension ExerciseItem {
+    // Current-session evidence only; no historical log or account lookup.
+    var repeatLastSetPlan: RepeatLastSetPlan? {
+        guard sets.count > 1 else { return nil }
+        for targetIndex in 1..<sets.count {
+            let target = sets[targetIndex]
+            let status = target.completion ?? (hasRecordedWorkoutReps(target) ? "recorded" : "unrecorded")
+            guard status == "unrecorded", target.restStartTime == nil, target.restDuration == nil else { continue }
+            for sourceIndex in stride(from: targetIndex - 1, through: 0, by: -1) {
+                let source = sets[sourceIndex]
+                if hasRecordedWorkoutReps(source), (source.setType ?? "working") == (target.setType ?? "working") {
+                    return RepeatLastSetPlan(sourceIndex: sourceIndex, targetIndex: targetIndex)
+                }
+            }
+        }
+        return nil
+    }
+
+    func repeatingLastSet() -> ExerciseItem {
+        guard let plan = repeatLastSetPlan else { return self }
+        let source = sets[plan.sourceIndex]
+        var copy = self
+        copy.sets[plan.targetIndex].reps = source.reps ?? ""
+        copy.sets[plan.targetIndex].repsLeft = source.repsLeft
+        copy.sets[plan.targetIndex].repsRight = source.repsRight
+        copy.sets[plan.targetIndex].repMode = source.repMode
+        copy.sets[plan.targetIndex].weight = weightType == "none" ? "" : (source.weight ?? "")
+        copy.sets[plan.targetIndex].completion = "unrecorded"
+        copy.sets[plan.targetIndex].rir = nil
+        copy.sets[plan.targetIndex].rpe = nil
+        copy.sets[plan.targetIndex].restStartTime = nil
+        copy.sets[plan.targetIndex].restDuration = nil
+        return copy
+    }
+}
+
 private func teachesEquipment(_ item: ExerciseItem) -> Bool {
     item.setupSelectionMade == true || item.sets.contains(where: hasRecordedWorkoutReps)
 }
