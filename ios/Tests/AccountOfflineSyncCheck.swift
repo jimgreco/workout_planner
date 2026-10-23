@@ -402,6 +402,53 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         SyntheticProtocol.finish(body: "{\"logs\":[]}")
         let exported = try await cleanExport.value
         precondition(String(decoding: exported, as: UTF8.self) == "{\"logs\":[]}")
+        // A definitively rejected finish must not replay after Keep working out,
+        // background sync, or relaunch. Uncertain results retain their intent.
+        for status in [400, 422, 408, 429, 500, 401] {
+            let owner = "finish-validation-\(status)"
+            auth.login(owner)
+            SyntheticProtocol.hold = false
+            let draft = WorkoutLog(id: "rejected-finish", name: "Keep working", date: "2026-10-23", exerciseItems: [ExerciseItem(exerciseId: "bench", sets: [WorkoutSet(completion: "unrecorded")])], startTime: "2026-10-23T10:00:00Z", status: "active")
+            try await store.saveLog(draft)
+            var finished = draft; finished.status = "finished"
+            let finishSnapshot = finished
+            SyntheticProtocol.hold = true
+            let count = SyntheticProtocol.count()
+            let finishing = Task { try await store.saveLog(finishSnapshot) }
+            while SyntheticProtocol.count() == count { await Task.yield() }
+            SyntheticProtocol.finish(status: status, body: "{\"error\":\"Synthetic rejection\"}")
+            do { _ = try await finishing.value; preconditionFailure("Rejection was accepted") } catch {}
+            let terminal = status == 400 || status == 422
+            precondition(store.pendingSyncCount == (terminal ? 0 : 1))
+            if terminal {
+                let beforeBackgroundSync = SyntheticProtocol.count()
+                await store.syncPendingChanges()
+                precondition(SyntheticProtocol.count() == beforeBackgroundSync)
+                let againAuth = AuthManager()
+                let again = WorkoutStore(auth: againAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+                againAuth.login(owner)
+                SyntheticProtocol.hold = false
+                await again.loadData()
+                precondition(again.activeWorkout() == draft && again.pendingSyncCount == 0)
+            }
+        }
+        auth.login("finish-newer-edit")
+        SyntheticProtocol.hold = true
+        let rejected = WorkoutLog(id: "finish-race", name: "Rejected finish", date: "2026-10-23", status: "finished")
+        let rejectionCount = SyntheticProtocol.count()
+        let rejectedSave = Task { try await store.saveLog(rejected) }
+        while SyntheticProtocol.count() == rejectionCount { await Task.yield() }
+        var continued = rejected; continued.status = "active"; continued.name = "Newer active edit"
+        let continuing = Task { try await store.saveLog(continued) }
+        while !hasQueuedText("Newer active edit") { await Task.yield() }
+        SyntheticProtocol.finish(status: 400, body: "{\"error\":\"Synthetic rejection\"}")
+        do { _ = try await rejectedSave.value; preconditionFailure("Superseded rejection was accepted") }
+        catch { precondition(isCancellationError(error)) }
+        while SyntheticProtocol.count() == rejectionCount + 1 { await Task.yield() }
+        SyntheticProtocol.finish(fail: true)
+        _ = try await continuing.value
+        precondition(store.pendingSyncCount == 1 && store.activeWorkout()?.name == "Newer active edit")
+        print("PASS rejected finish: 400/422 cannot replay after return/background/relaunch; newer edits and 408/429/500/401 uncertainty remain queued")
         print("PASS backup completeness: queued writes block export before and after download, remain durable, and do not block another account")
         print("PASS legacy recovery: exact source retention, explicit attribution, staged comparison, pause/RIR preservation, reload, duplicate decisions, cross-account export and stale-read fencing")
         print("PASS pause offline lifecycle: queued pause, full store recreation, offline resume/finish/discard and reload")

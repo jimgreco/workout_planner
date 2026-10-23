@@ -28,6 +28,10 @@ struct WorkoutLogView: View {
     @State private var isSaving = false
     @State private var showDiscardConfirm = false
     @State private var finishSummary: FinishSummary?
+    @State private var showFinishReview = false
+    @State private var finishReviewSession: UUID?
+    @State private var finishReviewWorkoutId: String?
+    @State private var finishError: String?
     @State private var editingExercise: Exercise?
     @State private var restAlert: RestTargetAlert?
     @State private var restAlertTask: Task<Void, Never>?
@@ -59,7 +63,7 @@ struct WorkoutLogView: View {
             .compactMap { nextProgramWorkout(program: $0) }
     }
 
-    var body: some View {
+    private var workoutContent: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -108,6 +112,10 @@ struct WorkoutLogView: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        workoutContent
         .environment(\.workoutPausedAt, pausedAt)
         .onAppear(perform: loadInitialState)
         .onChange(of: scenePhase) { _, phase in
@@ -138,7 +146,19 @@ struct WorkoutLogView: View {
             flushScheduledSave()
             updateExternalLiveActivityNow()
         }
-        .onChange(of: workoutId) { _, _ in updateExternalLiveActivity() }
+        .onChange(of: workoutId) { _, _ in
+            if finishReviewWorkoutId != workoutId {
+                showFinishReview = false
+                finishReviewWorkoutId = nil
+            }
+            updateExternalLiveActivity()
+        }
+        .onChange(of: store.sessionIdentity) { _, _ in
+            showFinishReview = false
+            finishReviewSession = nil
+            finishReviewWorkoutId = nil
+            finishError = nil
+        }
         .onChange(of: startTime) { _, _ in updateExternalLiveActivity() }
         .onChange(of: activeExerciseIndex) { _, _ in updateExternalLiveActivity() }
         .onChange(of: activeSetIndex) { _, _ in updateExternalLiveActivity() }
@@ -173,14 +193,40 @@ struct WorkoutLogView: View {
         } message: {
             Text(isEditing ? "Discard your changes and go back?" : isPlanningMode ? "Discard this workout plan?" : "This will delete the in-progress workout. This cannot be undone.")
         }
-        .sheet(item: $finishSummary) { summary in
+        .sheet(isPresented: finishPresentation) {
+            finishPresentationContent
+        }
+        .sheet(item: $editingExercise) { exercise in
+            ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
+        }
+    }
+
+    private var finishPresentation: Binding<Bool> {
+        Binding(
+            get: { showFinishReview || finishSummary != nil },
+            set: { presented in
+                guard !presented, !isSaving else { return }
+                showFinishReview = false
+                finishReviewSession = nil
+                finishReviewWorkoutId = nil
+                if finishSummary != nil { finishSummary = nil; resetWorkout() }
+            }
+        )
+    }
+
+    @ViewBuilder private var finishPresentationContent: some View {
+        if let summary = finishSummary {
             WorkoutCompleteSheet(summary: summary, workoutName: name) {
                 finishSummary = nil
                 resetWorkout()
             }
-        }
-        .sheet(item: $editingExercise) { exercise in
-            ExerciseFormSheet(exercise: exercise, isSaving: $isSaving)
+        } else {
+            WorkoutFinishReviewSheet(
+                rows: unfinishedWorkoutSets(items), exercises: store.exercises,
+                isSaving: isSaving, errorMessage: finishError,
+                onContinue: { showFinishReview = false; finishReviewSession = nil; finishReviewWorkoutId = nil },
+                onFinish: { Task { await finishWorkout(reviewed: true) } }
+            )
         }
     }
 
@@ -211,7 +257,7 @@ struct WorkoutLogView: View {
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } else if isActive, !items.isEmpty {
                     Button {
-                        Task { await finishWorkout() }
+                        requestFinishWorkout()
                     } label: {
                         Label(isSaving ? "Saving..." : isEditing ? "Save Changes" : "Finish Workout", systemImage: "checkmark")
                             .frame(maxWidth: .infinity)
@@ -219,6 +265,9 @@ struct WorkoutLogView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
+            }
+            if let finishError, !showFinishReview {
+                Text(finishError).font(.callout).foregroundStyle(Theme.danger)
             }
         }
         .padding(14)
@@ -614,11 +663,36 @@ struct WorkoutLogView: View {
         }
     }
 
-    private func finishWorkout() async {
-        guard let workoutId, !isSaving else { return }
+    private func requestFinishWorkout() {
+        guard workoutId != nil, !isSaving, finishSummary == nil else { return }
+        commitTextFieldsIfNeeded()
+        commitBuilderFieldsIfNeeded()
+        focusedTextField = nil
+        focusedBuilderField = nil
+        focusedLiveActivityField = nil
+        finishError = nil
+        if !isEditing, !unfinishedWorkoutSets(items).isEmpty {
+            finishReviewSession = store.sessionIdentity
+            finishReviewWorkoutId = workoutId
+            showFinishReview = true
+        } else {
+            Task { await finishWorkout() }
+        }
+    }
+
+    private func finishWorkout(reviewed: Bool = false) async {
+        guard let workoutId, !isSaving, finishSummary == nil else { return }
+        let session = store.sessionIdentity
+        if reviewed {
+            guard showFinishReview, finishReviewSession == session, finishReviewWorkoutId == workoutId else { return }
+        }
+        func checkSession() throws {
+            guard store.sessionIdentity == session else { throw CancellationError() }
+        }
         commitTextFieldsIfNeeded()
         commitBuilderFieldsIfNeeded()
         cancelScheduledSave()
+        finishError = nil
         isSaving = true
         defer { isSaving = false }
 
@@ -642,6 +716,7 @@ struct WorkoutLogView: View {
                 if !hasPersonalBestContext(item), isPersonalBestImprovement(candidate, over: exercise.personalBest) {
                     exercise.personalBest = personalBest
                     try await store.saveExercise(exercise)
+                    try checkSession()
                 }
             }
 
@@ -661,7 +736,9 @@ struct WorkoutLogView: View {
                 pausedAt: timing.pausedAt,
                 pausedDurationMs: timing.pausedDurationMs
             )
+            try checkSession()
             try await store.saveLog(log)
+            try checkSession()
             restAlertTask?.cancel()
             restAlert = nil
             WorkoutLiveActivityController.shared.end(
@@ -679,10 +756,14 @@ struct WorkoutLogView: View {
                     setCount: items.reduce(0) { $0 + $1.sets.count },
                     pbExercises: pbExercises
                 )
+                showFinishReview = false
+                finishReviewSession = nil
+                finishReviewWorkoutId = nil
             }
         } catch {
             if !isCancellationError(error) {
-                store.errorMessage = error.localizedDescription
+                finishError = error.localizedDescription
+                if !showFinishReview { store.errorMessage = error.localizedDescription }
             }
         }
     }
@@ -1587,6 +1668,10 @@ struct WorkoutLogView: View {
     }
 
     private func resetWorkout() {
+        showFinishReview = false
+        finishReviewSession = nil
+        finishReviewWorkoutId = nil
+        finishError = nil
         prescription = nil;
         restAlertTask?.cancel()
         cancelScheduledSave()
@@ -3712,5 +3797,58 @@ private struct WorkoutCompleteSheet: View {
         }
         .padding(24)
         .presentationDetents([.medium])
+    }
+}
+
+private struct WorkoutFinishReviewSheet: View {
+    let rows: [WorkoutFinishReviewRow]
+    let exercises: [Exercise]
+    let isSaving: Bool
+    let errorMessage: String?
+    let onContinue: () -> Void
+    let onFinish: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("These working sets have no recorded result. Finishing keeps them unrecorded.")
+                        .foregroundStyle(Theme.text)
+                    ForEach(rows) { row in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(exercises.first(where: { $0.id == row.exerciseId })?.name ?? "Exercise")
+                                .font(.headline)
+                            Text("\(row.setNumbers.count == 1 ? "Set" : "Sets") \(row.setNumbers.map(String.init).joined(separator: ", "))")
+                                .foregroundStyle(Theme.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    Text("Skipped sets and warmups are not included.")
+                        .font(.callout).foregroundStyle(Theme.muted)
+                    if let errorMessage {
+                        Text(errorMessage).foregroundStyle(Theme.danger)
+                            .accessibilityIdentifier("finish-review-error")
+                    }
+                    Button(action: onContinue) {
+                        Text("Keep working out").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(isSaving)
+                    Button(action: onFinish) {
+                        Text(isSaving ? "Saving..." : "Finish without recording")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isSaving)
+                }
+                .padding(20)
+            }
+            .background(Theme.background)
+            .navigationTitle("Review unfinished sets")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .interactiveDismissDisabled(isSaving)
     }
 }

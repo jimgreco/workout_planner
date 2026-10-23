@@ -224,10 +224,12 @@ for this destructive check. Automated mocks do not establish live Apple acceptan
 
 ## Audited release safety gate (October 2026)
 
-Main pushes run web/backend verification only. Production deployment requires a
-manual `Deploy to EC2` dispatch on main with `deploy_production=true`; native
-upload requires a separate `TestFlight` dispatch with `upload_testflight=true`
-after explicit distribution/profile approval. Builds do not establish physical
+Main pushes run web/backend verification and automatically run the current
+`TestFlight` upload workflow. Obtain explicit distribution/profile approval before
+pushing main, and track that automatic run instead of dispatching a duplicate.
+Production web deployment requires a manual `Deploy to EC2` dispatch on main with
+`deploy_production=true`. A separate native dispatch is only for an explicitly
+reviewed retry when no upload occurred. Builds do not establish physical
 device acceptance or App Store availability.
 
 `scripts/safe-compose-release.py workouts <full-sha> --check` validates the running

@@ -1,5 +1,7 @@
 import { pauseWorkout, resumeWorkout, finishWorkoutTiming, formatWorkoutDuration } from '../workoutTiming.js';
 import { newWorkoutEquipment } from '../equipmentSetups.js';
+import { unfinishedWorkoutSets } from '../finishReview.js';
+import { getSessionEpoch } from '../auth.js';
 import { activeProgramForDate, routinePrescription } from '../programs.js';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Check, X, Clock, Trophy, Clipboard, Trash2, Pause, Play } from 'lucide-react';
@@ -228,6 +230,10 @@ export default function WorkoutLog({
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [finishModal, setFinishModal]       = useState(null); // null | { pbExercises }
+  const [finishReview, setFinishReview] = useState(null);
+  const [finishError, setFinishError] = useState('');
+  const finishInFlight = useRef(false);
+  const workoutSessionEpoch = useRef(getSessionEpoch());
   const [exerciseForm, setExerciseForm] = useState(null);
   const [restAlert, setRestAlert] = useState(null);
   const [elapsed, setElapsed]       = useState('');
@@ -726,23 +732,42 @@ export default function WorkoutLog({
   }
 
   // ── Finish workout ───────────────────────────────────────────────────────
-  async function handleFinish() {
-    if (!workoutId || saving) return;
+  async function handleFinish(reviewed = false) {
+    if (!workoutId || saving || finishInFlight.current || finishModal) return;
+    const session = getSessionEpoch();
+    if (session !== workoutSessionEpoch.current || (editingLog && editingLog.id !== workoutId) || (reviewed && (
+      finishReview?.workoutId !== workoutId || finishReview?.session !== session
+    ))) {
+      setFinishReview(null);
+      setFinishError('Your account or workout changed. Reopen the workout before finishing.');
+      return;
+    }
+    blurActiveEditableElement();
+    const finishItems = latestItemsRef.current;
+    setFinishError('');
+    if (!isEditing.current && !reviewed && unfinishedWorkoutSets(finishItems, exercises).length) {
+      setFinishReview({ workoutId, session });
+      return;
+    }
+    const checkSession = () => {
+      if (getSessionEpoch() !== session) throw new Error('Your account changed. Reopen the workout before finishing.');
+    };
+    finishInFlight.current = true;
     clearTimeout(saveTimer.current);
     setSaving(true);
 
     try {
       const finishedAt = Date.now();
       const finishedTiming = isEditing.current
-        ? { ...timingRef.current, exerciseItems: items }
-        : finishWorkoutTiming({ status: 'active', startTime, ...timingRef.current, exerciseItems: items }, finishedAt);
+        ? { ...timingRef.current, exerciseItems: finishItems }
+        : finishWorkoutTiming({ status: 'active', startTime, ...timingRef.current, exerciseItems: finishItems }, finishedAt);
       const endTime = isEditing.current ? editingLog?.endTime : new Date(finishedAt).toISOString();
 
       // Check for personal bests
-      const pbExerciseIds = personalBestIdsForWorkout({ id: workoutId, date, startTime, endTime, exerciseItems: items }, logs, exercises);
+      const pbExerciseIds = personalBestIdsForWorkout({ id: workoutId, date, startTime, endTime, exerciseItems: finishItems }, logs, exercises);
       const pbExercises = [];
       let currentExercises = [...exercises];
-      for (const item of items) {
+      for (const item of finishItems) {
         const candidate = bestPersonalBestSet(item.sets, item.weightType, item.setupProfile?.smithBarWeight);
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
         if (!ex || !candidate) continue;
@@ -754,6 +779,7 @@ export default function WorkoutLog({
             ...ex,
             personalBest,
           });
+          checkSession();
           currentExercises = updated;
           onExercisesChanged(updated);
         }
@@ -774,8 +800,11 @@ export default function WorkoutLog({
         pbExerciseIds,
       };
 
+      checkSession();
       const updated = await saveLog(logData);
+      checkSession();
       onLogsChanged(updated);
+      setFinishReview(null);
 
       if (isEditing.current) {
         // Done editing — just reset
@@ -785,11 +814,14 @@ export default function WorkoutLog({
         setFinishModal({
           pbExercises,
           duration: formatWorkoutDuration({ startTime, endTime, ...finishedTiming }),
-          exerciseCount: items.length,
-          setCount: items.reduce((acc, i) => acc + i.sets.length, 0),
+          exerciseCount: finishItems.length,
+          setCount: finishItems.reduce((acc, i) => acc + i.sets.length, 0),
         });
       }
+    } catch (error) {
+      setFinishError(error.message || 'Could not finish this workout. Your entries are still here; try again.');
     } finally {
+      finishInFlight.current = false;
       setSaving(false);
     }
   }
@@ -837,6 +869,8 @@ export default function WorkoutLog({
   }
 
   function resetWorkout() {
+    setFinishReview(null);
+    setFinishError('');
     prescriptionRef.current = null;
     setWorkoutId(null);
     setName('');
@@ -910,7 +944,7 @@ export default function WorkoutLog({
             {showFinishWorkout && (
               <button
                 className="btn btn-primary workout-primary-button"
-                onClick={handleFinish}
+                onClick={() => handleFinish()}
                 disabled={!canSubmitWorkout || saving}
               >
                 <Check size={16} /> {saving ? 'Saving…' : isEditing.current ? 'Save Changes' : 'Finish Workout'}
@@ -1096,6 +1130,34 @@ export default function WorkoutLog({
           }
         >
           <ExerciseFormFields gyms={gyms} form={exerciseForm} setForm={setExerciseForm} autoFocus />
+        </Modal>
+      )}
+
+      {finishError && !finishReview && <p role="alert" className="workout-finish-error">{finishError}</p>}
+      {finishReview && (
+        <Modal
+          title="Review unfinished sets"
+          className="finish-review-modal"
+          onClose={() => !saving && setFinishReview(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setFinishReview(null)} disabled={saving} data-modal-autofocus>
+                Keep working out
+              </button>
+              <button className="btn btn-primary" onClick={() => handleFinish(true)} disabled={saving}>
+                {saving ? 'Saving…' : 'Finish without recording'}
+              </button>
+            </>
+          }
+        >
+          <p>These working sets have no recorded result. Finishing keeps them unrecorded.</p>
+          <ul className="finish-review-list">
+            {unfinishedWorkoutSets(items, exercises).map((row) => (
+              <li key={row.itemIndex}><strong>{row.name}</strong><span>Set{row.setNumbers.length === 1 ? '' : 's'} {row.setNumbers.join(', ')}</span></li>
+            ))}
+          </ul>
+          <p className="text-muted">Skipped sets and warmups are not included.</p>
+          {finishError && <p role="alert" className="workout-finish-error">{finishError}</p>}
         </Modal>
       )}
 

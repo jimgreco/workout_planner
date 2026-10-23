@@ -47,6 +47,8 @@ describe('workout equipment defaults in the start/log UI', () => {
     render(<WorkoutLog {...props} logs={[old, cleared]} />);
     expect(screen.getByLabelText('Equipment setup')).toHaveValue('');
     await click('Finish Workout');
+    expect(saved().status).toBe('active');
+    await click('Finish without recording');
     expect(saved()).toMatchObject({ status: 'finished', exerciseItems: [{ setupSelectionMade: true }] });
     expect(saved().exerciseItems[0].setupProfile).toBeUndefined();
     expect(old.exerciseItems[0].setupProfile).toEqual(home);
@@ -81,6 +83,8 @@ describe('workout equipment defaults in the start/log UI', () => {
     expect(screen.getByLabelText('Equipment setup')).toHaveValue(gym.id);
     await choose(choice);
     await click('Pause'); await click('Resume'); await click('Finish Workout');
+    expect(saved().status).toBe('active');
+    await click('Finish without recording');
     const finished = JSON.parse(JSON.stringify(saved()));
     expect(finished.status).toBe('finished');
     expect(finished.prescription.exerciseItems[0].setupProfile).toEqual(gym);

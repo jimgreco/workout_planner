@@ -2149,6 +2149,23 @@ func isRecordedWorkingSet(_ set: WorkoutSet) -> Bool {
     hasRecordedWorkoutReps(set) && set.setType != "warmup"
 }
 
+struct WorkoutFinishReviewRow: Identifiable, Equatable {
+    let itemIndex: Int
+    let exerciseId: String
+    let setNumbers: [Int]
+    var id: Int { itemIndex }
+}
+
+func unfinishedWorkoutSets(_ items: [ExerciseItem]) -> [WorkoutFinishReviewRow] {
+    items.enumerated().compactMap { itemIndex, item in
+        let setNumbers = item.sets.enumerated().compactMap { index, set in
+            set.setType != "warmup" && set.completion != "skipped" && !hasRecordedWorkoutReps(set)
+                ? index + 1 : nil
+        }
+        return setNumbers.isEmpty ? nil : WorkoutFinishReviewRow(itemIndex: itemIndex, exerciseId: item.exerciseId, setNumbers: setNumbers)
+    }
+}
+
 struct GymEquipment: Codable, Identifiable, Equatable {
     var id = UUID().uuidString
     var name = ""

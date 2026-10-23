@@ -3712,3 +3712,25 @@ input:focus, select:focus, textarea:focus {
 }
 .repeat-set-action .btn { min-height: 44px; }
 .repeat-set-action small { color: var(--text-muted); }
+.finish-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+  display: grid;
+  gap: 10px;
+}
+.finish-review-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+.finish-review-list span { color: var(--text-muted); }
+.finish-review-modal .modal-footer { flex-wrap: wrap; }
+.finish-review-modal .modal-footer .btn { flex-grow: 1; white-space: normal; }
+
+.workout-finish-error { color: var(--danger); margin-top: 12px; }

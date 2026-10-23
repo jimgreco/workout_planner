@@ -155,6 +155,20 @@ stays unrecorded, with no copied RIR/RPE/rest evidence. Repeated taps do not adv
 or complete it. Pause blocks this action; history and routine editing omit it.
 Native regression: compile `Models.swift` with `ios/Tests/RepeatLastSetCheck.swift`.
 
+Finishing an active workout reviews unrecorded working sets before saving. The
+web `unfinishedWorkoutSets` and native equivalent preserve original set numbers,
+exclude skipped sets/warmups, and keep repeated prefills unrecorded. Returning or
+dismissing the review never finishes the workout; explicit confirmation preserves
+the missing evidence. Keep duplicate finish guards, pending/error retry state,
+and account/session fencing around confirmation and every awaited write. History
+editing bypasses this active-workout review. Web dialogs isolate the background,
+trap keyboard focus, and restore the trigger on dismissal. Native regression:
+compile `Models.swift` with `ios/Tests/WorkoutFinishReviewCheck.swift`.
+Native log writes acknowledge only the exact sent intent on known 400/422
+validation rejection, so a rejected finish cannot replay after returning to the
+active draft. Preserve newer queued edits, conflict review, and uncertain results
+(offline, 401, 408, 429, 5xx). `AccountOfflineSyncCheck` covers these boundaries.
+
 
 ## Workout pause timing
 
@@ -189,8 +203,10 @@ Contextual PBs come from finished workout history, keyed by exercise, technique 
 
 ## Release isolation
 
-Main pushes validate only. App deployment and TestFlight upload require separate
-explicit dispatch inputs (default false). Use the current Operations safety gate:
+Main pushes run verification and automatically upload TestFlight through the
+current `testflight.yml`; pushing main therefore requires release approval.
+Do not dispatch a second native upload for that commit. App deployment requires
+an explicit dispatch input (default false). Use the current Operations safety gate:
 verify live Compose labels/config hashes and preserve all effective environment
 settings. The app-local helper uses a shared host lock, rollback image tags and
 `--no-deps`; it never rewrites shared `.env`/overrides or transfers app credentials.

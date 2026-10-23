@@ -34,6 +34,8 @@ final class WorkoutStore: ObservableObject {
     private let urlSession: URLSession
     private let snapshotFolder: URL?
     private var storeGeneration = UUID()
+    // View confirmations are valid only for the account/session that opened them.
+    var sessionIdentity: UUID { storeGeneration }
     private var pendingResourceQueue: PendingResourceQueue { .init(ownerID: auth.user?.sub, defaults: offlineDefaults) }
     private var pendingLogQueue: PendingWorkoutLogQueue { .init(ownerID: auth.user?.sub, defaults: offlineDefaults) }
     private var pendingConflictQueue: PendingSyncConflictQueue { .init(ownerID: auth.user?.sub, defaults: offlineDefaults) }
@@ -523,6 +525,15 @@ final class WorkoutStore: ObservableObject {
                 try api.checkSession()
                 guard pendingLogQueue.changes.contains(sentChange) else { throw CancellationError() }
                 if isCancellationError(error) { throw error }
+                // A known validation rejection did not commit this intent. Do not
+                // replay a rejected finish after the user returns to their draft.
+                // Equality above protects a newer edit queued while awaiting it.
+                if case let WorkoutAPIError.server(code, _, _, _) = error,
+                   code == 400 || code == 422 {
+                    pendingLogQueue.remove(log.id)
+                    refreshPendingSyncCount()
+                    throw error
+                }
                 if rememberConflict(resource: .logs, operation: .put, itemId: log.id, local: .log(log), error: error) {
                     saved = log
                 } else {
