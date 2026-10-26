@@ -846,6 +846,9 @@ export default function App() {
             exercises={exercises}
             onUpdate={setLogs}
             onEditLog={handleEditLog}
+            onPlanCreated={() => {
+              setEditingLog(null); setPendingTemplate(null); setPendingProgram(null); setPage('log');
+            }}
           />
         )}
       </main>

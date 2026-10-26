@@ -1,8 +1,10 @@
 import { formatWorkoutDuration } from '../workoutTiming.js';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { getSessionEpoch } from '../auth.js';
+import { repeatWorkoutPlan } from '../repeatWorkout.js';
 import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil, Trash2, ChevronDown, ChevronRight as ChevronRightIcon, Search } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
-import { deleteLog } from '../api.js';
+import { deleteLog, getLogs, saveLog } from '../api.js';
 import { setLabel } from '../progress.js';
 import { HISTORY_DATE_RANGES, matchesHistoryDateRange, matchesHistorySearch, workoutSummary } from '../workoutHistory.js';
 
@@ -22,7 +24,7 @@ function formatDateNice(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, onDeleteLog }) {
+function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, onDeleteLog, onRepeatLog }) {
   const [copyStatus, setCopyStatus] = useState('');
   async function copySummary() {
     try {
@@ -90,6 +92,7 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
           )}
           <div className="history-item-actions">
             <button className="btn btn-secondary btn-sm" onClick={copySummary}>Copy summary</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => onRepeatLog(log)}>Repeat workout</button>
             <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); onEditLog(log); }}>
               <Pencil size={14} /> Edit
             </button>
@@ -104,7 +107,38 @@ function HistoryItem({ log, exercises, expandedId, onToggleExpand, onEditLog, on
   );
 }
 
-export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
+export default function Calendar({ logs, exercises, onUpdate, onEditLog, onPlanCreated }) {
+  const [repeatSource, setRepeatSource] = useState(null);
+  const [repeatError, setRepeatError] = useState('');
+  const [repeating, setRepeating] = useState(false);
+  const repeatAttempt = useRef(null);
+  const repeatBusy = useRef(false);
+  function openRepeat(log) {
+    repeatAttempt.current = { id: crypto.randomUUID(), session: getSessionEpoch() };
+    setRepeatError(''); setRepeatSource(log);
+  }
+  async function createRepeatedPlan() {
+    if (repeatBusy.current || !repeatSource) return;
+    const attempt = repeatAttempt.current;
+    if (attempt.session !== getSessionEpoch()) return;
+    repeatBusy.current = true; setRepeating(true); setRepeatError('');
+    try {
+      const current = getLogs() ?? logs;
+      if (current.some(log => ['active', 'planning'].includes(log.status) && log.id !== attempt.id)) {
+        throw new Error('Finish or discard your current workout or plan before repeating another.');
+      }
+      const source = current.find(log => log.id === repeatSource.id);
+      const now = new Date();
+      const today = toDateStr(now.getFullYear(), now.getMonth(), now.getDate());
+      const plan = repeatWorkoutPlan(source, exercises, today, attempt.id);
+      const updated = await saveLog(plan);
+      if (attempt.session !== getSessionEpoch()) return;
+      onUpdate(updated); setRepeatSource(null); onPlanCreated?.();
+    } catch (error) {
+      if (attempt.session === getSessionEpoch()) setRepeatError(error.message || 'Could not create the plan. Try again.');
+    } finally { repeatBusy.current = false; setRepeating(false); }
+  }
+  const availableRepeatItems = repeatSource?.exerciseItems?.filter(item => exercises.some(exercise => exercise.id === item.exerciseId)) ?? [];
   const now  = new Date();
   const [year, setYear]               = useState(now.getFullYear());
   const [month, setMonth]             = useState(now.getMonth());
@@ -199,6 +233,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
             expandedId={expandedId}
             onToggleExpand={toggleExpand}
             onEditLog={onEditLog}
+            onRepeatLog={openRepeat}
             onDeleteLog={setConfirmDelete}
           />
         ))}
@@ -269,6 +304,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
                     expandedId={expandedId}
                     onToggleExpand={toggleExpand}
                     onEditLog={onEditLog}
+                    onRepeatLog={openRepeat}
                     onDeleteLog={setConfirmDelete}
                   />
                 ))}
@@ -322,6 +358,15 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
         {view === 'list' ? renderListView() : renderCalendarView()}
       </div>
 
+      {repeatSource && <Modal title="Repeat workout" onClose={() => { if (!repeatBusy.current) setRepeatSource(null); }} footer={<>
+        <button className="btn btn-secondary" disabled={repeating} onClick={() => setRepeatSource(null)}>Cancel</button>
+        <button className="btn btn-primary" disabled={repeating || !availableRepeatItems.length} onClick={createRepeatedPlan}>{repeating ? 'Creating…' : 'Create plan for today'}</button>
+      </>}>
+        <p>Create an editable plan from <strong>{repeatSource.name}</strong> with {availableRepeatItems.length} {availableRepeatItems.length === 1 ? 'exercise' : 'exercises'}. The workout timer starts only when you start the plan.</p>
+        {availableRepeatItems.length < repeatSource.exerciseItems.length && <p role="status">{repeatSource.exerciseItems.length - availableRepeatItems.length} missing {repeatSource.exerciseItems.length - availableRepeatItems.length === 1 ? 'exercise' : 'exercises'} will be skipped.</p>}
+        <p>Set targets and equipment are kept. The new plan starts with unrecorded sets, no timer and no program link.</p>
+        {repeatError && <p role="alert">{repeatError}</p>}
+      </Modal>}
       {confirmDelete && (
         <Modal
           title="Delete Workout"

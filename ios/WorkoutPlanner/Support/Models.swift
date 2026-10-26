@@ -2387,3 +2387,43 @@ enum HistoryDateRange: Int, CaseIterable, Identifiable {
         return day >= formatter.string(from: start) && day <= today
     }
 }
+
+
+enum RepeatWorkoutError: LocalizedError {
+    case unfinished, noExercises, activeWorkout
+    var errorDescription: String? {
+        switch self {
+        case .unfinished: return "Choose a finished workout to repeat."
+        case .noExercises: return "None of this workout’s exercises are still available."
+        case .activeWorkout: return "Finish or discard your current workout or plan before repeating another."
+        }
+    }
+}
+
+extension WorkoutLog {
+    func repeatedPlan(exercises: [Exercise], today: String, id: String = UUID().uuidString) throws -> WorkoutLog {
+        guard status == "finished" else { throw RepeatWorkoutError.unfinished }
+        let known = Set(exercises.map(\.id))
+        let available = exerciseItems.filter { known.contains($0.exerciseId) }
+        guard !available.isEmpty else { throw RepeatWorkoutError.noExercises }
+        func target(_ planned: String?, _ recorded: String?) -> String {
+            if let planned, !planned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return planned }
+            return recorded ?? ""
+        }
+        let items = available.map { item in
+            ExerciseItem(exerciseId: item.exerciseId, weightType: item.weightType,
+                         restTargetSeconds: item.restTargetSeconds, supersetGroup: item.supersetGroup,
+                         description: item.description, useIndividualReps: item.useIndividualReps,
+                         sets: item.sets.map { set in
+                WorkoutSet(reps: "", repsLeft: "", repsRight: "", repMode: set.repMode, weight: "",
+                           placeholderReps: target(set.placeholderReps, set.reps),
+                           placeholderRepsLeft: target(set.placeholderRepsLeft, set.repsLeft),
+                           placeholderRepsRight: target(set.placeholderRepsRight, set.repsRight),
+                           placeholderWeight: target(set.weight, set.placeholderWeight), placeholderWeightType: item.weightType,
+                           restTargetSeconds: set.restTargetSeconds, setType: set.setType, completion: "unrecorded")
+            }, baselineId: item.baselineId, techniqueNote: item.techniqueNote, setupProfile: item.setupProfile,
+                         targetRIR: item.targetRIR, setupSelectionMade: item.setupSelectionMade)
+        }
+        return WorkoutLog(id: id, name: name, date: today, exerciseItems: items, status: "planning")
+    }
+}

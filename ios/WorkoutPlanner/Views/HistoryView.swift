@@ -6,6 +6,11 @@ struct HistoryView: View {
     @State private var viewMode: HistoryMode = .list
     @State private var expandedId: String?
     @State private var deleteTarget: WorkoutLog?
+    @State private var repeatTarget: WorkoutLog?
+    @State private var repeatPlanID = UUID().uuidString
+    @State private var repeatSession: UUID?
+    @State private var repeating = false
+    @State private var repeatError: String?
     @State private var calendarMonth = Date()
     @State private var selectedDate: String?
     @State private var search = ""
@@ -75,6 +80,31 @@ struct HistoryView: View {
             .navigationTitle("History")
             .navigationBarTitleDisplayMode(.inline)
         }
+        .sheet(item: $repeatTarget) { source in
+            NavigationStack {
+                let count = source.exerciseItems.filter { item in store.exercises.contains { $0.id == item.exerciseId } }.count
+                Form {
+                    Text("Create an editable plan from \(source.name) with \(count) \(count == 1 ? "exercise" : "exercises"). The timer starts only when you start the plan.")
+                    if count < source.exerciseItems.count { Text("\(source.exerciseItems.count - count) missing \(source.exerciseItems.count - count == 1 ? "exercise" : "exercises") will be skipped.") }
+                    Text("Set targets and equipment are kept. The new plan starts with unrecorded sets, no timer and no program link.")
+                    if let repeatError { Text(repeatError).foregroundStyle(.red) }
+                    Button(repeating ? "Creating…" : "Create plan for today") {
+                        guard !repeating, repeatSession == store.sessionIdentity else { return }
+                        repeating = true; repeatError = nil
+                        Task {
+                            defer { repeating = false }
+                            do {
+                                try await store.repeatFinishedWorkout(source.id, planID: repeatPlanID)
+                                guard repeatSession == store.sessionIdentity else { return }
+                                repeatTarget = nil; selectedPage = .log
+                            } catch { if repeatSession == store.sessionIdentity { repeatError = error.localizedDescription } }
+                        }
+                    }.disabled(repeating || count == 0)
+                }
+                .navigationTitle("Repeat workout")
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { repeatTarget = nil }.disabled(repeating) } }
+            }.interactiveDismissDisabled(repeating)
+        }
         .alert("Delete Workout", isPresented: Binding(
             get: { deleteTarget != nil },
             set: { if !$0 { deleteTarget = nil } }
@@ -115,7 +145,8 @@ struct HistoryView: View {
                             store.setEditingLog(log)
                             selectedPage = .log
                         },
-                        onDelete: { deleteTarget = log }
+                        onDelete: { deleteTarget = log },
+                        onRepeat: { openRepeat(log) }
                     )
                 }
             }
@@ -164,13 +195,21 @@ struct HistoryView: View {
                                     store.setEditingLog(log)
                                     selectedPage = .log
                                 },
-                                onDelete: { deleteTarget = log }
+                                onDelete: { deleteTarget = log },
+                                onRepeat: { openRepeat(log) }
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    private func openRepeat(_ log: WorkoutLog) {
+        repeatPlanID = UUID().uuidString
+        repeatSession = store.sessionIdentity
+        repeatError = nil
+        repeatTarget = log
     }
 
     private var logsByDate: [String: [WorkoutLog]] {
@@ -190,6 +229,7 @@ private struct HistoryItemView: View {
     let onToggle: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+    let onRepeat: () -> Void
     @State private var copied = false
 
     var body: some View {
@@ -276,6 +316,8 @@ private struct HistoryItemView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                     }
 
+                    Button("Repeat workout", action: onRepeat)
+                        .buttonStyle(SecondaryButtonStyle(compact: true))
                     HStack(spacing: 8) {
                         Button {
                             UIPasteboard.general.string = workoutSummary(log, exercises: exercises)
