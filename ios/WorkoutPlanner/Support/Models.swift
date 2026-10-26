@@ -2367,3 +2367,23 @@ extension Exercise {
         return available.isEmpty ? "No recorded alternative at this gym" : available.map(\.name).joined(separator: " OR ")
     }
 }
+
+
+enum HistoryDateRange: Int, CaseIterable, Identifiable {
+    case all = 0, week = 7, month = 30, quarter = 90
+    var id: Int { rawValue }
+    var label: String { self == .all ? "All time" : "Last \(rawValue) days" }
+    func includes(_ day: String, today: String = DateHelpers.todayString()) -> Bool {
+        guard self != .all else { return true }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let end = formatter.date(from: today),
+              let start = calendar.date(byAdding: .day, value: 1 - rawValue, to: end) else { return false }
+        return day >= formatter.string(from: start) && day <= today
+    }
+}

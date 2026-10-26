@@ -9,12 +9,14 @@ struct HistoryView: View {
     @State private var calendarMonth = Date()
     @State private var selectedDate: String?
     @State private var search = ""
+    @State private var dateRange: HistoryDateRange = .all
     @FocusState private var searchFocused: Bool
     private var isSearching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var finishedLogs: [WorkoutLog] {
         store.personalBestLogs
             .filter { $0.status == "finished" }
+            .filter { dateRange.includes($0.date) }
             .filter { matchesHistorySearch($0, query: search, exercises: store.exercises) }
             .sorted { lhs, rhs in
                 if lhs.date == rhs.date { return (lhs.endTime ?? "") > (rhs.endTime ?? "") }
@@ -48,7 +50,15 @@ struct HistoryView: View {
                     }
                     .padding(12)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-                    if isSearching {
+                    Picker("History date range", selection: $dateRange) {
+                        ForEach(HistoryDateRange.allCases) { range in Text(range.label).tag(range) }
+                    }
+                    .accessibilityIdentifier("history-date-range")
+                    .onChange(of: dateRange) { _, value in
+                        selectedDate = nil
+                        if value != .all { calendarMonth = Date() }
+                    }
+                    if isSearching || dateRange != .all {
                         Text("\(finishedLogs.count) matching \(finishedLogs.count == 1 ? "workout" : "workouts")")
                             .font(.caption).foregroundStyle(Theme.muted)
                     }
@@ -92,7 +102,7 @@ struct HistoryView: View {
     @ViewBuilder
     private var listView: some View {
         if finishedLogs.isEmpty {
-            EmptyState(icon: "calendar", text: isSearching ? "No workouts match your search." : "No finished workouts yet. Complete a workout to see it here!")
+            EmptyState(icon: "calendar", text: isSearching ? "No workouts match your search." : dateRange != .all ? "No finished workouts in this date range." : "No finished workouts yet. Complete a workout to see it here!")
         } else {
             VStack(spacing: 12) {
                 ForEach(finishedLogs) { log in

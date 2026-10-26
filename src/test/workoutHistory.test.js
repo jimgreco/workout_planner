@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routineExerciseNeedsWeightIncrease, routineExerciseWeightAdvice } from '../workoutHistory.js';
+import { matchesHistoryDateRange, routineExerciseNeedsWeightIncrease, routineExerciseWeightAdvice } from '../workoutHistory.js';
 
 const rangeRoutineItem = {
   exerciseId: 'bench',
@@ -213,5 +213,21 @@ describe('routineExerciseWeightAdvice', () => {
     expect(routineExerciseWeightAdvice(rangeRoutineItem, [poor, recovered])).toBeNull();
     recovered.status = 'active';
     expect(routineExerciseWeightAdvice(rangeRoutineItem, [poor, recovered])?.direction).toBe('decrease');
+  });
+});
+
+
+describe('history date range', () => {
+  it.each([
+    [7, '2026-11-02', '2026-10-27', '2026-10-26'],
+    [30, '2026-03-10', '2026-02-09', '2026-02-08'],
+    [90, '2027-01-01', '2026-10-04', '2026-10-03'],
+    [7, '2028-03-01', '2028-02-24', '2028-02-23'],
+  ])('counts %i calendar days including today across month/year/DST boundaries', (days, today, first, before) => {
+    expect(matchesHistoryDateRange(first, days, today)).toBe(true);
+    expect(matchesHistoryDateRange(today, days, today)).toBe(true);
+    expect(matchesHistoryDateRange(before, days, today)).toBe(false);
+    expect(matchesHistoryDateRange('2099-01-01', days, today)).toBe(false);
+    expect(matchesHistoryDateRange(before, 0, today)).toBe(true);
   });
 });

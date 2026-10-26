@@ -4,7 +4,7 @@ import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight, Star, Pencil
 import Modal from '../components/Modal.jsx';
 import { deleteLog } from '../api.js';
 import { setLabel } from '../progress.js';
-import { matchesHistorySearch, workoutSummary } from '../workoutHistory.js';
+import { HISTORY_DATE_RANGES, matchesHistoryDateRange, matchesHistorySearch, workoutSummary } from '../workoutHistory.js';
 
 const DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -114,6 +114,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting]       = useState(false);
   const [search, setSearch]           = useState('');
+  const [rangeDays, setRangeDays] = useState(0);
   const isSearching = search.trim().length > 0;
 
   const todayStr = toDateStr(now.getFullYear(), now.getMonth(), now.getDate());
@@ -121,6 +122,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
   // Only show finished workouts
   const finishedLogs = logs
     .filter((l) => l.status === 'finished')
+    .filter((l) => matchesHistoryDateRange(l.date, rangeDays, todayStr))
     .filter((l) => matchesHistorySearch(l, search, exercises))
     .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
 
@@ -182,7 +184,7 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
       return (
         <div className="empty-state">
           <div className="empty-icon"><CalendarIcon size={48} /></div>
-          <p>{isSearching ? 'No workouts match your search.' : 'No finished workouts yet. Complete a workout to see it here!'}</p>
+          <p>{isSearching ? 'No workouts match your search.' : rangeDays ? 'No finished workouts in this date range.' : 'No finished workouts yet. Complete a workout to see it here!'}</p>
         </div>
       );
     }
@@ -304,7 +306,17 @@ export default function Calendar({ logs, exercises, onUpdate, onEditLog }) {
         <Search size={18} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
         <input type="search" aria-label="Search workout history" placeholder="Workout, exercise, notes, or date" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 40 }} />
       </div>
-      {isSearching && <div className="text-muted" role="status" style={{ marginTop: 12 }}>{finishedLogs.length} matching {finishedLogs.length === 1 ? 'workout' : 'workouts'} · <button className="btn btn-sm btn-secondary" onClick={() => setSearch('')}>Clear search</button></div>}
+      <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+        <label htmlFor="history-date-range">History date range</label>
+        <select id="history-date-range" value={rangeDays} onChange={(e) => {
+          const days = Number(e.target.value);
+          setRangeDays(days); setSelectedDate(null);
+          if (days) { setYear(now.getFullYear()); setMonth(now.getMonth()); }
+        }}>
+          {HISTORY_DATE_RANGES.map(range => <option key={range.days} value={range.days}>{range.label}</option>)}
+        </select>
+      </div>
+      {(isSearching || rangeDays > 0) && <div className="text-muted" role="status" style={{ marginTop: 12 }}>{finishedLogs.length} matching {finishedLogs.length === 1 ? 'workout' : 'workouts'} {isSearching && <>· <button className="btn btn-sm btn-secondary" onClick={() => setSearch('')}>Clear search</button></>}</div>}
 
       <div style={{ marginTop: 24 }}>
         {view === 'list' ? renderListView() : renderCalendarView()}
