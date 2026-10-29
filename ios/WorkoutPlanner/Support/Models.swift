@@ -466,6 +466,36 @@ struct NewWorkoutEquipment {
     var lastItem: ExerciseItem?
 }
 
+enum LiveRepEntryField { case common, left, right }
+
+func actualRepsInput(_ value: String) -> String? {
+    let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if text.isEmpty { return "" }
+    guard text.allSatisfy({ $0.isASCII && $0.isNumber }), let count = Int(text), count >= 0, count <= 9_007_199_254_740_991 else { return nil }
+    return String(count)
+}
+
+extension WorkoutSet {
+    func enteringActualReps(_ text: String, field: LiveRepEntryField, linkedSides: Bool = false) -> WorkoutSet? {
+        guard let value = actualRepsInput(text) else { return nil }
+        var result = self
+        switch field {
+        case .left: result.repsLeft = value; result.reps = ""
+        case .right: result.repsRight = value; result.reps = ""
+        case .common:
+            if linkedSides {
+                result.repsLeft = value; result.repsRight = value; result.reps = ""
+            } else {
+                result.reps = value; result.repsLeft = nil; result.repsRight = nil
+            }
+        }
+        result.completion = "recorded"
+        if hasRecordedWorkoutReps(result) { result.recordRirPrefill() }
+        else { result.completion = "unrecorded" }
+        return result
+    }
+}
+
 struct WorkoutSetPosition: Equatable {
     let exerciseIndex: Int
     let setIndex: Int

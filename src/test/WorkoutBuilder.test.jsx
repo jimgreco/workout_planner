@@ -19,6 +19,28 @@ const oneItem = [
 ];
 
 describe('WorkoutBuilder', () => {
+  it('accepts typed actual reps, rejects invalid input, keeps empty values, and dismisses with Enter', () => {
+    const onChange = vi.fn();
+    const onTextBlur = vi.fn();
+    const props = { exercises, onChange, onTextBlur, allowRirPrefill: true, items: [{ exerciseId: 'ex1', targetRIR: 3, sets: [{ reps: '', placeholderReps: '8-12', placeholderRir: '0', completion: 'unrecorded' }] }] };
+    const view = render(<WorkoutBuilder {...props} />);
+    const field = screen.getByLabelText('Reps for set 1 of Bench Press');
+    field.focus();
+    fireEvent.change(field, { target: { value: '9' } });
+    const entered = onChange.mock.lastCall[0];
+    expect(entered[0].sets[0]).toMatchObject({ reps: '9', rir: '0', placeholderReps: '8-12' });
+    expect(entered[0].targetRIR).toBe(3);
+    view.rerender(<WorkoutBuilder {...props} items={entered} />);
+    const calls = onChange.mock.calls.length;
+    fireEvent.change(field, { target: { value: '9-12' } });
+    expect(onChange).toHaveBeenCalledTimes(calls);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(field).not.toHaveFocus(); expect(onTextBlur).toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: '' } });
+    expect(onChange.mock.lastCall[0][0].sets[0].reps).toBe('');
+    expect(isWorkingSet(onChange.mock.lastCall[0][0].sets[0])).toBe(false);
+  });
+
   it('accepts a remembered zero on rep entry and keeps added-set RIR as a hint', () => {
     const onChange = vi.fn();
     const props = { exercises, onChange, allowRirPrefill: true, items: [{ exerciseId: 'ex1', sets: [{ reps: '', weight: '135', placeholderRir: '0', completion: 'unrecorded' }] }] };

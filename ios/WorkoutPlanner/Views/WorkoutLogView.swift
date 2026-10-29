@@ -177,6 +177,9 @@ struct WorkoutLogView: View {
                 clearBuilderFieldForEntry(newValue)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .workoutInputFocusDismissed)) { _ in
+            commitBuilderFieldsIfNeeded()
+        }
         .onChange(of: focusedLiveActivityField) { oldValue, newValue in
             if oldValue != nil, newValue != oldValue {
                 commitBuilderFieldsIfNeeded()
@@ -2076,6 +2079,7 @@ private struct WorkoutLiveActivityCard: View {
 
             VStack(alignment: .leading, spacing: liveGridSpacing) {
                 quickEntryPanel(context, set: set, repMode: repMode, showsWeight: showsWeight)
+                    .id("\(context.item.exerciseId)-\(context.exerciseIndex)-\(context.setIndex)-\(repMode.rawValue)")
 
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(spacing: 0) {
@@ -2246,7 +2250,9 @@ private struct WorkoutLiveActivityCard: View {
             WorkoutLiveSideRepWheel(
                 title: title,
                 leftValue: repsValueBinding(set, \.repsLeft, fallback: sideRepsFallback(context.set, left: true)),
+                leftText: actualRepsBinding(set, field: .left),
                 rightValue: repsValueBinding(set, \.repsRight, fallback: sideRepsFallback(context.set, left: false)),
+                rightText: actualRepsBinding(set, field: .right),
                 repMode: mode,
                 leftCaption: sideRepCaption(for: context.set, left: true, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
                 rightCaption: sideRepCaption(for: context.set, left: false, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
@@ -2256,6 +2262,7 @@ private struct WorkoutLiveActivityCard: View {
             WorkoutLiveRepWheel(
                 title: title,
                 value: commonRepsValueBinding(set, context: context, repMode: repMode),
+                text: actualRepsBinding(set, field: .common, linkedSides: repMode == .linkedSides || context.exercise.isUnilateral == true),
                 repMode: mode,
                 caption: repCaption(for: context.set, mode: repMode, targetRIR: workoutTargetRIR(context.item.targetRIR, setType: context.set.setType, usesTime: context.exercise.usesTime == true)),
                 range: range
@@ -2416,6 +2423,20 @@ private struct WorkoutLiveActivityCard: View {
             return last
         }
         return nil
+    }
+
+    private func actualRepsBinding(_ set: Binding<WorkoutSet>, field: LiveRepEntryField, linkedSides: Bool = false) -> Binding<String> {
+        Binding(get: {
+            switch field {
+            case .left: return set.wrappedValue.repsLeft ?? ""
+            case .right: return set.wrappedValue.repsRight ?? ""
+            case .common: return linkedSides ? (set.wrappedValue.repsLeft ?? set.wrappedValue.repsRight ?? "") : (set.wrappedValue.reps ?? "")
+            }
+        }, set: { text in
+            guard let updated = set.wrappedValue.enteringActualReps(text, field: field, linkedSides: linkedSides) else { return }
+            set.wrappedValue = updated
+            onTextChanged()
+        })
     }
 
     private func repsValueBinding(_ set: Binding<WorkoutSet>, _ keyPath: WritableKeyPath<WorkoutSet, String?>, fallback: String?) -> Binding<Int> {
@@ -2914,6 +2935,10 @@ private struct WorkoutLiveActivityCard: View {
         }) else { return }
         let nextIndex = index + delta
         guard flatSetPositions.indices.contains(nextIndex) else { return }
+        focusedField = nil
+        NotificationCenter.default.post(name: .workoutInputFocusDismissed, object: nil)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        onChanged()
         activeExerciseIndex = flatSetPositions[nextIndex].exerciseIndex
         activeSetIndex = flatSetPositions[nextIndex].setIndex
     }
@@ -3164,6 +3189,7 @@ private struct WorkoutLiveInput: View {
 private struct WorkoutLiveRepWheel: View {
     let title: String
     @Binding var value: Int
+    @Binding var text: String
     @Binding var repMode: WorkoutLiveRepMode
     let caption: String?
     let range: ClosedRange<Int>
@@ -3189,7 +3215,7 @@ private struct WorkoutLiveRepWheel: View {
                     adjust(by: -1)
                 }
 
-                Text("\(value)")
+                WorkoutLiveRepNumber(text: $text, placeholder: String(value), label: "Actual \(title.lowercased())")
                     .font(.system(size: 27, weight: .heavy, design: .rounded))
                     .foregroundStyle(Theme.text)
                     .monospacedDigit()
@@ -3230,7 +3256,7 @@ private struct WorkoutLiveRepWheel: View {
                 .stroke(Theme.border.opacity(0.75), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityValue("\(value)")
         .accessibilityHint(caption.map(workoutGoalAccessibilityLabel) ?? "")
@@ -3248,7 +3274,22 @@ private struct WorkoutLiveRepWheel: View {
     }
 
     private func adjust(by delta: Int) {
-        value = min(range.upperBound, max(range.lowerBound, value + delta))
+        value = min(max(range.upperBound, value), max(range.lowerBound, value + delta))
+    }
+}
+
+private struct WorkoutLiveRepNumber: View {
+    @Binding var text: String
+    let placeholder: String
+    let label: String
+    var fontSize: CGFloat = 27
+    @State private var isFocused = false
+
+    var body: some View {
+        DoneAccessoryTextField(text: $text, isFocused: $isFocused, placeholder: placeholder,
+                               keyboardType: .numberPad, accessibilityLabel: label,
+                               textAlignment: .center, fontSize: fontSize)
+            .onReceive(NotificationCenter.default.publisher(for: .workoutInputFocusDismissed)) { _ in isFocused = false }
     }
 }
 
@@ -3278,7 +3319,9 @@ private struct WorkoutLiveRepStepButton: View {
 private struct WorkoutLiveSideRepWheel: View {
     let title: String
     @Binding var leftValue: Int
+    @Binding var leftText: String
     @Binding var rightValue: Int
+    @Binding var rightText: String
     @Binding var repMode: WorkoutLiveRepMode
     let leftCaption: String?
     let rightCaption: String?
@@ -3301,8 +3344,8 @@ private struct WorkoutLiveSideRepWheel: View {
             }
 
             VStack(spacing: 4) {
-                WorkoutLiveSideRepControl(title: "L", unitTitle: title, value: $leftValue, caption: leftCaption, range: range)
-                WorkoutLiveSideRepControl(title: "R", unitTitle: title, value: $rightValue, caption: rightCaption, range: range)
+                WorkoutLiveSideRepControl(title: "L", unitTitle: title, value: $leftValue, text: $leftText, caption: leftCaption, range: range)
+                WorkoutLiveSideRepControl(title: "R", unitTitle: title, value: $rightValue, text: $rightText, caption: rightCaption, range: range)
             }
         }
         .padding(7)
@@ -3321,6 +3364,7 @@ private struct WorkoutLiveSideRepControl: View {
     let title: String
     let unitTitle: String
     @Binding var value: Int
+    @Binding var text: String
     let caption: String?
     let range: ClosedRange<Int>
 
@@ -3349,7 +3393,7 @@ private struct WorkoutLiveSideRepControl: View {
                 adjust(by: -1)
             }
 
-            Text("\(value)")
+            WorkoutLiveRepNumber(text: $text, placeholder: String(value), label: "Actual \(title) \(unitTitle.lowercased())", fontSize: 17)
                 .font(.system(size: 17, weight: .heavy, design: .rounded))
                 .foregroundStyle(Theme.text)
                 .monospacedDigit()
@@ -3371,7 +3415,7 @@ private struct WorkoutLiveSideRepControl: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(title) \(unitTitle.lowercased())")
         .accessibilityValue("\(value)")
         .accessibilityHint(caption.map(workoutGoalAccessibilityLabel) ?? "")
@@ -3389,7 +3433,7 @@ private struct WorkoutLiveSideRepControl: View {
     }
 
     private func adjust(by delta: Int) {
-        value = min(range.upperBound, max(range.lowerBound, value + delta))
+        value = min(max(range.upperBound, value), max(range.lowerBound, value + delta))
     }
 }
 
@@ -3646,6 +3690,8 @@ private struct DoneAccessoryTextField: UIViewRepresentable {
     let placeholder: String
     let keyboardType: UIKeyboardType
     let accessibilityLabel: String
+    var textAlignment: NSTextAlignment = .left
+    var fontSize: CGFloat = 24
 
     func makeUIView(context: Context) -> UITextField {
         let textField = UITextField(frame: .zero)
@@ -3654,7 +3700,7 @@ private struct DoneAccessoryTextField: UIViewRepresentable {
         textField.keyboardType = keyboardType
         textField.borderStyle = .none
         textField.backgroundColor = .clear
-        textField.textAlignment = .left
+        textField.textAlignment = textAlignment
         textField.adjustsFontSizeToFitWidth = true
         textField.minimumFontSize = 17
         textField.accessibilityLabel = accessibilityLabel
@@ -3686,7 +3732,7 @@ private struct DoneAccessoryTextField: UIViewRepresentable {
     }
 
     private func applyStyle(to textField: UITextField) {
-        textField.font = .monospacedDigitSystemFont(ofSize: 24, weight: .heavy)
+        textField.font = .monospacedDigitSystemFont(ofSize: fontSize, weight: .heavy)
         textField.textColor = UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.91, green: 0.91, blue: 0.94, alpha: 1)
@@ -3714,6 +3760,7 @@ private struct DoneAccessoryTextField: UIViewRepresentable {
 
         @objc func textDidChange(_ textField: UITextField) {
             parent.text = textField.text ?? ""
+            if textField.text != parent.text { textField.text = parent.text }
         }
 
         @objc func doneTapped() {

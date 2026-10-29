@@ -1,3 +1,4 @@
+import { actualRepsInput } from '../liveEntry.js';
 import { additionalSetRir, recordingRirPrefill, rirEntryValue } from '../rememberRir.js';
 import { targetRIRForSet, setTargetGoalLabel } from '../targetRIR.js';
 import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
@@ -328,6 +329,10 @@ export default function WorkoutBuilder({
 
   function updateSet(itemIdx, setIdx, field, value, options = {}) {
     if (field === 'rir') value = normalizedRir(value);
+    if (!planningMode && ['reps', 'repsLeft', 'repsRight'].includes(field)) {
+      value = actualRepsInput(value);
+      if (value === null) return;
+    }
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       return {
@@ -336,6 +341,7 @@ export default function WorkoutBuilder({
           if (si !== setIdx) return s;
           const enteringReps = ['reps', 'repsLeft', 'repsRight'].includes(field);
           let next = { ...setRepField(s, field, value), ...(enteringReps ? { completion: 'recorded' } : {}) };
+          if (enteringReps && !hasRecordedReps(next)) next.completion = 'unrecorded';
           if (field === 'rir') next.placeholderRir = null;
           if (allowRirPrefill && !planningMode && ((enteringReps && hasRecordedReps(next)) || (field === 'completion' && value === 'recorded'))) {
             next = recordingRirPrefill(next);
@@ -738,6 +744,7 @@ export default function WorkoutBuilder({
                             value={planningMode ? (set.placeholderRepsLeft || '') : (set.repsLeft ?? '')}
                             onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft')}
                             onBlur={handleSetTextBlur}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                             onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft', e.target.value, { textEntry: true })}
                             disabled={readOnly}
                             aria-label={`Left ${repUnit} for set ${si + 1} of ${ex.name}`}
@@ -750,6 +757,7 @@ export default function WorkoutBuilder({
                             value={planningMode ? (set.placeholderRepsRight || '') : (set.repsRight ?? '')}
                             onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight')}
                             onBlur={handleSetTextBlur}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                             onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight', e.target.value, { textEntry: true })}
                             disabled={readOnly}
                             aria-label={`Right ${repUnit} for set ${si + 1} of ${ex.name}`}
@@ -761,9 +769,11 @@ export default function WorkoutBuilder({
                           type="text"
                           inputMode="numeric"
                           placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
+                          aria-label={`${repUnitTitle} for set ${si + 1} of ${ex.name}`}
                           value={planningMode ? compactRepValue(set, repsField) : (set.reps ?? '')}
                           onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderReps' : 'reps')}
                           onBlur={handleSetTextBlur}
+                          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                           onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value, { textEntry: true })}
                           disabled={readOnly}
                           style={planningMode ? { color: 'var(--text-muted)' } : undefined}
@@ -787,6 +797,7 @@ export default function WorkoutBuilder({
                               value={set.weight}
                               onFocus={() => handleSetTextFocus(idx, si, 'weight')}
                               onBlur={handleSetTextBlur}
+                              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                               onChange={(e) => updateSet(idx, si, 'weight', e.target.value, { textEntry: true })}
                               disabled={readOnly}
                               aria-label={`Weight for set ${si + 1} of ${ex.name}`}
@@ -890,6 +901,7 @@ export default function WorkoutBuilder({
                                 value={set.rpe || ''}
                                 onFocus={() => handleSetTextFocus(idx, si, 'rpe')}
                                 onBlur={handleSetTextBlur}
+                                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                                 onChange={(e) => updateSet(idx, si, 'rpe', e.target.value, { textEntry: true })}
                                 aria-label={`RPE for set ${si + 1} of ${ex.name}`}
                               />
