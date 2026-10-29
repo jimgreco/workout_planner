@@ -17,7 +17,7 @@ import { nextProgramWorkout as getNextProgramWorkout } from '../programs.js';
 import {
   bestPersonalBestSet,
   isPersonalBestImprovement,
-  personalBestLabel,
+  personalBestNotice,
   personalBestPayload,
   personalBestIdsForWorkout,
   hasPersonalBestContext,
@@ -786,7 +786,7 @@ export default function WorkoutLog({
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
         if (!ex || !candidate) continue;
         const personalBest = personalBestPayload(candidate, date);
-        if (pbExerciseIds.includes(item.exerciseId)) pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest, ex.usesTime)}`);
+        if (pbExerciseIds.includes(item.exerciseId)) pbExercises.push(personalBestNotice(ex.name, personalBest, item, ex.usesTime));
         if (!hasPersonalBestContext(item) && isPersonalBestImprovement(candidate, ex.personalBest)) {
           // Keep the manually editable, unscoped PB separate from setup records.
           const updated = await saveExercise({
@@ -1205,7 +1205,7 @@ export default function WorkoutLog({
                 <Trophy size={16} fill="currentColor" /> <span>New Personal Bests!</span>
               </div>
               <ul style={{ margin: '0 0 0 24px', fontSize: 14 }}>
-                {finishModal.pbExercises.map((name) => <li key={name} style={{ marginBottom: 4 }}>{name}</li>)}
+                {finishModal.pbExercises.map((name) => <li key={name} style={{ marginBottom: 8, whiteSpace: 'pre-line' }}>{name}</li>)}
               </ul>
             </div>
           )}

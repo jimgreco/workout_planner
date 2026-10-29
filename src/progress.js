@@ -62,6 +62,18 @@ export function personalBestLabel(personalBest, usesTime = false) {
   return numeric(personalBest.reps) > 0 ? `${weight} x ${reps} ${usesTime ? 'secs' : 'reps'}` : weight;
 }
 
+// Only use the snapshot that earned the record, never today's setup library.
+export function personalBestEquipmentLabel(item) {
+  const profile = item?.setupProfile;
+  const machine = profile?.machine?.trim();
+  if (machine) return [profile?.gym?.trim(), machine].filter(Boolean).join(' · ');
+  return profile?.name?.trim() || 'Equipment not recorded';
+}
+
+export function personalBestNotice(name, best, item, usesTime = false) {
+  return `${name} - ${personalBestLabel(best, usesTime)}\n${personalBestEquipmentLabel(item)}`;
+}
+
 export function bestPersonalBestSet(sets = [], weightType = 'weight', barWeight) {
   return sets.reduce((best, set) => {
     if (!isWorkingSet(set)) return best;
@@ -113,17 +125,30 @@ function comparePersonalBestLogs(a, b) {
   return key(a).localeCompare(key(b)) || a.id.localeCompare(b.id);
 }
 
-function recordedPersonalBest(item, logs) {
+function recordedPersonalBestRecord(item, logs) {
   const context = personalBestContext(item);
   let best;
+  let equipment = 'Equipment not recorded';
   for (const log of logs.filter(log => log.status === 'finished').sort(comparePersonalBestLogs)) {
     for (const previous of log.exerciseItems || []) {
       if (personalBestContext(previous) !== context) continue;
       const candidate = bestPersonalBestSet(previous.sets, previous.weightType, previous.setupProfile?.smithBarWeight);
-      if (isPersonalBestImprovement(candidate, best)) best = personalBestPayload(candidate, log.date);
+      if (isPersonalBestImprovement(candidate, best)) {
+        best = personalBestPayload(candidate, log.date);
+        equipment = personalBestEquipmentLabel(previous);
+      }
     }
   }
-  return best;
+  return { best, equipment };
+}
+
+function recordedPersonalBest(item, logs) {
+  return recordedPersonalBestRecord(item, logs).best;
+}
+
+export function personalBestRecordForItem(item, logs = [], legacyBest) {
+  return hasPersonalBestContext(item) ? recordedPersonalBestRecord(item, logs)
+    : { best: legacyBest, equipment: 'Equipment not recorded' };
 }
 
 export function personalBestForItem(item, logs = [], legacyBest) {
@@ -133,7 +158,8 @@ export function personalBestForItem(item, logs = [], legacyBest) {
 export function latestPersonalBest(exercise, logs = []) {
   const item = logs.filter(log => log.status === 'finished').sort(comparePersonalBestLogs).reverse()
     .flatMap(log => log.exerciseItems || []).find(item => item.exerciseId === exercise.id);
-  return { best: item ? personalBestForItem(item, logs, exercise.personalBest) : exercise.personalBest,
+  return { ...(item ? personalBestRecordForItem(item, logs, exercise.personalBest)
+    : { best: exercise.personalBest, equipment: 'Equipment not recorded' }),
     contextual: Boolean(item && hasPersonalBestContext(item)) };
 }
 

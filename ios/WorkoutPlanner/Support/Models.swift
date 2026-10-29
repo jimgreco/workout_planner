@@ -2066,6 +2066,26 @@ func personalBestLabel(_ best: PersonalBest?, usesTime: Bool = false) -> String?
     return "\(weight) lbs"
 }
 
+// Use only the winning workout's snapshot, not the current equipment library.
+func personalBestEquipmentLabel(_ item: ExerciseItem) -> String {
+    guard let profile = item.setupProfile else { return "Equipment not recorded" }
+    let machine = profile.machine.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !machine.isEmpty {
+        return [profile.gym.trimmingCharacters(in: .whitespacesAndNewlines), machine].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+    let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return name.isEmpty ? "Equipment not recorded" : name
+}
+
+func personalBestNotice(_ name: String, best: PersonalBest, item: ExerciseItem, usesTime: Bool = false) -> String {
+    "\(name) - \(personalBestLabel(best, usesTime: usesTime) ?? best.weight)\n\(personalBestEquipmentLabel(item))"
+}
+
+struct PersonalBestRecord {
+    var best: PersonalBest?
+    var equipment = "Equipment not recorded"
+}
+
 func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "weight", smithBarWeight: Double? = nil) -> PersonalBestCandidate? {
     sets.reduce(PersonalBestCandidate?.none) { current, set in
         guard isRecordedWorkingSet(set) else { return current }
@@ -2112,29 +2132,39 @@ private func personalBestLogPrecedes(_ a: WorkoutLog, _ b: WorkoutLog) -> Bool {
     return aKey == bKey ? a.id < b.id : aKey < bKey
 }
 
-private func recordedPersonalBest(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBest? {
+private func recordedPersonalBestRecord(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBestRecord {
     let context = personalBestContext(item)
-    var best: PersonalBest?
+    var record = PersonalBestRecord()
     for log in logs.filter({ $0.status == "finished" }).sorted(by: personalBestLogPrecedes) {
         for previous in log.exerciseItems where personalBestContext(previous) == context {
             let candidate = bestPersonalBestCandidate(from: previous.sets, weightType: previous.weightType, smithBarWeight: previous.setupProfile?.smithBarWeight)
-            if isPersonalBestImprovement(candidate, over: best), let candidate {
-                best = personalBestPayload(candidate, date: log.date)
+            if isPersonalBestImprovement(candidate, over: record.best), let candidate {
+                record.best = personalBestPayload(candidate, date: log.date)
+                record.equipment = personalBestEquipmentLabel(previous)
             }
         }
     }
-    return best
+    return record
+}
+
+private func recordedPersonalBest(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBest? {
+    recordedPersonalBestRecord(item, logs: logs).best
+}
+
+func personalBestRecordForItem(_ item: ExerciseItem, logs: [WorkoutLog], legacyBest: PersonalBest?) -> PersonalBestRecord {
+    hasPersonalBestContext(item) ? recordedPersonalBestRecord(item, logs: logs) : PersonalBestRecord(best: legacyBest)
 }
 
 func personalBestForItem(_ item: ExerciseItem, logs: [WorkoutLog], legacyBest: PersonalBest?) -> PersonalBest? {
     hasPersonalBestContext(item) ? recordedPersonalBest(item, logs: logs) : legacyBest
 }
 
-func latestPersonalBest(_ exercise: Exercise, logs: [WorkoutLog]) -> (best: PersonalBest?, contextual: Bool) {
+func latestPersonalBest(_ exercise: Exercise, logs: [WorkoutLog]) -> (best: PersonalBest?, contextual: Bool, equipment: String) {
     let item = logs.filter { $0.status == "finished" }.sorted(by: personalBestLogPrecedes).reversed()
         .flatMap { $0.exerciseItems }.first { $0.exerciseId == exercise.id }
-    guard let item else { return (exercise.personalBest, false) }
-    return (personalBestForItem(item, logs: logs, legacyBest: exercise.personalBest), hasPersonalBestContext(item))
+    guard let item else { return (exercise.personalBest, false, "Equipment not recorded") }
+    let record = personalBestRecordForItem(item, logs: logs, legacyBest: exercise.personalBest)
+    return (record.best, hasPersonalBestContext(item), record.equipment)
 }
 
 // Reconstruct contextual badges before filtering by date. Saved sets and setup

@@ -3742,6 +3742,13 @@ input:focus, select:focus, textarea:focus {
 .live-weight-entry button:disabled { opacity: 0.4; }
 .sets-table .live-weight-entry input { min-width: 0; width: 100%; padding-inline: 2px; text-align: center; appearance: textfield; }
 .live-weight-entry input::-webkit-inner-spin-button, .live-weight-entry input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.pb-equipment {
+  display: block;
+  font-size: 0.9em;
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 
 /* Narrow workout cards keep the editable weight and both quick buttons readable. */
 @media (max-width: 640px) {

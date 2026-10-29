@@ -315,7 +315,7 @@ export default function Exercises({ gyms = [], exercises, logs = [], templates =
           </div>
         )}
         {filtered.map((ex) => {
-          const { best, contextual } = latestPersonalBest(ex, logs);
+          const { best, contextual, equipment } = latestPersonalBest(ex, logs);
           return (
           <div key={ex.id} className="exercise-item exercise-with-setups">
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -324,7 +324,8 @@ export default function Exercises({ gyms = [], exercises, logs = [], templates =
                 <span className="badge">{ex.muscleGroup}</span>
                 {best && (
                   <span className="pb-badge" onClick={() => contextual ? setDetailExercise(ex) : openPB(ex)} title={contextual ? "PB for latest setup" : "Click to edit PB"}>
-                    <Star size={12} fill="currentColor" /> {contextual ? 'Setup PB: ' : ''}{personalBestLabel(best, ex.usesTime)}
+                    <Star size={12} fill="currentColor" />
+                    <span>{contextual ? 'Setup PB: ' : ''}{personalBestLabel(best, ex.usesTime)}<span className="pb-equipment">{equipment}</span></span>
                   </span>
                 )}
                 {ex.isUnilateral && <span className="badge">Single side</span>}

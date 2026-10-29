@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildProgress, hasPersonalBestContext, latestPersonalBest, logsWithPersonalBests, personalBestForItem, personalBestIdsForWorkout } from '../progress.js';
+import { buildProgress, hasPersonalBestContext, latestPersonalBest, logsWithPersonalBests, personalBestForItem, personalBestIdsForWorkout, personalBestRecordForItem, personalBestEquipmentLabel, personalBestNotice } from '../progress.js';
 
 const exercise = { id: 'press', name: 'Press', muscleGroup: 'Chest', personalBest: { weight: '300', reps: '5', date: '2026-01-01' } };
 const item = (weight = '100', reps = '8', extra = {}) => ({ exerciseId: 'press', baselineId: 'technique-a', setupProfile: { id: 'machine-a' }, weightType: 'weight', sets: [{ weight, reps }], ...extra });
@@ -7,6 +7,27 @@ const log = (id, entry = item(), extra = {}) => ({ id, date: `2026-09-${id.padSt
 const badgeIds = logs => Object.fromEntries(logsWithPersonalBests(logs).map(log => [log.id, log.pbExerciseIds]));
 
 describe('personal bests within equipment and technique contexts', () => {
+  it('attributes a record to its saved equipment snapshot, through ties, renames, and corrections', () => {
+    const old = item('140', '8', { setupProfile: { id: 'machine-a', gym: 'Home', machine: 'Original press' } });
+    const current = item('130', '8', { setupProfile: { id: 'machine-a', gym: 'Gym', machine: 'Renamed press' } });
+    const history = [log('18', old), log('19', current), log('20', { ...current, sets: old.sets })];
+    const before = JSON.stringify(history);
+    expect(personalBestRecordForItem(current, history)).toEqual({ best: { weight: '140', reps: '8', date: '2026-09-18' }, equipment: 'Home · Original press' });
+    expect(latestPersonalBest(exercise, history).equipment).toBe('Home · Original press');
+    expect(personalBestRecordForItem(current, history.slice(1)).equipment).toBe('Gym · Renamed press');
+    expect(personalBestRecordForItem(item('500', '8', { setupProfile: { id: 'other', machine: 'Other machine' } }), history).best).toBeUndefined();
+    expect(JSON.stringify(history)).toBe(before);
+    expect(personalBestNotice('Press', { weight: '140', reps: '8' }, old)).toBe('Press - 140 lbs x 8 reps\nHome · Original press');
+  });
+  it('uses a truthful fallback for legacy records and missing equipment metadata', () => {
+    const current = item('140', '8', { setupProfile: { id: 'machine-a', machine: 'Current press' } });
+    expect(personalBestRecordForItem(current, [log('18')]).equipment).toBe('Equipment not recorded');
+    const unscoped = { ...current, baselineId: undefined, setupProfile: undefined };
+    expect(personalBestRecordForItem(unscoped, [log('18', current)], exercise.personalBest)).toEqual({ best: exercise.personalBest, equipment: 'Equipment not recorded' });
+    expect(latestPersonalBest(exercise, []).equipment).toBe('Equipment not recorded');
+    expect(personalBestEquipmentLabel({ setupProfile: { gym: 'Home' } })).toBe('Equipment not recorded');
+    expect(personalBestEquipmentLabel({ setupProfile: { name: ' Legacy machine ' } })).toBe('Legacy machine');
+  });
   it('awards the first set in a new context despite an older global PB', () => {
     expect(personalBestIdsForWorkout(log('18'), [], [exercise])).toEqual(['press']);
     expect(personalBestForItem(item(), [log('18')], exercise.personalBest)).toEqual({ weight: '100', reps: '8', date: '2026-09-18' });

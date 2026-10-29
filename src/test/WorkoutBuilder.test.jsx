@@ -812,6 +812,15 @@ describe('Smith weight recording', () => {
 });
 
 describe('contextual personal best display', () => {
+  it('shows the winning historical equipment instead of the current selection', () => {
+    const old = { exerciseId: 'ex1', setupProfile: { id: 'press', machine: 'Original press' }, weightType: 'weight', sets: [{ reps: '8', weight: '140' }] };
+    const current = { ...old, setupProfile: { id: 'press', machine: 'Renamed press' } };
+    const logs = [{ id: 'record', date: '2026-09-18', status: 'finished', exerciseItems: [old] }];
+    render(<WorkoutBuilder exercises={exercises} items={[current]} logs={logs} onChange={() => {}} />);
+    const pb = screen.getByText(/Setup PB: 140 lbs x 8 reps/);
+    expect(pb).toHaveTextContent('Original press');
+    expect(pb).not.toHaveTextContent('Renamed press');
+  });
   it('shows the setup record and hides unrelated general PB/reset controls', () => {
     const item = { exerciseId: 'ex1', baselineId: 'technique-a', weightType: 'weight', sets: [{ reps: '8', weight: '100' }] };
     const withPB = [{ ...exercises[0], personalBest: { weight: '300', reps: '5' } }];

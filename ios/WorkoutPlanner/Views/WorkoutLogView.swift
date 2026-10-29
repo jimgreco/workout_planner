@@ -716,7 +716,7 @@ struct WorkoutLogView: View {
                 else { continue }
                 let personalBest = personalBestPayload(candidate, date: DateHelpers.dayString(from: date))
                 if pbExerciseIds.contains(item.exerciseId) {
-                    pbExercises.append("\(exercise.name) - \(personalBestLabel(personalBest, usesTime: exercise.usesTime == true) ?? candidate.weight)")
+                    pbExercises.append(personalBestNotice(exercise.name, best: personalBest, item: item, usesTime: exercise.usesTime == true))
                 }
                 if !hasPersonalBestContext(item), isPersonalBestImprovement(candidate, over: exercise.personalBest) {
                     exercise.personalBest = personalBest
@@ -2128,11 +2128,11 @@ private struct WorkoutLiveActivityCard: View {
                 }
             }
 
-            if let personalBest = personalBestLabel(personalBestForItem(context.item, logs: logs, legacyBest: context.exercise.personalBest), usesTime: context.exercise.usesTime == true) {
-                Label("\(hasPersonalBestContext(context.item) ? "Setup PB" : "PB") \(personalBest)", systemImage: "star.fill")
+            let record = personalBestRecordForItem(context.item, logs: logs, legacyBest: context.exercise.personalBest)
+            if let personalBest = personalBestLabel(record.best, usesTime: context.exercise.usesTime == true) {
+                Label("\(hasPersonalBestContext(context.item) ? "Setup PB" : "PB") \(personalBest)\n\(record.equipment)", systemImage: "star.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.accent)
-                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -3803,6 +3803,7 @@ private struct WorkoutCompleteSheet: View {
                         Text(name)
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.text)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(16)

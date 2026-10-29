@@ -746,12 +746,12 @@ private struct ExerciseSetsCard: View {
                     .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let pb = personalBestLabel(personalBestForItem(item, logs: logs, legacyBest: exercise.personalBest), usesTime: exercise.usesTime == true) {
+            let record = personalBestRecordForItem(item, logs: logs, legacyBest: exercise.personalBest)
+            if let pb = personalBestLabel(record.best, usesTime: exercise.usesTime == true) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(hasPersonalBestContext(item) ? "Setup PB" : "PB"): \(pb)")
+                    Text("\(hasPersonalBestContext(item) ? "Setup PB" : "PB"): \(pb)\n\(record.equipment)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.muted)
-                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if canResetPersonalBest {
