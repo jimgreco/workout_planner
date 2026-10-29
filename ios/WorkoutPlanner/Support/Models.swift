@@ -466,6 +466,27 @@ struct NewWorkoutEquipment {
     var lastItem: ExerciseItem?
 }
 
+func actualWeightInput(_ value: String) -> String? {
+    let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if text.isEmpty || text == "." { return "" }
+    guard text.range(of: #"^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$"#, options: .regularExpression) != nil,
+          let number = Double(text), number.isFinite, number >= 0, number <= 9_007_199_254_740_991 else { return nil }
+    var result = text.hasPrefix(".") ? "0" + text : text
+    if result.hasSuffix(".") { result.removeLast() }
+    return result
+}
+
+func liveWeightText(_ value: Double) -> String {
+    guard value.isFinite, value >= 0, value <= 9_007_199_254_740_991 else { return "" }
+    return value.rounded() == value ? String(Int(value)) : String(value)
+}
+
+func adjustedLiveWeight(_ value: String?, by delta: Double, fallback: Double = 0) -> String {
+    let text = actualWeightInput(value ?? "") ?? ""
+    let base = Double(text) ?? fallback
+    return liveWeightText(max(0, base + delta))
+}
+
 enum LiveRepEntryField { case common, left, right }
 
 func actualRepsInput(_ value: String) -> String? {

@@ -19,6 +19,31 @@ const oneItem = [
 ];
 
 describe('WorkoutBuilder', () => {
+  it('steps the editable weight by five, preserves fractions, clamps zero, and leaves other sets untouched', () => {
+    const onChange = vi.fn();
+    const props = { exercises, onChange, items: [{ exerciseId: 'ex1', weightType: 'smith_double', setupProfile: { id: 'smith', smithBarWeight: 20 }, sets: [{ weight: '45.125', reps: '9' }, { weight: '80', reps: '8' }] }] };
+    const view = render(<WorkoutBuilder {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add 5 lbs for set 1 of Bench Press' }));
+    const first = onChange.mock.lastCall[0];
+    expect(first[0].sets[0].weight).toBe('50.125'); expect(first[0].sets[1].weight).toBe('80');
+    expect(first[0].setupProfile.smithBarWeight).toBe(20);
+    view.rerender(<WorkoutBuilder {...props} items={first} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add 5 lbs for set 1 of Bench Press' }));
+    expect(onChange.mock.lastCall[0][0].sets[0].weight).toBe('55.125');
+    const field = screen.getByLabelText('Weight for set 1 of Bench Press');
+    fireEvent.change(field, { target: { value: '2.5' } });
+    view.rerender(<WorkoutBuilder {...props} items={onChange.mock.lastCall[0]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Subtract 5 lbs for set 1 of Bench Press' }));
+    expect(onChange.mock.lastCall[0][0].sets[0].weight).toBe('0');
+    view.rerender(<WorkoutBuilder {...props} items={onChange.mock.lastCall[0]} />);
+    expect(screen.getByRole('button', { name: 'Subtract 5 lbs for set 1 of Bench Press' })).toBeDisabled();
+    fireEvent.change(field, { target: { value: '' } });
+    expect(onChange.mock.lastCall[0][0].sets[0].weight).toBe('');
+    const count = onChange.mock.calls.length;
+    fireEvent.change(field, { target: { value: '-5' } });
+    expect(onChange).toHaveBeenCalledTimes(count);
+  });
+
   it('accepts typed actual reps, rejects invalid input, keeps empty values, and dismisses with Enter', () => {
     const onChange = vi.fn();
     const onTextBlur = vi.fn();

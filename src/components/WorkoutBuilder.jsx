@@ -1,4 +1,4 @@
-import { actualRepsInput } from '../liveEntry.js';
+import { actualRepsInput, actualWeightInput, adjustedLiveWeight } from '../liveEntry.js';
 import { additionalSetRir, recordingRirPrefill, rirEntryValue } from '../rememberRir.js';
 import { targetRIRForSet, setTargetGoalLabel } from '../targetRIR.js';
 import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
@@ -329,6 +329,10 @@ export default function WorkoutBuilder({
 
   function updateSet(itemIdx, setIdx, field, value, options = {}) {
     if (field === 'rir') value = normalizedRir(value);
+    if (!planningMode && field === 'weight') {
+      value = actualWeightInput(value);
+      if (value === null) return;
+    }
     if (!planningMode && ['reps', 'repsLeft', 'repsRight'].includes(field)) {
       value = actualRepsInput(value);
       if (value === null) return;
@@ -699,7 +703,7 @@ export default function WorkoutBuilder({
                 </div>
               </div>
             ) : (
-            <table className="sets-table">
+            <table className={`sets-table ${hasWeightColumn && item.weightType !== 'none' && !planningMode && !readOnly ? 'has-live-weight' : ''}`}>
               <thead>
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
@@ -734,7 +738,7 @@ export default function WorkoutBuilder({
                   <Fragment key={si}>
                   <tr data-set-position={`${idx}-${si}`} tabIndex={-1} aria-label={`Set ${si + 1} of ${ex.name}`} className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
-                    <td>
+                    <td className="actual-reps-cell" data-entry-label={usesSideReps ? `${repUnitTitle} L/R` : repUnitTitle}>
                       {usesSideReps ? (
                         <div className="side-reps-inputs">
                           <input
@@ -786,13 +790,17 @@ export default function WorkoutBuilder({
                       )}
                     </td>
                     {hasWeightColumn && (
-                      <td>
+                      <td className="actual-weight-cell" data-entry-label="Weight (lbs)">
                         {item.weightType !== 'none' && !planningMode && (
                           <div className="weight-cell">
+                            <div className="live-weight-entry">
+                              <button type="button" aria-label={`Subtract 5 lbs for set ${si + 1} of ${ex.name}`}
+                                disabled={readOnly || pausedAt != null || Number(set.weight || contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType) || 0) <= 0}
+                                onClick={() => updateSet(idx, si, 'weight', adjustedLiveWeight(set.weight, -5, contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType)))}>-5</button>
                             <input
                               type="number"
                               min="0"
-                              step="2.5"
+                              step="any"
                               placeholder={contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType) || "—"}
                               value={set.weight}
                               onFocus={() => handleSetTextFocus(idx, si, 'weight')}
@@ -801,13 +809,17 @@ export default function WorkoutBuilder({
                               onChange={(e) => updateSet(idx, si, 'weight', e.target.value, { textEntry: true })}
                               disabled={readOnly}
                               aria-label={`Weight for set ${si + 1} of ${ex.name}`}
-	                            />
+                            />
+                              <button type="button" aria-label={`Add 5 lbs for set ${si + 1} of ${ex.name}`}
+                                disabled={readOnly || pausedAt != null}
+                                onClick={() => updateSet(idx, si, 'weight', adjustedLiveWeight(set.weight, 5, contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType)))}>+5</button>
+                            </div>
                             {item.weightType === 'smith_double' && <small>{smithWeightCaption(set.weight, item.setupProfile?.smithBarWeight)}</small>}
                           </div>
                         )}
                       </td>
                     )}
-                    <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
+                    <td className="actual-rest-cell" data-has-rest={Boolean(set.restStartTime || set.restDuration != null)} data-entry-label="Rest" style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
                       <div className="rest-cell-content">
                         <RestTimer
                           pausedAt={pausedAt}

@@ -2220,6 +2220,7 @@ private struct WorkoutLiveActivityCard: View {
 
                 WorkoutLiveWeightAdjuster(
                     value: weightBinding,
+                    text: Binding(get: { set.wrappedValue.weight ?? "" }, set: { set.wrappedValue.weight = $0; onTextChanged() }),
                     baseline: weightSeed ?? 0,
                     hasBaseline: weightSeed != nil,
                     caption: weightCaption,
@@ -2489,7 +2490,7 @@ private struct WorkoutLiveActivityCard: View {
                     ?? 0
             },
             set: { value in
-                set.wrappedValue.weight = formatProgressionNumber(max(0, value))
+                set.wrappedValue.weight = liveWeightText(max(0, value))
                 onTextChanged()
             }
         )
@@ -3480,6 +3481,7 @@ private struct WorkoutLiveRepModeMenu: View {
 
 private struct WorkoutLiveWeightAdjuster: View {
     @Binding var value: Double
+    @Binding var text: String
     let baseline: Double
     let hasBaseline: Bool
     let caption: String?
@@ -3488,14 +3490,6 @@ private struct WorkoutLiveWeightAdjuster: View {
     let onLoadChange: (String) -> Void
     @State private var draftValue = ""
     @State private var isWeightFocused = false
-
-    private var controls: [(label: String, delta: Double?)] {
-        [
-            ("-5", -5),
-            ("0", nil),
-            ("+5", 5)
-        ]
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -3509,6 +3503,10 @@ private struct WorkoutLiveWeightAdjuster: View {
                 Spacer(minLength: 0)
 
                 Menu {
+                    if hasBaseline {
+                        Button("Use previous weight") { apply(nil) }
+                        Divider()
+                    }
                     ForEach(liveWeightTypeOptions, id: \.value) { option in
                         Button(option.label) {
                             onLoadChange(option.value)
@@ -3537,54 +3535,32 @@ private struct WorkoutLiveWeightAdjuster: View {
             }
 
             if allowsEntry {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(spacing: 6) {
+                    weightStepButton("-5", delta: -5)
                     DoneAccessoryTextField(
                         text: weightText,
                         isFocused: $isWeightFocused,
-                        placeholder: "0",
+                        placeholder: liveWeightText(value),
                         keyboardType: .decimalPad,
-                        accessibilityLabel: "Weight"
+                        accessibilityLabel: "Weight in pounds",
+                        textAlignment: .center,
+                        fontSize: 27
                     )
-                    .frame(height: 30)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if let caption {
-                        Text(caption)
-                    .accessibilityLabel(workoutGoalAccessibilityLabel(caption))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Theme.muted)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .monospacedDigit()
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(Theme.accent.opacity(0.055))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent.opacity(0.18), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    weightStepButton("+5", delta: 5)
                 }
-
-                HStack(spacing: 5) {
-                    ForEach(controls, id: \.label) { control in
-                        Button {
-                            apply(control.delta)
-                        } label: {
-                            Text(control.label)
-                                .font(.system(size: 11, weight: .heavy))
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: liveQuickChipHeight)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(control.delta == nil ? .white : Theme.text)
-                        .background(control.delta == nil ? Theme.accent : Theme.surface)
-                        .overlay(
-                            Capsule()
-                                .stroke(control.delta == nil ? Color.clear : Theme.border.opacity(0.75), lineWidth: 1)
-                        )
-                        .clipShape(Capsule())
-                        .disabled(control.delta == nil && !hasBaseline)
-                        .opacity(control.delta == nil && !hasBaseline ? 0.45 : 1)
-                        .accessibilityLabel(accessibilityLabel(for: control))
-                    }
+                if let caption {
+                    Text(caption)
+                        .accessibilityLabel(workoutGoalAccessibilityLabel(caption))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             } else {
                 HStack(spacing: 6) {
@@ -3614,16 +3590,14 @@ private struct WorkoutLiveWeightAdjuster: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .onAppear {
-            draftValue = formatProgressionNumber(value)
+            draftValue = text
         }
-        .onChange(of: value) { _, newValue in
-            if !isWeightFocused {
-                draftValue = formatProgressionNumber(newValue)
-            }
+        .onChange(of: text) { _, newValue in
+            if !isWeightFocused { draftValue = newValue }
         }
         .onChange(of: isWeightFocused) { _, isFocused in
             if isFocused {
-                draftValue = formatProgressionNumber(value)
+                draftValue = text
             } else {
                 normalizeDraftValue()
             }
@@ -3634,53 +3608,39 @@ private struct WorkoutLiveWeightAdjuster: View {
     }
 
     private var weightText: Binding<String> {
-        Binding(
-            get: { draftValue },
-            set: { nextValue in
-                let sanitized = sanitizedWeightText(nextValue)
-                draftValue = sanitized
-                guard let parsed = Double(sanitized) else { return }
-                value = max(0, parsed)
-            }
-        )
+        Binding(get: { draftValue }, set: { nextValue in
+            guard let validated = actualWeightInput(nextValue) else { return }
+            draftValue = nextValue
+            text = validated
+        })
+    }
+
+    private func weightStepButton(_ title: String, delta: Double) -> some View {
+        Button { apply(delta) } label: {
+            Text(title).font(.system(size: 12, weight: .heavy))
+                .frame(width: 34, height: 40)
+                .background(Theme.surface)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border.opacity(0.75), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .disabled(delta < 0 && value <= 0)
+        .accessibilityLabel("\(delta > 0 ? "Add" : "Subtract") 5 pounds")
     }
 
     private func apply(_ delta: Double?) {
-        if let delta {
-            value = max(0, value + delta)
-        } else if hasBaseline {
-            value = max(0, baseline)
-        }
-    }
-
-    private func accessibilityLabel(for control: (label: String, delta: Double?)) -> String {
-        if let delta = control.delta {
-            return "\(delta > 0 ? "Add" : "Subtract") \(formatProgressionNumber(abs(delta))) pounds"
-        }
-        return "Use baseline weight"
-    }
-
-    private func sanitizedWeightText(_ text: String) -> String {
-        var hasDecimal = false
-        var result = ""
-        for character in text {
-            if character.isNumber {
-                result.append(character)
-            } else if character == ".", !hasDecimal {
-                hasDecimal = true
-                result.append(character)
-            }
-        }
-        return result
+        if let delta { text = adjustedLiveWeight(text, by: delta, fallback: value) }
+        else if hasBaseline { text = liveWeightText(baseline) }
+        draftValue = text
+        isWeightFocused = false
+        NotificationCenter.default.post(name: .workoutInputFocusDismissed, object: nil)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func normalizeDraftValue() {
-        guard let parsed = Double(draftValue) else {
-            draftValue = formatProgressionNumber(value)
-            return
-        }
-        value = max(0, parsed)
-        draftValue = formatProgressionNumber(max(0, parsed))
+        guard let validated = actualWeightInput(draftValue) else { return }
+        text = validated
+        draftValue = validated
     }
 }
 
