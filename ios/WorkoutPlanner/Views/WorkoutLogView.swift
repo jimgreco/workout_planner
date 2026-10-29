@@ -325,6 +325,7 @@ struct WorkoutLogView: View {
             activeSetIndex: $activeSetIndex,
             focusedField: $focusedLiveActivityField,
             onSetCompleted: markSetCompleted,
+            onSetSkipped: markSetSkipped,
             onEndRest: endRest,
             onExtendRest: extendRest,
             onChanged: liveCardChanged,
@@ -1167,17 +1168,28 @@ struct WorkoutLogView: View {
             }
         }
 
-        var nextExercise = exerciseIndex
-        var nextSet = setIndex + 1
-        if nextSet >= items[exerciseIndex].sets.count {
-            nextExercise = exerciseIndex + 1
-            nextSet = 0
-        }
-        if items.indices.contains(nextExercise) {
-            activeExerciseIndex = nextExercise
-            activeSetIndex = nextSet
+        if let next = nextWorkoutSetPosition(items, exerciseIndex: exerciseIndex, setIndex: setIndex) {
+            activeExerciseIndex = next.exerciseIndex
+            activeSetIndex = next.setIndex
         }
         scheduleRestAlert(exerciseIndex: exerciseIndex, setIndex: setIndex, startTime: now)
+        updateExternalLiveActivityNow()
+        saveNow(status: currentStatus())
+    }
+
+    private func markSetSkipped(exerciseIndex: Int, setIndex: Int) {
+        guard pausedAt == nil, !isEditing, startTime != nil, !isSaving, finishSummary == nil,
+              let skipped = skippingWorkoutSet(items, exerciseIndex: exerciseIndex, setIndex: setIndex) else { return }
+        dismissWorkoutInputFocus()
+        if items[exerciseIndex].sets[setIndex].restStartTime != nil {
+            restAlertTask?.cancel()
+            restAlert = nil
+        }
+        items = skipped.items
+        if let next = skipped.next {
+            activeExerciseIndex = next.exerciseIndex
+            activeSetIndex = next.setIndex
+        }
         updateExternalLiveActivityNow()
         saveNow(status: currentStatus())
     }
@@ -1793,6 +1805,7 @@ private struct WorkoutLiveActivityCard: View {
     @Binding var activeSetIndex: Int
     @FocusState.Binding var focusedField: WorkoutBuilderFocusedField?
     let onSetCompleted: (Int, Int) -> Void
+    let onSetSkipped: (Int, Int) -> Void
     let onEndRest: (Int, Int) -> Void
     let onExtendRest: (Int, Int, Int) -> Void
     let onChanged: () -> Void
@@ -2068,7 +2081,7 @@ private struct WorkoutLiveActivityCard: View {
                     VStack(spacing: 0) {
                         repsLeftMenu(set: set)
                         Divider().overlay(Theme.border)
-                        setStatusMenu(set: set)
+                        setStatusMenu(set: set, context: context)
                         Divider().overlay(Theme.border)
                         setTypeMenu(set: set)
                     }
@@ -2685,12 +2698,12 @@ private struct WorkoutLiveActivityCard: View {
         .buttonStyle(.plain)
     }
 
-    private func setStatusMenu(set: Binding<WorkoutSet>) -> some View {
+    private func setStatusMenu(set: Binding<WorkoutSet>, context: WorkoutLiveSetContext) -> some View {
         let status = set.wrappedValue.completion ?? (hasRecordedWorkoutReps(set.wrappedValue) ? "recorded" : "unrecorded")
         return Menu {
             Button("Not recorded") { set.wrappedValue.completion = "unrecorded"; onChanged() }
             Button("Recorded") { set.wrappedValue.recordRirPrefill(); set.wrappedValue.completion = "recorded"; onChanged() }
-            Button("Skipped") { set.wrappedValue.completion = "skipped"; onChanged() }
+            Button("Skipped") { onSetSkipped(context.exerciseIndex, context.setIndex) }
         } label: {
             liveDetailRow("Set status", value: status == "recorded" ? "Recorded" : status == "skipped" ? "Skipped" : "Not recorded")
         }

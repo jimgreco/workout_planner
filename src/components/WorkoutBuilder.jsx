@@ -194,6 +194,8 @@ export default function WorkoutBuilder({
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetCompleted,
+  onSetSkipped,
+  focusSetPosition,
   pausedAt = null,
   onRestTargetReached,
   onRestExtended,
@@ -207,6 +209,12 @@ export default function WorkoutBuilder({
   logs = [],
   onExercisesChanged = () => {},
 }) {
+  const builderRef = useRef(null);
+  useEffect(() => {
+    if (!focusSetPosition) return;
+    const { exerciseIndex, setIndex } = focusSetPosition;
+    builderRef.current?.querySelector(`[data-set-position="${exerciseIndex}-${setIndex}"]`)?.focus();
+  }, [focusSetPosition]);
   const [exerciseSearch, setExerciseSearch] = useState('');
   const exerciseListId = useId();
   function exById(id) {
@@ -453,7 +461,7 @@ export default function WorkoutBuilder({
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div>
+    <div ref={builderRef}>
       {items.map((item, idx) => {
         const ex = exById(item.exerciseId);
         if (!ex) return null;
@@ -718,7 +726,7 @@ export default function WorkoutBuilder({
               <tbody>
                 {item.sets.map((set, si) => (
                   <Fragment key={si}>
-                  <tr className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
+                  <tr data-set-position={`${idx}-${si}`} tabIndex={-1} aria-label={`Set ${si + 1} of ${ex.name}`} className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
                     <td>
                       {usesSideReps ? (
@@ -892,7 +900,7 @@ export default function WorkoutBuilder({
                               </select>
                             </label>
                             <label><span>Set status</span>
-                              <select value={completionLabel(set)} onChange={e => updateSet(idx, si, 'completion', e.target.value)} aria-label={`Status for set ${si + 1} of ${ex.name}`}>
+                              <select value={completionLabel(set)} onChange={e => e.target.value === 'skipped' && onSetSkipped ? onSetSkipped(idx, si) : updateSet(idx, si, 'completion', e.target.value)} aria-label={`Status for set ${si + 1} of ${ex.name}`}>
                                 <option value="unrecorded">Not recorded</option><option value="recorded">Recorded</option><option value="skipped">Skipped</option>
                               </select>
                             </label>

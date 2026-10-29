@@ -466,6 +466,32 @@ struct NewWorkoutEquipment {
     var lastItem: ExerciseItem?
 }
 
+struct WorkoutSetPosition: Equatable {
+    let exerciseIndex: Int
+    let setIndex: Int
+}
+
+func nextWorkoutSetPosition(_ items: [ExerciseItem], exerciseIndex: Int, setIndex: Int) -> WorkoutSetPosition? {
+    guard items.indices.contains(exerciseIndex), items[exerciseIndex].sets.indices.contains(setIndex) else { return nil }
+    if items[exerciseIndex].sets.indices.contains(setIndex + 1) {
+        return WorkoutSetPosition(exerciseIndex: exerciseIndex, setIndex: setIndex + 1)
+    }
+    for next in items.indices where next > exerciseIndex && !items[next].sets.isEmpty {
+        return WorkoutSetPosition(exerciseIndex: next, setIndex: 0)
+    }
+    return nil
+}
+
+func skippingWorkoutSet(_ items: [ExerciseItem], exerciseIndex: Int, setIndex: Int) -> (items: [ExerciseItem], next: WorkoutSetPosition?)? {
+    guard items.indices.contains(exerciseIndex), items[exerciseIndex].sets.indices.contains(setIndex),
+          items[exerciseIndex].sets[setIndex].completion != "skipped" else { return nil }
+    var result = items
+    result[exerciseIndex].sets[setIndex].completion = "skipped"
+    result[exerciseIndex].sets[setIndex].restStartTime = nil
+    result[exerciseIndex].sets[setIndex].restDuration = nil
+    return (result, nextWorkoutSetPosition(items, exerciseIndex: exerciseIndex, setIndex: setIndex))
+}
+
 struct RepeatLastSetPlan: Equatable {
     let sourceIndex: Int
     let targetIndex: Int

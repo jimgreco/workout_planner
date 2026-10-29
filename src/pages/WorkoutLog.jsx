@@ -1,3 +1,4 @@
+import { nextWorkoutSetPosition, skippingWorkoutSet } from '../setNavigation.js';
 import { prefillExerciseRir, recordingRirPrefill } from '../rememberRir.js';
 import { pauseWorkout, resumeWorkout, finishWorkoutTiming, formatWorkoutDuration } from '../workoutTiming.js';
 import { newWorkoutEquipment } from '../equipmentSetups.js';
@@ -228,6 +229,7 @@ export default function WorkoutLog({
   }
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [activeSetIdx, setActiveSetIdx] = useState(0);
+  const [skipFocus, setSkipFocus] = useState(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [finishModal, setFinishModal]       = useState(null); // null | { pbExercises }
@@ -529,22 +531,33 @@ export default function WorkoutLog({
       }),
     }));
 
-    // Determine next active set
-    let nextEx = exIdx;
-    let nextSet = setIdx + 1;
-    if (nextSet >= newItems[exIdx].sets.length) {
-      nextEx = exIdx + 1;
-      nextSet = 0;
-    }
-
-    if (nextEx < newItems.length) {
-      setActiveExerciseIdx(nextEx);
-      setActiveSetIdx(nextSet);
+    const next = nextWorkoutSetPosition(newItems, exIdx, setIdx);
+    if (next) {
+      setActiveExerciseIdx(next.exerciseIndex);
+      setActiveSetIdx(next.setIndex);
     }
 
     setItems(newItems);
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
     scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
+  }
+
+  function handleSetSkipped(exIdx, setIdx) {
+    if (!workoutId || !startTime || isEditing.current || isPaused || saving || finishModal) return;
+    const current = latestItemsRef.current;
+    const skipped = skippingWorkoutSet(current, exIdx, setIdx);
+    if (!skipped) return;
+    blurActiveEditableElement();
+    if (current[exIdx].sets[setIdx].restStartTime != null) {
+      setRestAlert(null);
+      clearTimeout(restAlertTimer.current);
+    }
+    if (skipped.next) {
+      setActiveExerciseIdx(skipped.next.exerciseIndex);
+      setActiveSetIdx(skipped.next.setIndex);
+      setSkipFocus(skipped.next);
+    }
+    handleItemsChange(skipped.items);
   }
 
   function handleRestTargetReached(exIdx, setIdx) {
@@ -1061,6 +1074,8 @@ export default function WorkoutLog({
         activeSetIdx={activeSetIdx}
         pausedAt={timing.pausedAt}
         onSetCompleted={handleSetCompleted}
+        onSetSkipped={!isEditing.current && startTime ? handleSetSkipped : undefined}
+        focusSetPosition={skipFocus}
         onRestTargetReached={handleRestTargetReached}
         onRestExtended={handleExtendRest}
         onEndRest={handleEndRest}
