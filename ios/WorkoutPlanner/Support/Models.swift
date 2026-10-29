@@ -163,6 +163,8 @@ struct WorkoutSet: Codable, Equatable {
     var restTargetSeconds: Int?
     var rpe: String?
     var rir: String?
+    // Editable remembered input, never training evidence until explicitly logged.
+    var placeholderRir: String?
     var completion: String?
     var setType: String?
 
@@ -183,7 +185,8 @@ struct WorkoutSet: Codable, Equatable {
         rpe: String? = nil,
         rir: String? = nil,
         setType: String? = nil,
-        completion: String? = nil
+        completion: String? = nil,
+        placeholderRir: String? = nil
     ) {
         self.reps = reps
         self.repsLeft = repsLeft
@@ -200,6 +203,7 @@ struct WorkoutSet: Codable, Equatable {
         self.restTargetSeconds = restTargetSeconds
         self.rpe = rpe
         self.rir = Self.normalizedRir(rir)
+        self.placeholderRir = Self.normalizedRir(placeholderRir)
         self.setType = setType
         self.completion = completion
     }
@@ -225,6 +229,7 @@ struct WorkoutSet: Codable, Equatable {
         case restTargetSeconds
         case rpe
         case rir
+        case placeholderRir
         case completion
         case setType
     }
@@ -246,6 +251,7 @@ struct WorkoutSet: Codable, Equatable {
         try container.encodeIfPresent(restTargetSeconds, forKey: .restTargetSeconds)
         try container.encodeIfPresent(rpe, forKey: .rpe)
         try container.encode(Self.normalizedRir(rir), forKey: .rir)
+        try container.encodeIfPresent(Self.normalizedRir(placeholderRir), forKey: .placeholderRir)
         try container.encodeIfPresent(completion, forKey: .completion)
         try container.encodeIfPresent(setType, forKey: .setType)
     }
@@ -501,6 +507,68 @@ extension ExerciseItem {
     }
 }
 
+// The latest finished recorded working set is the durable exercise preference.
+// Session order, never updatedAt, prevents an edit to old history promoting it.
+private func rememberedRirValue(_ set: WorkoutSet) -> String? {
+    guard let value = WorkoutSet.normalizedRir(set.rir),
+          (0...10).map(String.init).contains(value),
+          value != "0" || set.completion == "recorded" else { return nil }
+    return value
+}
+
+func lastExerciseRir(_ exerciseId: String, logs: [WorkoutLog]) -> String? {
+    let finished = logs.filter { $0.status == "finished" }.sorted {
+        let left = $0.endTime ?? $0.startTime ?? $0.date
+        let right = $1.endTime ?? $1.startTime ?? $1.date
+        return left == right ? $0.id > $1.id : left > right
+    }
+    for log in finished {
+        for item in log.exerciseItems.reversed() where item.exerciseId == exerciseId {
+            if let set = item.sets.last(where: { hasRecordedWorkoutReps($0) && $0.setType != "warmup" }) {
+                return rememberedRirValue(set)
+            }
+        }
+    }
+    return nil
+}
+
+extension ExerciseItem {
+    var additionalSetRir: String? {
+        if let set = sets.last(where: { hasRecordedWorkoutReps($0) && $0.setType != "warmup" }) {
+            return rememberedRirValue(set)
+        }
+        return WorkoutSet.normalizedRir(sets.last?.placeholderRir)
+    }
+
+    func prefillingRir(exercise: Exercise?, logs: [WorkoutLog]) -> ExerciseItem {
+        let value = exercise?.usesTime == true ? nil : lastExerciseRir(exerciseId, logs: logs)
+        var result = self
+        for index in result.sets.indices {
+            result.sets[index].rir = nil
+            result.sets[index].completion = "unrecorded"
+            result.sets[index].placeholderRir = result.sets[index].setType == "warmup" ? nil : value
+        }
+        return result
+    }
+}
+
+extension WorkoutSet {
+    var rirEntryValue: String? {
+        let status = completion ?? (hasRecordedWorkoutReps(self) ? "recorded" : "unrecorded")
+        return Self.normalizedRir(rir) ?? (status == "unrecorded" && setType != "warmup" ? Self.normalizedRir(placeholderRir) : nil)
+    }
+
+    mutating func setRirEntry(_ value: String?) {
+        rir = Self.normalizedRir(value)
+        placeholderRir = nil
+    }
+
+    mutating func recordRirPrefill() {
+        if Self.normalizedRir(rir) == nil, setType != "warmup" { rir = Self.normalizedRir(placeholderRir) }
+        placeholderRir = nil
+    }
+}
+
 private func teachesEquipment(_ item: ExerciseItem) -> Bool {
     item.setupSelectionMade == true || item.sets.contains(where: hasRecordedWorkoutReps)
 }
@@ -590,6 +658,12 @@ func mergingWorkoutLiveActivityItems(current: [ExerciseItem], base: [ExerciseIte
             merge(\.restDuration)
             merge(\.restTargetSeconds)
             merge(\.completion)
+            // The widget cannot review RIR. Completing there must not accept a
+            // hidden prefill later when the recorded set is edited in the app.
+            if result[i].sets[s].completion != local.completion,
+               result[i].sets[s].completion == "recorded" || result[i].sets[s].completion == "skipped" {
+                result[i].sets[s].placeholderRir = nil
+            }
         }
     }
     return result

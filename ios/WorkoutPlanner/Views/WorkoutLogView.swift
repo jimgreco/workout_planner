@@ -497,6 +497,7 @@ struct WorkoutLogView: View {
                 activeSetIndex: activeSetIndex,
                 planningMode: isPlanningMode,
                 allowRepeatSet: !isEditing && startTime != nil && finishSummary == nil,
+                allowRirPrefill: !isEditing,
                 prepareNewExercise: isEditing ? nil : { prepopulated($0) },
                 onSetCompleted: markSetCompleted,
                 onResetPersonalBest: (!isEditing && startTime != nil) ? resetPersonalBest : nil,
@@ -959,7 +960,7 @@ struct WorkoutLogView: View {
             techniqueNote: equipment.techniqueNote,
             setupProfile: equipment.setupProfile,
             targetRIR: item.targetRIR
-        )
+        ).prefillingRir(exercise: store.exercise(id: item.exerciseId), logs: store.logs)
     }
 
     private func numeric(_ value: String?) -> Double {
@@ -1151,6 +1152,7 @@ struct WorkoutLogView: View {
             return
         }
 
+        if !isEditing { items[exerciseIndex].sets[setIndex].recordRirPrefill() }
         items[exerciseIndex].sets[setIndex].completion = "recorded"
         let now = Date().timeIntervalSince1970 * 1000
         for exIndex in items.indices {
@@ -1216,8 +1218,8 @@ struct WorkoutLogView: View {
             guard items[itemIndex].sets[setIndex].rpe?.isEmpty == false else { return }
             items[itemIndex].sets[setIndex].rpe = ""
         case .rir:
-            guard items[itemIndex].sets[setIndex].rir?.isEmpty == false else { return }
-            items[itemIndex].sets[setIndex].rir = nil
+            guard items[itemIndex].sets[setIndex].rirEntryValue != nil else { return }
+            items[itemIndex].sets[setIndex].setRirEntry(nil)
         }
         hasPendingBuilderCommit = true
     }
@@ -2413,6 +2415,7 @@ private struct WorkoutLiveActivityCard: View {
             set: { value in
                 set.wrappedValue[keyPath: keyPath] = String(max(0, value))
                 set.wrappedValue.completion = "recorded"
+                if hasRecordedWorkoutReps(set.wrappedValue) { set.wrappedValue.recordRirPrefill() }
                 onTextChanged()
             }
         )
@@ -2438,6 +2441,7 @@ private struct WorkoutLiveActivityCard: View {
                     set.wrappedValue.repMode = repMode.rawValue
                 }
                 set.wrappedValue.completion = "recorded"
+                if hasRecordedWorkoutReps(set.wrappedValue) { set.wrappedValue.recordRirPrefill() }
                 onTextChanged()
             }
         )
@@ -2664,9 +2668,9 @@ private struct WorkoutLiveActivityCard: View {
 
     private func repsLeftMenu(set: Binding<WorkoutSet>) -> some View {
         let rir = Binding<String>(
-            get: { WorkoutSet.normalizedRir(set.wrappedValue.rir) ?? "" },
+            get: { set.wrappedValue.rirEntryValue ?? "" },
             set: { value in
-                set.wrappedValue.rir = WorkoutSet.normalizedRir(value)
+                set.wrappedValue.setRirEntry(value)
                 onTextChanged()
             }
         )
@@ -2685,7 +2689,7 @@ private struct WorkoutLiveActivityCard: View {
         let status = set.wrappedValue.completion ?? (hasRecordedWorkoutReps(set.wrappedValue) ? "recorded" : "unrecorded")
         return Menu {
             Button("Not recorded") { set.wrappedValue.completion = "unrecorded"; onChanged() }
-            Button("Recorded") { set.wrappedValue.completion = "recorded"; onChanged() }
+            Button("Recorded") { set.wrappedValue.recordRirPrefill(); set.wrappedValue.completion = "recorded"; onChanged() }
             Button("Skipped") { set.wrappedValue.completion = "skipped"; onChanged() }
         } label: {
             liveDetailRow("Set status", value: status == "recorded" ? "Recorded" : status == "skipped" ? "Skipped" : "Not recorded")

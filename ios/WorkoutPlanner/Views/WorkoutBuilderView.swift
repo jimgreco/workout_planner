@@ -63,6 +63,7 @@ struct WorkoutBuilderView: View {
     var activeSetIndex: Int?
     var planningMode = false
     var allowRepeatSet = false
+    var allowRirPrefill = false
     var prepareNewExercise: ((ExerciseItem) -> ExerciseItem)?
     var onSetCompleted: ((Int, Int) -> Void)?
     var onResetPersonalBest: ((Exercise) -> Void)?
@@ -90,6 +91,7 @@ struct WorkoutBuilderView: View {
                         showWeight: showWeight,
                         planningMode: planningMode,
                         allowRepeatSet: allowRepeatSet,
+                        allowRirPrefill: allowRirPrefill,
                         advancedMode: advancedMode,
                         replacementExercises: replacementExercises(for: index),
                         canMoveUp: index > 0,
@@ -486,6 +488,7 @@ private struct ExerciseSetsCard: View {
     let showWeight: Bool
     let planningMode: Bool
     let allowRepeatSet: Bool
+    let allowRirPrefill: Bool
     let advancedMode: Bool
     let replacementExercises: [Exercise]
     let canMoveUp: Bool
@@ -1221,6 +1224,7 @@ private struct ExerciseSetsCard: View {
         } else {
             item.sets[setIndex].reps = value
             item.sets[setIndex].completion = "recorded"
+            if allowRirPrefill && hasRecordedWorkoutReps(item.sets[setIndex]) { item.sets[setIndex].recordRirPrefill() }
         }
         onTextChanged?()
     }
@@ -1347,6 +1351,7 @@ private struct ExerciseSetsCard: View {
                                 set: { value in
                                     item.sets[setIndex].repsLeft = value
                                     item.sets[setIndex].completion = "recorded"
+                                    if allowRirPrefill && hasRecordedWorkoutReps(item.sets[setIndex]) { item.sets[setIndex].recordRirPrefill() }
                                     onTextChanged?()
                                 }
                             ),
@@ -1365,6 +1370,7 @@ private struct ExerciseSetsCard: View {
                                 set: { value in
                                     item.sets[setIndex].repsRight = value
                                     item.sets[setIndex].completion = "recorded"
+                                    if allowRirPrefill && hasRecordedWorkoutReps(item.sets[setIndex]) { item.sets[setIndex].recordRirPrefill() }
                                     onTextChanged?()
                                 }
                             ),
@@ -1498,8 +1504,8 @@ private struct ExerciseSetsCard: View {
                     effortField(
                         label: "RIR",
                         value: Binding(
-                            get: { WorkoutSet.normalizedRir(item.sets[setIndex].rir) ?? "" },
-                            set: { item.sets[setIndex].rir = WorkoutSet.normalizedRir($0); onTextChanged?() }
+                            get: { (allowRirPrefill ? item.sets[setIndex].rirEntryValue : WorkoutSet.normalizedRir(item.sets[setIndex].rir)) ?? "" },
+                            set: { item.sets[setIndex].setRirEntry($0); onTextChanged?() }
                         ),
                         focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .numberPad
@@ -1601,8 +1607,8 @@ private struct ExerciseSetsCard: View {
                     effortField(
                         label: "RIR",
                         value: Binding(
-                            get: { WorkoutSet.normalizedRir(item.sets[setIndex].rir) ?? "" },
-                            set: { item.sets[setIndex].rir = WorkoutSet.normalizedRir($0); onTextChanged?() }
+                            get: { (allowRirPrefill ? item.sets[setIndex].rirEntryValue : WorkoutSet.normalizedRir(item.sets[setIndex].rir)) ?? "" },
+                            set: { item.sets[setIndex].setRirEntry($0); onTextChanged?() }
                         ),
                         focus: .rir(itemIndex: itemIndex, setIndex: setIndex),
                         keyboard: .numberPad
@@ -1652,6 +1658,7 @@ private struct ExerciseSetsCard: View {
                             item.sets[setIndex].repsRight = value
                         }
                         item.sets[setIndex].completion = "recorded"
+                        if allowRirPrefill && hasRecordedWorkoutReps(item.sets[setIndex]) { item.sets[setIndex].recordRirPrefill() }
                         onTextChanged?()
                     }
                 ),
@@ -1747,7 +1754,9 @@ private struct ExerciseSetsCard: View {
 
     private func addSet() {
         let last = item.sets.last ?? WorkoutSet(reps: String(defaultReps), weight: "")
-        item.sets.append(last.additionalSet(planningMode: planningMode, defaultReps: defaultReps))
+        var added = last.additionalSet(planningMode: planningMode, defaultReps: defaultReps)
+        if allowRirPrefill && exercise.usesTime != true { added.placeholderRir = item.additionalSetRir }
+        item.sets.append(added)
         onChanged?()
     }
 

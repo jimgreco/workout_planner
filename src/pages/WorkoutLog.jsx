@@ -1,3 +1,4 @@
+import { prefillExerciseRir, recordingRirPrefill } from '../rememberRir.js';
 import { pauseWorkout, resumeWorkout, finishWorkoutTiming, formatWorkoutDuration } from '../workoutTiming.js';
 import { newWorkoutEquipment } from '../equipmentSetups.js';
 import { unfinishedWorkoutSets } from '../finishReview.js';
@@ -295,7 +296,7 @@ export default function WorkoutLog({
       const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
       const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
       const weightType = lastItem?.weightType || item.weightType || 'weight';
-      return {
+      return prefillExerciseRir({
         exerciseId: item.exerciseId,
         targetRIR: item.targetRIR ?? null,
         weightType,
@@ -342,7 +343,7 @@ export default function WorkoutLog({
             placeholderWeightType: weightType,
           };
         }),
-      };
+      }, exercises.find(exercise => exercise.id === item.exerciseId), logs);
     });
     setName(initialTemplate.name);
     setItems(templateItems);
@@ -444,7 +445,7 @@ export default function WorkoutLog({
         }
         return { ...s, reps: '', repsLeft: '', repsRight: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
       });
-      return { ...item, ...equipmentContext, sets, weightType };
+      return prefillExerciseRir({ ...item, ...equipmentContext, sets, weightType }, exercises.find(exercise => exercise.id === item.exerciseId), logs);
     });
 
     latestItemsRef.current = newItems;
@@ -519,7 +520,7 @@ export default function WorkoutLog({
       ...ex,
       sets: ex.sets.map((s, si) => {
         if (i === exIdx && si === setIdx) {
-          return { ...s, completion: 'recorded', restStartTime: now, restDuration: null };
+          return { ...(isEditing.current ? s : recordingRirPrefill(s)), completion: 'recorded', restStartTime: now, restDuration: null };
         }
         if (s.restStartTime && !s.restDuration) {
           return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
@@ -664,7 +665,7 @@ export default function WorkoutLog({
         const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
         const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
         const weightType = lastItem?.weightType || item.weightType || 'weight';
-        return {
+        return prefillExerciseRir({
           exerciseId: item.exerciseId,
           targetRIR: item.targetRIR ?? null,
           weightType,
@@ -711,7 +712,7 @@ export default function WorkoutLog({
               placeholderWeightType: weightType,
             };
           }),
-        };
+        }, exercises.find(exercise => exercise.id === item.exerciseId), logs);
       });
 
     if (newItemsFromTemplate.length === 0) return;
@@ -1052,6 +1053,7 @@ export default function WorkoutLog({
         onExercisesChanged={onExercisesChanged}
         exercises={exercises}
         items={items}
+        allowRirPrefill={!isEditing.current}
         onChange={handleItemsChange}
         onTextChange={handleItemsTextChange}
         onTextBlur={handleItemsTextBlur}

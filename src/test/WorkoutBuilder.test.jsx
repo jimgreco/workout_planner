@@ -19,6 +19,27 @@ const oneItem = [
 ];
 
 describe('WorkoutBuilder', () => {
+  it('accepts a remembered zero on rep entry and keeps added-set RIR as a hint', () => {
+    const onChange = vi.fn();
+    const props = { exercises, onChange, allowRirPrefill: true, items: [{ exerciseId: 'ex1', sets: [{ reps: '', weight: '135', placeholderRir: '0', completion: 'unrecorded' }] }] };
+    const { rerender } = render(<WorkoutBuilder {...props} />);
+    expect(screen.getByLabelText('Reps left for set 1 of Bench Press')).toHaveValue('0');
+    fireEvent.change(screen.getAllByPlaceholderText('—').find(element => element.type === 'text'), { target: { value: '8' } });
+    const entered = onChange.mock.lastCall[0];
+    expect(entered[0].sets[0]).toMatchObject({ rir: '0', placeholderRir: null, completion: 'recorded' });
+    rerender(<WorkoutBuilder {...props} items={entered} />);
+    fireEvent.click(screen.getByRole('button', { name: /Add Set/i }));
+    const added = onChange.mock.lastCall[0];
+    expect(added[0].sets[1]).toMatchObject({ placeholderRir: '0', completion: 'unrecorded' });
+    expect(added[0].sets[1].rir).toBeUndefined();
+    expect(isWorkingSet(added[0].sets[1])).toBe(false);
+    rerender(<WorkoutBuilder {...props} planningMode />);
+    fireEvent.click(screen.getByRole('button', { name: /Add Set/i }));
+    const planned = onChange.mock.lastCall[0];
+    expect(planned[0].sets[1].placeholderRir).toBe('0');
+    expect(planned[0].sets[1].rir).toBeUndefined();
+  });
+
   it('repeats the previous set without recording it, starting rest, or advancing on repeated taps', () => {
     const items = [{ exerciseId: 'ex1', targetRIR: 2, sets: [
       { reps: '8', weight: '135', rir: '1', completion: 'recorded', restStartTime: 1000 },

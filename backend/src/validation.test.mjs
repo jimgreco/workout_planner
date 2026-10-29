@@ -350,3 +350,14 @@ test('explicit equipment selection survives log/export validation; older payload
     assert.throws(() => validateLog(body, body.id), ValidationError);
   }
 });
+
+test('RIR prefill round trips separately from actual effort and accepts explicit clearing', () => {
+  const payload = (placeholderRir) => ({ id: 'rir-draft', date: '2026-10-29', status: 'active', exerciseItems: [{ exerciseId: 'press', targetRIR: 3, sets: [{ reps: '', completion: 'unrecorded', rir: null, placeholderRir }] }] });
+  for (const value of ['0', '2', '10', null, '']) {
+    const saved = validateLog(payload(value), 'rir-draft');
+    assert.equal(saved.exerciseItems[0].sets[0].placeholderRir, value || null);
+    assert.equal(saved.exerciseItems[0].sets[0].rir, null);
+    assert.equal(saved.exerciseItems[0].targetRIR, 3);
+  }
+  for (const value of ['11', '-1', '2.5', 'x']) assert.throws(() => validateLog(payload(value), 'rir-draft'), ValidationError);
+});

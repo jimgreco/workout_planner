@@ -1,9 +1,10 @@
+import { additionalSetRir, recordingRirPrefill, rirEntryValue } from '../rememberRir.js';
 import { targetRIRForSet, setTargetGoalLabel } from '../targetRIR.js';
 import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
 import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
 import { exerciseSetups, setupLabel, removingSetup, clearComparisonHints } from '../equipmentSetups.js';
 import { saveExercise, getExercises, getTemplates } from '../api.js';
-import { completionLabel, normalizedRir } from '../setEvidence.js';
+import { completionLabel, hasRecordedReps, normalizedRir } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
 import { personalBestLabel, personalBestForItem, hasPersonalBestContext } from '../progress.js';
@@ -201,6 +202,7 @@ export default function WorkoutBuilder({
   onEditExercise,
   planningMode = false,
   allowRepeatSet = false,
+  allowRirPrefill = false,
   lastWeightTypeByExerciseId = {},
   logs = [],
   onExercisesChanged = () => {},
@@ -300,6 +302,7 @@ export default function WorkoutBuilder({
           placeholderWeight: lastSet.placeholderWeight,
           placeholderWeightType: lastSet.placeholderWeightType,
           completion: planningMode ? undefined : 'unrecorded',
+          placeholderRir: !allowRirPrefill || exById(item.exerciseId)?.usesTime ? null : additionalSetRir(item),
         }],
       };
     });
@@ -321,9 +324,16 @@ export default function WorkoutBuilder({
       if (i !== itemIdx) return item;
       return {
         ...item,
-        sets: item.sets.map((s, si) =>
-          si === setIdx ? { ...setRepField(s, field, value), ...(['reps', 'repsLeft', 'repsRight'].includes(field) ? { completion: 'recorded' } : {}) } : s,
-        ),
+        sets: item.sets.map((s, si) => {
+          if (si !== setIdx) return s;
+          const enteringReps = ['reps', 'repsLeft', 'repsRight'].includes(field);
+          let next = { ...setRepField(s, field, value), ...(enteringReps ? { completion: 'recorded' } : {}) };
+          if (field === 'rir') next.placeholderRir = null;
+          if (allowRirPrefill && !planningMode && ((enteringReps && hasRecordedReps(next)) || (field === 'completion' && value === 'recorded'))) {
+            next = recordingRirPrefill(next);
+          }
+          return next;
+        }),
       };
     });
     if (options.textEntry && onTextChange) {
@@ -360,7 +370,7 @@ export default function WorkoutBuilder({
           if (!String(set.placeholderWeight ?? '').trim() || set.placeholderWeightType) return set;
           return { ...set, placeholderWeightType: previousWeightType };
         });
-      return { ...item, exerciseId, weightType, sets, setupProfile: undefined, setupSelectionMade: undefined, baselineId: undefined, techniqueNote: undefined, description: item.description || replacement.description || '' };
+      return { ...item, exerciseId, weightType, sets: sets.map(set => ({ ...set, placeholderRir: null })), setupProfile: undefined, setupSelectionMade: undefined, baselineId: undefined, techniqueNote: undefined, description: item.description || replacement.description || '' };
     }));
   }
 
@@ -877,7 +887,7 @@ export default function WorkoutBuilder({
                               />
                             </label>}
                             <label><span>Reps left</span>
-                              <select value={normalizedRir(set.rir) ?? ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
+                              <select value={(allowRirPrefill ? rirEntryValue(set) : normalizedRir(set.rir)) ?? ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
                                 <option value="">Not sure</option>{['0','1','2','3','4','5','6','7','8','9','10'].map(v => <option key={v} value={v}>{v}</option>)}
                               </select>
                             </label>

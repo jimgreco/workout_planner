@@ -262,3 +262,22 @@ save guards around editor writes. The shared synthetic fixture is
 `test-fixtures/duplicate-routine.json`; compile `Models.swift` with
 `ios/Tests/DuplicateRoutineCheck.swift` and pass that fixture path. The real-store
 `AccountOfflineSyncCheck` covers offline copy retries and account switching.
+
+## Remembered reps in reserve
+
+`src/rememberRir.js` and matching native helpers derive a per-exercise RIR prefill
+from the latest recorded non-warmup set in account-owned finished logs. Session
+time orders history; editing an old workout does not promote it. Latest unknown
+clears the default; legacy zero without explicit recorded completion is ambiguous
+and must not be learned. Plans, active/discarded sessions, skipped/untouched sets,
+warmups and timed exercises do not teach a default.
+
+Resolve only when creating an exercise entry. `placeholderRir` is an editable
+snapshot, separate from actual `rir` and prescribed `targetRIR`; persist it through
+the API and offline drafts. Explicit rep entry/Recorded/Complete accepts the hint;
+editing RIR or choosing Not sure clears the hint. Added sets may carry a hint but
+remain unrecorded with no actual effort. History/routine editing never applies
+new defaults. Live Activity has no RIR input; its completion clears the unaccepted
+hint without creating actual RIR. Run `RememberRIRCheck.swift` with `Models.swift`
+and `AccountOfflineSyncCheck.swift` for serialization/account durability. Deploy
+the optional API field before clients that send it.
