@@ -666,6 +666,30 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
 
 }
 
+extension WorkoutTemplate {
+    func duplicated(in routines: [WorkoutTemplate], id: String = UUID().uuidString) -> WorkoutTemplate {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let original = trimmed.isEmpty ? "Routine" : trimmed
+        func nameWithSuffix(_ suffix: String) -> String {
+            var prefix = ""
+            for scalar in original.unicodeScalars {
+                if prefix.utf16.count + String(scalar).utf16.count > 120 - suffix.utf16.count { break }
+                prefix.unicodeScalars.append(scalar)
+            }
+            return prefix + suffix
+        }
+        let names = Set(routines.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var copyName = nameWithSuffix(" copy")
+        var suffix = 2
+        while names.contains(copyName.lowercased()) {
+            copyName = nameWithSuffix(" copy \(suffix)")
+            suffix += 1
+        }
+        return WorkoutTemplate(id: id, name: copyName, description: description,
+                               exerciseItems: exerciseItems, gymId: gymId)
+    }
+}
+
 struct ProgramScheduleItem: Codable, Identifiable, Equatable {
     var id: String
     var templateId: String?

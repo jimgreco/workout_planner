@@ -90,6 +90,36 @@ final class SyntheticProtocol: URLProtocol, @unchecked Sendable {
         precondition(SyntheticProtocol.count() == beforeImport)
         precondition(store.exercises.isEmpty && store.templates.isEmpty && store.logs.isEmpty && store.programs.isEmpty && store.gyms.isEmpty)
         print("PASS duplicate import IDs reject every collection before cloud requests or local writes, in merge and empty-account modes")
+        // A duplicated routine stays one independent queued resource across retries.
+        auth.login("routine-copy")
+        let routineSource = WorkoutTemplate(id: "original-routine", name: "Push", exerciseItems: [ExerciseItem(exerciseId: "bench", sets: [WorkoutSet(reps: "8-12")], targetRIR: 0)], revision: 7, gymId: "gym")
+        let routineCopy = routineSource.duplicated(in: [routineSource], id: "routine-draft")
+        store.templates = [routineSource]
+        try await store.saveTemplate(routineCopy)
+        try await store.saveTemplate(routineCopy)
+        precondition(store.templates.count == 2 && store.templates.contains(routineSource))
+        precondition(store.pendingSyncCount == 1 && store.logs.isEmpty && store.programs.isEmpty)
+        precondition(store.templates.first { $0.id == routineCopy.id }?.revision == nil)
+        let restartedAuth = AuthManager()
+        let restartedStore = WorkoutStore(auth: restartedAuth, offlineDefaults: defaults, urlSession: session, snapshotFolder: directory)
+        restartedAuth.login("routine-copy")
+        await restartedStore.loadData()
+        precondition(restartedStore.templates.count == 2 && restartedStore.templates.contains(routineSource))
+        precondition(restartedStore.templates.contains(routineCopy) && restartedStore.pendingSyncCount == 1)
+        restartedStore.reset()
+        SyntheticProtocol.hold = true
+        let copyStart = SyntheticProtocol.count()
+        let lateCopy = Task { try await store.saveTemplate(routineCopy) }
+        for _ in 0..<10000 { if SyntheticProtocol.count() > copyStart { break }; await Task.yield() }
+        precondition(SyntheticProtocol.count() == copyStart + 1)
+        auth.login("other-account")
+        SyntheticProtocol.finish(body: String(data: try JSONEncoder().encode(routineCopy), encoding: .utf8)!)
+        do { try await lateCopy.value; preconditionFailure("Late duplicate saved into a different account") }
+        catch { precondition(isCancellationError(error)) }
+        precondition(store.templates.isEmpty && store.pendingSyncCount == 0)
+        SyntheticProtocol.hold = false
+        auth.login("B")
+        print("PASS duplicated routine retries one independent pending ID, survives store restart and fences a late account response")
         let log = WorkoutLog(id: "b-workout", name: "Synthetic B", date: "2026-10-03", exerciseItems: [ExerciseItem(exerciseId: "bench", sets: [WorkoutSet(reps: "", placeholderReps: "6-10")], targetRIR: 2)])
         _ = try await store.saveLog(log)
         precondition(store.pendingSyncCount == 1)

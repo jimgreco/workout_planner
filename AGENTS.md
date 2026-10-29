@@ -249,3 +249,16 @@ resume reads the account's pending intent while requests are in flight. Keep the
 API validator and optional native field aligned. Run
 `ios/Tests/RememberEquipmentSetupCheck.swift` with `Models.swift` and the real
 store `AccountOfflineSyncCheck.swift` for offline and account boundaries.
+
+## Routine copies
+
+Duplicate routine opens an unsaved independent prescription in the existing editor.
+Web `duplicateRoutine` and native `WorkoutTemplate.duplicated` preserve exercise
+order, sets, equipment/setup/baseline/effort metadata and gym, but never reuse the
+source ID, revision or update timestamp. Copy names are case-insensitively unique
+within the current library and fit the API's 120 UTF-16-unit limit. Cancel writes
+nothing; save retries keep the same draft ID. Keep session checks and synchronous
+save guards around editor writes. The shared synthetic fixture is
+`test-fixtures/duplicate-routine.json`; compile `Models.swift` with
+`ios/Tests/DuplicateRoutineCheck.swift` and pass that fixture path. The real-store
+`AccountOfflineSyncCheck` covers offline copy retries and account switching.

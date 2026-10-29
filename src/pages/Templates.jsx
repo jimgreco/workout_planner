@@ -6,6 +6,7 @@ import {
   ArrowRightLeft,
   CalendarDays,
   CheckCircle2,
+  Copy,
   Eye,
   GripVertical,
   LayoutGrid,
@@ -42,6 +43,8 @@ import {
 } from '../programs.js';
 import { lastWeightTypesByExerciseId, routineExerciseWeightAdvice } from '../workoutHistory.js';
 import { filterRoutines } from '../routineSearch.js';
+import { duplicateRoutine } from '../duplicateRoutine.js';
+import { getSessionEpoch } from '../auth.js';
 
 const PROGRESSION_TYPES = [
   { value: 'double_progression', label: 'Reps, then weight' },
@@ -419,6 +422,10 @@ export default function Templates({
   const [selectedProgramDayId, setSelectedProgramDayId] = useState(null);
   const [draggingProgramFormDayId, setDraggingProgramFormDayId] = useState(null);
   const addMenuRef = useRef(null);
+  const routineSavePending = useRef(false);
+  const routineSession = useRef(getSessionEpoch());
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const showPrograms = mode === 'all' || mode === 'programs';
   const showRoutines = mode === 'all' || mode === 'routines';
   const showExerciseLibrary = mode === 'all';
@@ -468,8 +475,15 @@ export default function Templates({
     [activeProgram],
   );
 
-  function openAdd()      { setRoutineError(''); setShowAddMenu(false); setForm(emptyTemplate()); setModal('add'); }
-  function openEdit(t)    { setRoutineError(''); setForm({ ...t }); setModal('edit'); }
+  function openAdd()      { routineSession.current = getSessionEpoch(); setRoutineError(''); setShowAddMenu(false); setForm(emptyTemplate()); setModal('add'); }
+  function openEdit(t)    { routineSession.current = getSessionEpoch(); setRoutineError(''); setForm({ ...t }); setModal('edit'); }
+  function openDuplicate(t) {
+    if (routineSavePending.current) return;
+    routineSession.current = getSessionEpoch();
+    setRoutineError('');
+    setForm(duplicateRoutine(t, templates));
+    setModal('duplicate');
+  }
   function openView(t)    { setForm({ ...t }); setModal('view'); }
   function openSettings() { setSettingsForm({ ...settings }); setModal('settings'); setSaved(false); }
   function openProgram(program = emptyProgram()) {
@@ -510,17 +524,25 @@ export default function Templates({
   }, [activeProgram, selectedProgramDayId]);
 
   async function handleSave() {
-    if (!form.name.trim() || saving) return;
+    if (!form.name.trim() || saving || routineSavePending.current) return;
+    if (routineSession.current !== getSessionEpoch()) {
+      setRoutineError('Your account changed. Close this draft and duplicate the routine again.');
+      return;
+    }
+    const session = routineSession.current;
+    routineSavePending.current = true;
     setSaving(true);
     try {
       setRoutineError('');
       const updated = await saveTemplate({ ...form, name: form.name.trim() });
+      if (!mounted.current || session !== getSessionEpoch()) return;
       onUpdate(updated);
       setModal(null);
     } catch (error) {
-      setRoutineError(error.message);
+      if (mounted.current && session === getSessionEpoch()) setRoutineError(error.message);
     } finally {
-      setSaving(false);
+      routineSavePending.current = false;
+      if (mounted.current) setSaving(false);
     }
   }
 
@@ -1176,9 +1198,9 @@ export default function Templates({
         )}
 
         {visibleRoutines.map((t) => (
-          <div key={t.id} className="card">
+          <div key={t.id} className="card routine-card">
             <div className="card-header">
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                 <h3>{t.name}</h3>
                 {t.gymId && <p className="text-muted">Gym: {gyms.find((gym) => gym.id === t.gymId)?.name ?? 'Unavailable gym'}</p>}
                 {t.description && <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>{t.description}</p>}
@@ -1189,6 +1211,9 @@ export default function Templates({
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => onStartWorkout(t)}>
                   <Play size={14} fill="currentColor" /> Start
+                </button>
+                <button className="btn btn-secondary btn-sm" aria-label={`Duplicate ${t.name}`} onClick={() => openDuplicate(t)}>
+                  <Copy size={14} /> Duplicate
                 </button>
                 <button className="btn-icon" title="Edit" onClick={() => openEdit(t)}>
                   <Pencil size={16} />
@@ -1242,19 +1267,20 @@ export default function Templates({
       </section>
       )}
 
-      {(modal === 'add' || modal === 'edit') && (
+      {(modal === 'add' || modal === 'edit' || modal === 'duplicate') && (
         <Modal
-          title={modal === 'add' ? 'New Routine' : 'Edit Routine'}
+          title={modal === 'duplicate' ? 'Duplicate Routine' : modal === 'add' ? 'New Routine' : 'Edit Routine'}
           onClose={() => !saving && setModal(null)}
           footer={
             <>
               <button className="btn btn-secondary" onClick={() => setModal(null)} disabled={saving}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim() || saving}>
-                {saving ? 'Saving…' : modal === 'add' ? 'Create Routine' : 'Save Changes'}
+                {saving ? 'Saving…' : modal !== 'edit' ? 'Create Routine' : 'Save Changes'}
               </button>
             </>
           }
         >
+          {modal === 'duplicate' && <p className="text-muted">Create a separate routine. Adjust the name and exercises before saving.</p>}
           <div className="form-group">
             <label>Routine Name *</label>
             <input

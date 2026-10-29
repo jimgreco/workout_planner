@@ -1,0 +1,53 @@
+{
+  "id": "source-routine",
+  "name": " Push Day ",
+  "description": "Controlled tempo",
+  "gymId": "gym-original",
+  "revision": 12,
+  "updatedAt": "2026-10-28T10:00:00Z",
+  "exerciseItems": [
+    {
+      "exerciseId": "bench",
+      "weightType": "smith_double",
+      "restTargetSeconds": 90,
+      "supersetGroup": "A",
+      "description": "Pause at chest",
+      "useIndividualReps": true,
+      "targetRIR": 0,
+      "baselineId": "baseline-original",
+      "techniqueNote": "Bench notch 3",
+      "setupSelectionMade": true,
+      "setupProfile": {
+        "id": "setup-original",
+        "name": "Smith",
+        "smithBarWeight": 0,
+        "gym": "Original gym",
+        "machine": "Smith machine",
+        "seat": "Notch 3",
+        "grip": "Neutral",
+        "loadConvention": "plates_per_side"
+      },
+      "sets": [
+        {
+          "reps": "8-12",
+          "weight": "25",
+          "setType": "warmup"
+        },
+        {
+          "repsLeft": "8",
+          "repsRight": "10",
+          "placeholderReps": "8-12",
+          "repMode": "separateSides",
+          "weight": "35",
+          "setType": "working"
+        }
+      ]
+    },
+    {
+      "exerciseId": "missing-exercise",
+      "weightType": "none",
+      "targetRIR": null,
+      "sets": []
+    }
+  ]
+}
