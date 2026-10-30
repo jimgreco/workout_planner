@@ -140,7 +140,7 @@ function workoutSet(value, index) {
   assertObject(value, `set ${index + 1}`);
   assertAllowedKeys(
     value,
-    new Set(['reps', 'repsLeft', 'repsRight', 'repMode', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'setType', 'completion']),
+    new Set(['reps', 'repsLeft', 'repsRight', 'repMode', 'weight', 'placeholderReps', 'placeholderRepsLeft', 'placeholderRepsRight', 'placeholderWeight', 'placeholderWeightType', 'restStartTime', 'restDuration', 'restTargetSeconds', 'rpe', 'rir', 'placeholderRir', 'setType', 'completion']),
     `set ${index + 1}`,
   );
   const set = {};
@@ -163,6 +163,11 @@ function workoutSet(value, index) {
   // Canonical unknown effort is null; the string '0' is an intentional answer.
   const rir = stringValue(value.rir, 'set.rir', { max: 8 });
   set.rir = rir?.trim() || null;
+  if (Object.hasOwn(value, 'placeholderRir')) {
+    const placeholder = stringValue(value.placeholderRir, 'set.placeholderRir', { max: 2 })?.trim() || null;
+    if (placeholder !== null && !/^(?:[0-9]|10)$/.test(placeholder)) fail('set.placeholderRir is invalid');
+    set.placeholderRir = placeholder;
+  }
   const completion = stringValue(value.completion, 'set.completion', { max: 16 });
   if (completion !== undefined) {
     if (!['recorded', 'skipped', 'unrecorded'].includes(completion)) fail('set.completion is invalid');
