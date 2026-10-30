@@ -19,6 +19,74 @@ const oneItem = [
 ];
 
 describe('WorkoutBuilder', () => {
+  it('steps the editable weight by five, preserves fractions, clamps zero, and leaves other sets untouched', () => {
+    const onChange = vi.fn();
+    const props = { exercises, onChange, items: [{ exerciseId: 'ex1', weightType: 'smith_double', setupProfile: { id: 'smith', smithBarWeight: 20 }, sets: [{ weight: '45.125', reps: '9' }, { weight: '80', reps: '8' }] }] };
+    const view = render(<WorkoutBuilder {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add 5 lbs for set 1 of Bench Press' }));
+    const first = onChange.mock.lastCall[0];
+    expect(first[0].sets[0].weight).toBe('50.125'); expect(first[0].sets[1].weight).toBe('80');
+    expect(first[0].setupProfile.smithBarWeight).toBe(20);
+    view.rerender(<WorkoutBuilder {...props} items={first} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add 5 lbs for set 1 of Bench Press' }));
+    expect(onChange.mock.lastCall[0][0].sets[0].weight).toBe('55.125');
+    const field = screen.getByLabelText('Weight for set 1 of Bench Press');
+    fireEvent.change(field, { target: { value: '2.5' } });
+    view.rerender(<WorkoutBuilder {...props} items={onChange.mock.lastCall[0]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Subtract 5 lbs for set 1 of Bench Press' }));
+    expect(onChange.mock.lastCall[0][0].sets[0].weight).toBe('0');
+    view.rerender(<WorkoutBuilder {...props} items={onChange.mock.lastCall[0]} />);
+    expect(screen.getByRole('button', { name: 'Subtract 5 lbs for set 1 of Bench Press' })).toBeDisabled();
+    fireEvent.change(field, { target: { value: '' } });
+    expect(onChange.mock.lastCall[0][0].sets[0].weight).toBe('');
+    const count = onChange.mock.calls.length;
+    fireEvent.change(field, { target: { value: '-5' } });
+    expect(onChange).toHaveBeenCalledTimes(count);
+  });
+
+  it('accepts typed actual reps, rejects invalid input, keeps empty values, and dismisses with Enter', () => {
+    const onChange = vi.fn();
+    const onTextBlur = vi.fn();
+    const props = { exercises, onChange, onTextBlur, allowRirPrefill: true, items: [{ exerciseId: 'ex1', targetRIR: 3, sets: [{ reps: '', placeholderReps: '8-12', placeholderRir: '0', completion: 'unrecorded' }] }] };
+    const view = render(<WorkoutBuilder {...props} />);
+    const field = screen.getByLabelText('Reps for set 1 of Bench Press');
+    field.focus();
+    fireEvent.change(field, { target: { value: '9' } });
+    const entered = onChange.mock.lastCall[0];
+    expect(entered[0].sets[0]).toMatchObject({ reps: '9', rir: '0', placeholderReps: '8-12' });
+    expect(entered[0].targetRIR).toBe(3);
+    view.rerender(<WorkoutBuilder {...props} items={entered} />);
+    const calls = onChange.mock.calls.length;
+    fireEvent.change(field, { target: { value: '9-12' } });
+    expect(onChange).toHaveBeenCalledTimes(calls);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(field).not.toHaveFocus(); expect(onTextBlur).toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: '' } });
+    expect(onChange.mock.lastCall[0][0].sets[0].reps).toBe('');
+    expect(isWorkingSet(onChange.mock.lastCall[0][0].sets[0])).toBe(false);
+  });
+
+  it('accepts a remembered zero on rep entry and keeps added-set RIR as a hint', () => {
+    const onChange = vi.fn();
+    const props = { exercises, onChange, allowRirPrefill: true, items: [{ exerciseId: 'ex1', sets: [{ reps: '', weight: '135', placeholderRir: '0', completion: 'unrecorded' }] }] };
+    const { rerender } = render(<WorkoutBuilder {...props} />);
+    expect(screen.getByLabelText('Reps left for set 1 of Bench Press')).toHaveValue('0');
+    fireEvent.change(screen.getAllByPlaceholderText('—').find(element => element.type === 'text'), { target: { value: '8' } });
+    const entered = onChange.mock.lastCall[0];
+    expect(entered[0].sets[0]).toMatchObject({ rir: '0', placeholderRir: null, completion: 'recorded' });
+    rerender(<WorkoutBuilder {...props} items={entered} />);
+    fireEvent.click(screen.getByRole('button', { name: /Add Set/i }));
+    const added = onChange.mock.lastCall[0];
+    expect(added[0].sets[1]).toMatchObject({ placeholderRir: '0', completion: 'unrecorded' });
+    expect(added[0].sets[1].rir).toBeUndefined();
+    expect(isWorkingSet(added[0].sets[1])).toBe(false);
+    rerender(<WorkoutBuilder {...props} planningMode />);
+    fireEvent.click(screen.getByRole('button', { name: /Add Set/i }));
+    const planned = onChange.mock.lastCall[0];
+    expect(planned[0].sets[1].placeholderRir).toBe('0');
+    expect(planned[0].sets[1].rir).toBeUndefined();
+  });
+
   it('repeats the previous set without recording it, starting rest, or advancing on repeated taps', () => {
     const items = [{ exerciseId: 'ex1', targetRIR: 2, sets: [
       { reps: '8', weight: '135', rir: '1', completion: 'recorded', restStartTime: 1000 },
@@ -744,6 +812,15 @@ describe('Smith weight recording', () => {
 });
 
 describe('contextual personal best display', () => {
+  it('shows the winning historical equipment instead of the current selection', () => {
+    const old = { exerciseId: 'ex1', setupProfile: { id: 'press', machine: 'Original press' }, weightType: 'weight', sets: [{ reps: '8', weight: '140' }] };
+    const current = { ...old, setupProfile: { id: 'press', machine: 'Renamed press' } };
+    const logs = [{ id: 'record', date: '2026-09-18', status: 'finished', exerciseItems: [old] }];
+    render(<WorkoutBuilder exercises={exercises} items={[current]} logs={logs} onChange={() => {}} />);
+    const pb = screen.getByText(/Setup PB: 140 lbs x 8 reps/);
+    expect(pb).toHaveTextContent('Original press');
+    expect(pb).not.toHaveTextContent('Renamed press');
+  });
   it('shows the setup record and hides unrelated general PB/reset controls', () => {
     const item = { exerciseId: 'ex1', baselineId: 'technique-a', weightType: 'weight', sets: [{ reps: '8', weight: '100' }] };
     const withPB = [{ ...exercises[0], personalBest: { weight: '300', reps: '5' } }];

@@ -163,6 +163,8 @@ struct WorkoutSet: Codable, Equatable {
     var restTargetSeconds: Int?
     var rpe: String?
     var rir: String?
+    // Editable remembered input, never training evidence until explicitly logged.
+    var placeholderRir: String?
     var completion: String?
     var setType: String?
 
@@ -183,7 +185,8 @@ struct WorkoutSet: Codable, Equatable {
         rpe: String? = nil,
         rir: String? = nil,
         setType: String? = nil,
-        completion: String? = nil
+        completion: String? = nil,
+        placeholderRir: String? = nil
     ) {
         self.reps = reps
         self.repsLeft = repsLeft
@@ -200,6 +203,7 @@ struct WorkoutSet: Codable, Equatable {
         self.restTargetSeconds = restTargetSeconds
         self.rpe = rpe
         self.rir = Self.normalizedRir(rir)
+        self.placeholderRir = Self.normalizedRir(placeholderRir)
         self.setType = setType
         self.completion = completion
     }
@@ -225,6 +229,7 @@ struct WorkoutSet: Codable, Equatable {
         case restTargetSeconds
         case rpe
         case rir
+        case placeholderRir
         case completion
         case setType
     }
@@ -246,6 +251,7 @@ struct WorkoutSet: Codable, Equatable {
         try container.encodeIfPresent(restTargetSeconds, forKey: .restTargetSeconds)
         try container.encodeIfPresent(rpe, forKey: .rpe)
         try container.encode(Self.normalizedRir(rir), forKey: .rir)
+        try container.encodeIfPresent(Self.normalizedRir(placeholderRir), forKey: .placeholderRir)
         try container.encodeIfPresent(completion, forKey: .completion)
         try container.encodeIfPresent(setType, forKey: .setType)
     }
@@ -460,6 +466,83 @@ struct NewWorkoutEquipment {
     var lastItem: ExerciseItem?
 }
 
+func actualWeightInput(_ value: String) -> String? {
+    let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if text.isEmpty || text == "." { return "" }
+    guard text.range(of: #"^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$"#, options: .regularExpression) != nil,
+          let number = Double(text), number.isFinite, number >= 0, number <= 9_007_199_254_740_991 else { return nil }
+    var result = text.hasPrefix(".") ? "0" + text : text
+    if result.hasSuffix(".") { result.removeLast() }
+    return result
+}
+
+func liveWeightText(_ value: Double) -> String {
+    guard value.isFinite, value >= 0, value <= 9_007_199_254_740_991 else { return "" }
+    return value.rounded() == value ? String(Int(value)) : String(value)
+}
+
+func adjustedLiveWeight(_ value: String?, by delta: Double, fallback: Double = 0) -> String {
+    let text = actualWeightInput(value ?? "") ?? ""
+    let base = Double(text) ?? fallback
+    return liveWeightText(max(0, base + delta))
+}
+
+enum LiveRepEntryField { case common, left, right }
+
+func actualRepsInput(_ value: String) -> String? {
+    let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if text.isEmpty { return "" }
+    guard text.allSatisfy({ $0.isASCII && $0.isNumber }), let count = Int(text), count >= 0, count <= 9_007_199_254_740_991 else { return nil }
+    return String(count)
+}
+
+extension WorkoutSet {
+    func enteringActualReps(_ text: String, field: LiveRepEntryField, linkedSides: Bool = false) -> WorkoutSet? {
+        guard let value = actualRepsInput(text) else { return nil }
+        var result = self
+        switch field {
+        case .left: result.repsLeft = value; result.reps = ""
+        case .right: result.repsRight = value; result.reps = ""
+        case .common:
+            if linkedSides {
+                result.repsLeft = value; result.repsRight = value; result.reps = ""
+            } else {
+                result.reps = value; result.repsLeft = nil; result.repsRight = nil
+            }
+        }
+        result.completion = "recorded"
+        if hasRecordedWorkoutReps(result) { result.recordRirPrefill() }
+        else { result.completion = "unrecorded" }
+        return result
+    }
+}
+
+struct WorkoutSetPosition: Equatable {
+    let exerciseIndex: Int
+    let setIndex: Int
+}
+
+func nextWorkoutSetPosition(_ items: [ExerciseItem], exerciseIndex: Int, setIndex: Int) -> WorkoutSetPosition? {
+    guard items.indices.contains(exerciseIndex), items[exerciseIndex].sets.indices.contains(setIndex) else { return nil }
+    if items[exerciseIndex].sets.indices.contains(setIndex + 1) {
+        return WorkoutSetPosition(exerciseIndex: exerciseIndex, setIndex: setIndex + 1)
+    }
+    for next in items.indices where next > exerciseIndex && !items[next].sets.isEmpty {
+        return WorkoutSetPosition(exerciseIndex: next, setIndex: 0)
+    }
+    return nil
+}
+
+func skippingWorkoutSet(_ items: [ExerciseItem], exerciseIndex: Int, setIndex: Int) -> (items: [ExerciseItem], next: WorkoutSetPosition?)? {
+    guard items.indices.contains(exerciseIndex), items[exerciseIndex].sets.indices.contains(setIndex),
+          items[exerciseIndex].sets[setIndex].completion != "skipped" else { return nil }
+    var result = items
+    result[exerciseIndex].sets[setIndex].completion = "skipped"
+    result[exerciseIndex].sets[setIndex].restStartTime = nil
+    result[exerciseIndex].sets[setIndex].restDuration = nil
+    return (result, nextWorkoutSetPosition(items, exerciseIndex: exerciseIndex, setIndex: setIndex))
+}
+
 struct RepeatLastSetPlan: Equatable {
     let sourceIndex: Int
     let targetIndex: Int
@@ -498,6 +581,68 @@ extension ExerciseItem {
         copy.sets[plan.targetIndex].restStartTime = nil
         copy.sets[plan.targetIndex].restDuration = nil
         return copy
+    }
+}
+
+// The latest finished recorded working set is the durable exercise preference.
+// Session order, never updatedAt, prevents an edit to old history promoting it.
+private func rememberedRirValue(_ set: WorkoutSet) -> String? {
+    guard let value = WorkoutSet.normalizedRir(set.rir),
+          (0...10).map(String.init).contains(value),
+          value != "0" || set.completion == "recorded" else { return nil }
+    return value
+}
+
+func lastExerciseRir(_ exerciseId: String, logs: [WorkoutLog]) -> String? {
+    let finished = logs.filter { $0.status == "finished" }.sorted {
+        let left = $0.endTime ?? $0.startTime ?? $0.date
+        let right = $1.endTime ?? $1.startTime ?? $1.date
+        return left == right ? $0.id > $1.id : left > right
+    }
+    for log in finished {
+        for item in log.exerciseItems.reversed() where item.exerciseId == exerciseId {
+            if let set = item.sets.last(where: { hasRecordedWorkoutReps($0) && $0.setType != "warmup" }) {
+                return rememberedRirValue(set)
+            }
+        }
+    }
+    return nil
+}
+
+extension ExerciseItem {
+    var additionalSetRir: String? {
+        if let set = sets.last(where: { hasRecordedWorkoutReps($0) && $0.setType != "warmup" }) {
+            return rememberedRirValue(set)
+        }
+        return WorkoutSet.normalizedRir(sets.last?.placeholderRir)
+    }
+
+    func prefillingRir(exercise: Exercise?, logs: [WorkoutLog]) -> ExerciseItem {
+        let value = exercise?.usesTime == true ? nil : lastExerciseRir(exerciseId, logs: logs)
+        var result = self
+        for index in result.sets.indices {
+            result.sets[index].rir = nil
+            result.sets[index].completion = "unrecorded"
+            result.sets[index].placeholderRir = result.sets[index].setType == "warmup" ? nil : value
+        }
+        return result
+    }
+}
+
+extension WorkoutSet {
+    var rirEntryValue: String? {
+        let status = completion ?? (hasRecordedWorkoutReps(self) ? "recorded" : "unrecorded")
+        return Self.normalizedRir(rir) ?? (status == "unrecorded" && setType != "warmup" ? Self.normalizedRir(placeholderRir) : nil)
+    }
+
+    mutating func setRirEntry(_ value: String?) {
+        rir = Self.normalizedRir(value)
+        placeholderRir = nil
+    }
+
+    mutating func recordRirPrefill() {
+        if Self.normalizedRir(rir) == nil, setType != "warmup" { rir = Self.normalizedRir(placeholderRir) }
+        placeholderRir = nil
     }
 }
 
@@ -590,6 +735,12 @@ func mergingWorkoutLiveActivityItems(current: [ExerciseItem], base: [ExerciseIte
             merge(\.restDuration)
             merge(\.restTargetSeconds)
             merge(\.completion)
+            // The widget cannot review RIR. Completing there must not accept a
+            // hidden prefill later when the recorded set is edited in the app.
+            if result[i].sets[s].completion != local.completion,
+               result[i].sets[s].completion == "recorded" || result[i].sets[s].completion == "skipped" {
+                result[i].sets[s].placeholderRir = nil
+            }
         }
     }
     return result
@@ -664,6 +815,30 @@ struct WorkoutTemplate: Codable, Identifiable, Equatable {
         try container.encode(gymId, forKey: .gymId)
     }
 
+}
+
+extension WorkoutTemplate {
+    func duplicated(in routines: [WorkoutTemplate], id: String = UUID().uuidString) -> WorkoutTemplate {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let original = trimmed.isEmpty ? "Routine" : trimmed
+        func nameWithSuffix(_ suffix: String) -> String {
+            var prefix = ""
+            for scalar in original.unicodeScalars {
+                if prefix.utf16.count + String(scalar).utf16.count > 120 - suffix.utf16.count { break }
+                prefix.unicodeScalars.append(scalar)
+            }
+            return prefix + suffix
+        }
+        let names = Set(routines.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var copyName = nameWithSuffix(" copy")
+        var suffix = 2
+        while names.contains(copyName.lowercased()) {
+            copyName = nameWithSuffix(" copy \(suffix)")
+            suffix += 1
+        }
+        return WorkoutTemplate(id: id, name: copyName, description: description,
+                               exerciseItems: exerciseItems, gymId: gymId)
+    }
 }
 
 struct ProgramScheduleItem: Codable, Identifiable, Equatable {
@@ -1891,6 +2066,26 @@ func personalBestLabel(_ best: PersonalBest?, usesTime: Bool = false) -> String?
     return "\(weight) lbs"
 }
 
+// Use only the winning workout's snapshot, not the current equipment library.
+func personalBestEquipmentLabel(_ item: ExerciseItem) -> String {
+    guard let profile = item.setupProfile else { return "Equipment not recorded" }
+    let machine = profile.machine.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !machine.isEmpty {
+        return [profile.gym.trimmingCharacters(in: .whitespacesAndNewlines), machine].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+    let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return name.isEmpty ? "Equipment not recorded" : name
+}
+
+func personalBestNotice(_ name: String, best: PersonalBest, item: ExerciseItem, usesTime: Bool = false) -> String {
+    "\(name) - \(personalBestLabel(best, usesTime: usesTime) ?? best.weight)\n\(personalBestEquipmentLabel(item))"
+}
+
+struct PersonalBestRecord {
+    var best: PersonalBest?
+    var equipment = "Equipment not recorded"
+}
+
 func bestPersonalBestCandidate(from sets: [WorkoutSet], weightType: String? = "weight", smithBarWeight: Double? = nil) -> PersonalBestCandidate? {
     sets.reduce(PersonalBestCandidate?.none) { current, set in
         guard isRecordedWorkingSet(set) else { return current }
@@ -1937,29 +2132,39 @@ private func personalBestLogPrecedes(_ a: WorkoutLog, _ b: WorkoutLog) -> Bool {
     return aKey == bKey ? a.id < b.id : aKey < bKey
 }
 
-private func recordedPersonalBest(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBest? {
+private func recordedPersonalBestRecord(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBestRecord {
     let context = personalBestContext(item)
-    var best: PersonalBest?
+    var record = PersonalBestRecord()
     for log in logs.filter({ $0.status == "finished" }).sorted(by: personalBestLogPrecedes) {
         for previous in log.exerciseItems where personalBestContext(previous) == context {
             let candidate = bestPersonalBestCandidate(from: previous.sets, weightType: previous.weightType, smithBarWeight: previous.setupProfile?.smithBarWeight)
-            if isPersonalBestImprovement(candidate, over: best), let candidate {
-                best = personalBestPayload(candidate, date: log.date)
+            if isPersonalBestImprovement(candidate, over: record.best), let candidate {
+                record.best = personalBestPayload(candidate, date: log.date)
+                record.equipment = personalBestEquipmentLabel(previous)
             }
         }
     }
-    return best
+    return record
+}
+
+private func recordedPersonalBest(_ item: ExerciseItem, logs: [WorkoutLog]) -> PersonalBest? {
+    recordedPersonalBestRecord(item, logs: logs).best
+}
+
+func personalBestRecordForItem(_ item: ExerciseItem, logs: [WorkoutLog], legacyBest: PersonalBest?) -> PersonalBestRecord {
+    hasPersonalBestContext(item) ? recordedPersonalBestRecord(item, logs: logs) : PersonalBestRecord(best: legacyBest)
 }
 
 func personalBestForItem(_ item: ExerciseItem, logs: [WorkoutLog], legacyBest: PersonalBest?) -> PersonalBest? {
     hasPersonalBestContext(item) ? recordedPersonalBest(item, logs: logs) : legacyBest
 }
 
-func latestPersonalBest(_ exercise: Exercise, logs: [WorkoutLog]) -> (best: PersonalBest?, contextual: Bool) {
+func latestPersonalBest(_ exercise: Exercise, logs: [WorkoutLog]) -> (best: PersonalBest?, contextual: Bool, equipment: String) {
     let item = logs.filter { $0.status == "finished" }.sorted(by: personalBestLogPrecedes).reversed()
         .flatMap { $0.exerciseItems }.first { $0.exerciseId == exercise.id }
-    guard let item else { return (exercise.personalBest, false) }
-    return (personalBestForItem(item, logs: logs, legacyBest: exercise.personalBest), hasPersonalBestContext(item))
+    guard let item else { return (exercise.personalBest, false, "Equipment not recorded") }
+    let record = personalBestRecordForItem(item, logs: logs, legacyBest: exercise.personalBest)
+    return (record.best, hasPersonalBestContext(item), record.equipment)
 }
 
 // Reconstruct contextual badges before filtering by date. Saved sets and setup
@@ -2365,5 +2570,65 @@ extension Exercise {
         guard !refs.isEmpty else { return "No equipment requirement recorded" }
         let available = gym.equipment.filter { item in refs.contains { ($0.gymId == nil && $0.equipmentId == item.libraryID) || ($0.gymId == gym.id && $0.equipmentId == item.id) } }
         return available.isEmpty ? "No recorded alternative at this gym" : available.map(\.name).joined(separator: " OR ")
+    }
+}
+
+
+enum HistoryDateRange: Int, CaseIterable, Identifiable {
+    case all = 0, week = 7, month = 30, quarter = 90
+    var id: Int { rawValue }
+    var label: String { self == .all ? "All time" : "Last \(rawValue) days" }
+    func includes(_ day: String, today: String = DateHelpers.todayString()) -> Bool {
+        guard self != .all else { return true }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let end = formatter.date(from: today),
+              let start = calendar.date(byAdding: .day, value: 1 - rawValue, to: end) else { return false }
+        return day >= formatter.string(from: start) && day <= today
+    }
+}
+
+
+enum RepeatWorkoutError: LocalizedError {
+    case unfinished, noExercises, activeWorkout
+    var errorDescription: String? {
+        switch self {
+        case .unfinished: return "Choose a finished workout to repeat."
+        case .noExercises: return "None of this workout’s exercises are still available."
+        case .activeWorkout: return "Finish or discard your current workout or plan before repeating another."
+        }
+    }
+}
+
+extension WorkoutLog {
+    func repeatedPlan(exercises: [Exercise], today: String, id: String = UUID().uuidString) throws -> WorkoutLog {
+        guard status == "finished" else { throw RepeatWorkoutError.unfinished }
+        let known = Set(exercises.map(\.id))
+        let available = exerciseItems.filter { known.contains($0.exerciseId) }
+        guard !available.isEmpty else { throw RepeatWorkoutError.noExercises }
+        func target(_ planned: String?, _ recorded: String?) -> String {
+            if let planned, !planned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return planned }
+            return recorded ?? ""
+        }
+        let items = available.map { item in
+            ExerciseItem(exerciseId: item.exerciseId, weightType: item.weightType,
+                         restTargetSeconds: item.restTargetSeconds, supersetGroup: item.supersetGroup,
+                         description: item.description, useIndividualReps: item.useIndividualReps,
+                         sets: item.sets.map { set in
+                WorkoutSet(reps: "", repsLeft: "", repsRight: "", repMode: set.repMode, weight: "",
+                           placeholderReps: target(set.placeholderReps, set.reps),
+                           placeholderRepsLeft: target(set.placeholderRepsLeft, set.repsLeft),
+                           placeholderRepsRight: target(set.placeholderRepsRight, set.repsRight),
+                           placeholderWeight: target(set.weight, set.placeholderWeight), placeholderWeightType: item.weightType,
+                           restTargetSeconds: set.restTargetSeconds, setType: set.setType, completion: "unrecorded")
+            }, baselineId: item.baselineId, techniqueNote: item.techniqueNote, setupProfile: item.setupProfile,
+                         targetRIR: item.targetRIR, setupSelectionMade: item.setupSelectionMade)
+        }
+        return WorkoutLog(id: id, name: name, date: today, exerciseItems: items, status: "planning")
     }
 }

@@ -343,6 +343,7 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 }
 .card-header h3 { margin-bottom: 0; font-size: 16px; font-weight: 700; }
 .card-actions { flex-wrap: wrap; }
+.routine-card .card-header { flex-wrap: wrap; }
 
 @media (min-width: 768px) {
   .card { padding: 14px; }
@@ -3734,3 +3735,37 @@ input:focus, select:focus, textarea:focus {
 .finish-review-modal .modal-footer .btn { flex-grow: 1; white-space: normal; }
 
 .workout-finish-error { color: var(--danger); margin-top: 12px; }
+
+/* Active set weight entry shares the compact, centered quick-entry pattern. */
+.live-weight-entry { display: grid; grid-template-columns: 24px minmax(0, 1fr) 24px; gap: 3px; align-items: center; }
+.live-weight-entry button { min-width: 0; min-height: 40px; padding: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; font-weight: 700; }
+.live-weight-entry button:disabled { opacity: 0.4; }
+.sets-table .live-weight-entry input { min-width: 0; width: 100%; padding-inline: 2px; text-align: center; appearance: textfield; }
+.live-weight-entry input::-webkit-inner-spin-button, .live-weight-entry input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.pb-equipment {
+  display: block;
+  font-size: 0.9em;
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Narrow workout cards keep the editable weight and both quick buttons readable. */
+@media (max-width: 640px) {
+  .has-live-weight, .has-live-weight thead, .has-live-weight tbody { display: block; }
+  .has-live-weight thead tr { display: flex; justify-content: flex-end; }
+  .has-live-weight th { display: none; }
+  .has-live-weight th:nth-child(3) { display: block; padding: 6px 0; }
+  .has-live-weight tr[data-set-position] { display: grid; grid-template-columns: 24px minmax(0, 1fr) 36px 28px; align-items: center; gap: 3px; }
+  .has-live-weight tr[data-set-position] > td:nth-child(5) { grid-column: 3; grid-row: 1; }
+  .has-live-weight tr[data-set-position] > td:nth-child(6) { grid-column: 4; grid-row: 1; }
+  .has-live-weight .actual-weight-cell { grid-column: 2 / -1; grid-row: 2; }
+  .has-live-weight .actual-rest-cell { grid-column: 2 / -1; grid-row: 3; }
+  .has-live-weight .actual-rest-cell[data-has-rest="false"] { display: none; }
+  .has-live-weight [data-entry-label]::before { content: attr(data-entry-label); display: block; color: var(--text-muted); font-size: 10px; font-weight: 700; margin-bottom: 4px; }
+  .has-live-weight .set-effort-row, .has-live-weight .set-effort-row > td { display: block; }
+  .has-live-weight .set-effort-row > td:first-child { display: none; }
+  .has-live-weight .set-effort-controls label { flex-direction: column; align-items: stretch; gap: 4px; }
+  .has-live-weight .live-weight-entry { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .has-live-weight .live-weight-entry button, .has-live-weight input { min-height: 44px; }
+}

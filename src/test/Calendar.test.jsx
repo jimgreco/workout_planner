@@ -3,6 +3,35 @@ import { describe, expect, it, vi } from 'vitest';
 import Calendar from '../pages/Calendar.jsx';
 
 describe('workout history', () => {
+  it('combines date range with search, calendar and All time without changing logs', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 26, 12));
+    try {
+      const logs = [
+        { id: 'new', name: 'Recent push', date: '2026-10-26', status: 'finished', exerciseItems: [] },
+        { id: 'edge', name: 'Boundary push', date: '2026-10-20', status: 'finished', exerciseItems: [] },
+        { id: 'old', name: 'Older push', date: '2026-10-19', status: 'finished', exerciseItems: [] },
+        { id: 'future', name: 'Future push', date: '2026-10-27', status: 'finished', exerciseItems: [] },
+        { id: 'draft', name: 'Draft push', date: '2026-10-26', status: 'active', exerciseItems: [] },
+      ];
+      const original = structuredClone(logs);
+      const { container } = render(<Calendar logs={logs} exercises={[]} onUpdate={vi.fn()} onEditLog={vi.fn()} />);
+      const range = screen.getByRole('combobox', { name: 'History date range' });
+      fireEvent.change(range, { target: { value: '7' } });
+      expect(screen.getByText('Boundary push')).toBeVisible();
+      expect(screen.queryByText('Older push')).not.toBeInTheDocument();
+      expect(screen.queryByText('Future push')).not.toBeInTheDocument();
+      expect(screen.queryByText('Draft push')).not.toBeInTheDocument();
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Recent' } });
+      expect(screen.getByRole('status')).toHaveTextContent('1 matching workout');
+      fireEvent.click(screen.getByRole('button', { name: 'Calendar', exact: true }));
+      expect(container.querySelectorAll('.cal-has-log')).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+      expect(container.querySelectorAll('.cal-has-log')).toHaveLength(2);
+      fireEvent.change(range, { target: { value: '0' } });
+      expect(container.querySelectorAll('.cal-has-log')).toHaveLength(4);
+      expect(logs).toEqual(original);
+    } finally { vi.useRealTimers(); }
+  });
   it('copies a summary and reports clipboard failures without changing the workout', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });

@@ -36,6 +36,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('workout finish review', () => {
+  it('names the saved equipment on a new personal best, despite a renamed library entry', async () => {
+    const log = fixture();
+    log.exerciseItems[0].weightType = 'weight';
+    log.exerciseItems[0].sets = [{ reps: '8', weight: '140', completion: 'recorded', rir: '0' }];
+    log.exerciseItems[0].setupProfile = { id: 'equipment', gym: 'Home', machine: 'Original press' };
+    mount(log, { exercises: [{ ...exercises[0], equipmentSetups: [{ id: 'equipment', machine: 'Renamed press' }] }] });
+    openReview();
+    const dialog = await screen.findByRole('dialog', { name: 'Workout Complete!' });
+    expect(within(dialog).getByText(/Bench Press - 140 lbs x 8 reps/)).toHaveTextContent('Home · Original press');
+    expect(within(dialog).queryByText(/Renamed press/)).not.toBeInTheDocument();
+    expect(saveLog.mock.lastCall[0].exerciseItems).toEqual(log.exerciseItems);
+  });
   it('cancel, edit, and reopen never finish or alter skipped/warmup evidence', async () => {
     mount(); openReview();
     const dialog = screen.getByRole('dialog', { name: 'Review unfinished sets' });

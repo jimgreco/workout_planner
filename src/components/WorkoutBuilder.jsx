@@ -1,12 +1,14 @@
+import { actualRepsInput, actualWeightInput, adjustedLiveWeight } from '../liveEntry.js';
+import { additionalSetRir, recordingRirPrefill, rirEntryValue } from '../rememberRir.js';
 import { targetRIRForSet, setTargetGoalLabel } from '../targetRIR.js';
 import { contextualWeightPlaceholder, smithWeightCaption } from '../weight.js';
 import EquipmentSetupEditor from './EquipmentSetupEditor.jsx';
 import { exerciseSetups, setupLabel, removingSetup, clearComparisonHints } from '../equipmentSetups.js';
 import { saveExercise, getExercises, getTemplates } from '../api.js';
-import { completionLabel, normalizedRir } from '../setEvidence.js';
+import { completionLabel, hasRecordedReps, normalizedRir } from '../setEvidence.js';
 import { Fragment, useId, useState, useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, Check, X, Plus, RotateCcw, Pencil, Target } from 'lucide-react';
-import { personalBestLabel, personalBestForItem, hasPersonalBestContext } from '../progress.js';
+import { personalBestLabel, personalBestRecordForItem, hasPersonalBestContext } from '../progress.js';
 import { routineExerciseWeightAdvice } from '../workoutHistory.js';
 import { repeatLastSetPlan, repeatingLastSet } from '../repeatSet.js';
 
@@ -193,6 +195,8 @@ export default function WorkoutBuilder({
   activeExerciseIdx = null,
   activeSetIdx = null,
   onSetCompleted,
+  onSetSkipped,
+  focusSetPosition,
   pausedAt = null,
   onRestTargetReached,
   onRestExtended,
@@ -201,10 +205,17 @@ export default function WorkoutBuilder({
   onEditExercise,
   planningMode = false,
   allowRepeatSet = false,
+  allowRirPrefill = false,
   lastWeightTypeByExerciseId = {},
   logs = [],
   onExercisesChanged = () => {},
 }) {
+  const builderRef = useRef(null);
+  useEffect(() => {
+    if (!focusSetPosition) return;
+    const { exerciseIndex, setIndex } = focusSetPosition;
+    builderRef.current?.querySelector(`[data-set-position="${exerciseIndex}-${setIndex}"]`)?.focus();
+  }, [focusSetPosition]);
   const [exerciseSearch, setExerciseSearch] = useState('');
   const exerciseListId = useId();
   function exById(id) {
@@ -300,6 +311,7 @@ export default function WorkoutBuilder({
           placeholderWeight: lastSet.placeholderWeight,
           placeholderWeightType: lastSet.placeholderWeightType,
           completion: planningMode ? undefined : 'unrecorded',
+          placeholderRir: !allowRirPrefill || exById(item.exerciseId)?.usesTime ? null : additionalSetRir(item),
         }],
       };
     });
@@ -317,13 +329,29 @@ export default function WorkoutBuilder({
 
   function updateSet(itemIdx, setIdx, field, value, options = {}) {
     if (field === 'rir') value = normalizedRir(value);
+    if (!planningMode && field === 'weight') {
+      value = actualWeightInput(value);
+      if (value === null) return;
+    }
+    if (!planningMode && ['reps', 'repsLeft', 'repsRight'].includes(field)) {
+      value = actualRepsInput(value);
+      if (value === null) return;
+    }
     const copy = items.map((item, i) => {
       if (i !== itemIdx) return item;
       return {
         ...item,
-        sets: item.sets.map((s, si) =>
-          si === setIdx ? { ...setRepField(s, field, value), ...(['reps', 'repsLeft', 'repsRight'].includes(field) ? { completion: 'recorded' } : {}) } : s,
-        ),
+        sets: item.sets.map((s, si) => {
+          if (si !== setIdx) return s;
+          const enteringReps = ['reps', 'repsLeft', 'repsRight'].includes(field);
+          let next = { ...setRepField(s, field, value), ...(enteringReps ? { completion: 'recorded' } : {}) };
+          if (enteringReps && !hasRecordedReps(next)) next.completion = 'unrecorded';
+          if (field === 'rir') next.placeholderRir = null;
+          if (allowRirPrefill && !planningMode && ((enteringReps && hasRecordedReps(next)) || (field === 'completion' && value === 'recorded'))) {
+            next = recordingRirPrefill(next);
+          }
+          return next;
+        }),
       };
     });
     if (options.textEntry && onTextChange) {
@@ -360,7 +388,7 @@ export default function WorkoutBuilder({
           if (!String(set.placeholderWeight ?? '').trim() || set.placeholderWeightType) return set;
           return { ...set, placeholderWeightType: previousWeightType };
         });
-      return { ...item, exerciseId, weightType, sets, setupProfile: undefined, setupSelectionMade: undefined, baselineId: undefined, techniqueNote: undefined, description: item.description || replacement.description || '' };
+      return { ...item, exerciseId, weightType, sets: sets.map(set => ({ ...set, placeholderRir: null })), setupProfile: undefined, setupSelectionMade: undefined, baselineId: undefined, techniqueNote: undefined, description: item.description || replacement.description || '' };
     }));
   }
 
@@ -443,7 +471,7 @@ export default function WorkoutBuilder({
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div>
+    <div ref={builderRef}>
       {items.map((item, idx) => {
         const ex = exById(item.exerciseId);
         if (!ex) return null;
@@ -459,7 +487,7 @@ export default function WorkoutBuilder({
         const compactRepsRange = repRange(compactRepsValue);
         const compactUsesRange = Boolean(compactRepsRange);
         const weightAdvice = routineExerciseWeightAdvice(item, logs, ex);
-        const best = personalBestForItem(item, logs, ex.personalBest);
+        const { best, equipment: bestEquipment } = personalBestRecordForItem(item, logs, ex.personalBest);
         const repeatPlan = allowRepeatSet && !planningMode && !readOnly ? repeatLastSetPlan(item.sets) : null;
         const setColumnCount = 3
           + (hasWeightColumn ? 1 : 0)
@@ -487,6 +515,7 @@ export default function WorkoutBuilder({
                   {best?.weight && (
                     <span className="pb-label">
                       • {hasPersonalBestContext(item) ? 'Setup PB' : 'PB'}: {personalBestLabel(best, ex.usesTime)}
+                      <span className="pb-equipment">{bestEquipment}</span>
                       {!hasPersonalBestContext(item) && onResetPersonalBest && !planningMode && !readOnly && (
                         <button
                           type="button"
@@ -675,7 +704,7 @@ export default function WorkoutBuilder({
                 </div>
               </div>
             ) : (
-            <table className="sets-table">
+            <table className={`sets-table ${hasWeightColumn && item.weightType !== 'none' && !planningMode && !readOnly ? 'has-live-weight' : ''}`}>
               <thead>
                 <tr>
                   <th style={{ width: 32 }}>Set</th>
@@ -708,9 +737,9 @@ export default function WorkoutBuilder({
               <tbody>
                 {item.sets.map((set, si) => (
                   <Fragment key={si}>
-                  <tr className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
+                  <tr data-set-position={`${idx}-${si}`} tabIndex={-1} aria-label={`Set ${si + 1} of ${ex.name}`} className={activeExerciseIdx === idx && activeSetIdx === si ? 'active-row' : ''}>
                     <td className="set-num-cell">{si + 1}</td>
-                    <td>
+                    <td className="actual-reps-cell" data-entry-label={usesSideReps ? `${repUnitTitle} L/R` : repUnitTitle}>
                       {usesSideReps ? (
                         <div className="side-reps-inputs">
                           <input
@@ -720,6 +749,7 @@ export default function WorkoutBuilder({
                             value={planningMode ? (set.placeholderRepsLeft || '') : (set.repsLeft ?? '')}
                             onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft')}
                             onBlur={handleSetTextBlur}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                             onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsLeft' : 'repsLeft', e.target.value, { textEntry: true })}
                             disabled={readOnly}
                             aria-label={`Left ${repUnit} for set ${si + 1} of ${ex.name}`}
@@ -732,6 +762,7 @@ export default function WorkoutBuilder({
                             value={planningMode ? (set.placeholderRepsRight || '') : (set.repsRight ?? '')}
                             onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight')}
                             onBlur={handleSetTextBlur}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                             onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderRepsRight' : 'repsRight', e.target.value, { textEntry: true })}
                             disabled={readOnly}
                             aria-label={`Right ${repUnit} for set ${si + 1} of ${ex.name}`}
@@ -743,9 +774,11 @@ export default function WorkoutBuilder({
                           type="text"
                           inputMode="numeric"
                           placeholder={planningMode ? "—" : (set.placeholderReps || "—")}
+                          aria-label={`${repUnitTitle} for set ${si + 1} of ${ex.name}`}
                           value={planningMode ? compactRepValue(set, repsField) : (set.reps ?? '')}
                           onFocus={() => handleSetTextFocus(idx, si, planningMode ? 'placeholderReps' : 'reps')}
                           onBlur={handleSetTextBlur}
+                          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                           onChange={(e) => updateSet(idx, si, planningMode ? 'placeholderReps' : 'reps', e.target.value, { textEntry: true })}
                           disabled={readOnly}
                           style={planningMode ? { color: 'var(--text-muted)' } : undefined}
@@ -758,27 +791,36 @@ export default function WorkoutBuilder({
                       )}
                     </td>
                     {hasWeightColumn && (
-                      <td>
+                      <td className="actual-weight-cell" data-entry-label="Weight (lbs)">
                         {item.weightType !== 'none' && !planningMode && (
                           <div className="weight-cell">
+                            <div className="live-weight-entry">
+                              <button type="button" aria-label={`Subtract 5 lbs for set ${si + 1} of ${ex.name}`}
+                                disabled={readOnly || pausedAt != null || Number(set.weight || contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType) || 0) <= 0}
+                                onClick={() => updateSet(idx, si, 'weight', adjustedLiveWeight(set.weight, -5, contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType)))}>-5</button>
                             <input
                               type="number"
                               min="0"
-                              step="2.5"
+                              step="any"
                               placeholder={contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType) || "—"}
                               value={set.weight}
                               onFocus={() => handleSetTextFocus(idx, si, 'weight')}
                               onBlur={handleSetTextBlur}
+                              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                               onChange={(e) => updateSet(idx, si, 'weight', e.target.value, { textEntry: true })}
                               disabled={readOnly}
                               aria-label={`Weight for set ${si + 1} of ${ex.name}`}
-	                            />
+                            />
+                              <button type="button" aria-label={`Add 5 lbs for set ${si + 1} of ${ex.name}`}
+                                disabled={readOnly || pausedAt != null}
+                                onClick={() => updateSet(idx, si, 'weight', adjustedLiveWeight(set.weight, 5, contextualWeightPlaceholder(set.placeholderWeight, set.placeholderWeightType || item.weightType, item.weightType)))}>+5</button>
+                            </div>
                             {item.weightType === 'smith_double' && <small>{smithWeightCaption(set.weight, item.setupProfile?.smithBarWeight)}</small>}
                           </div>
                         )}
                       </td>
                     )}
-                    <td style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
+                    <td className="actual-rest-cell" data-has-rest={Boolean(set.restStartTime || set.restDuration != null)} data-entry-label="Rest" style={{ textAlign: 'right', verticalAlign: 'middle', paddingRight: 8 }}>
                       <div className="rest-cell-content">
                         <RestTimer
                           pausedAt={pausedAt}
@@ -872,17 +914,18 @@ export default function WorkoutBuilder({
                                 value={set.rpe || ''}
                                 onFocus={() => handleSetTextFocus(idx, si, 'rpe')}
                                 onBlur={handleSetTextBlur}
+                                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                                 onChange={(e) => updateSet(idx, si, 'rpe', e.target.value, { textEntry: true })}
                                 aria-label={`RPE for set ${si + 1} of ${ex.name}`}
                               />
                             </label>}
                             <label><span>Reps left</span>
-                              <select value={normalizedRir(set.rir) ?? ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
+                              <select value={(allowRirPrefill ? rirEntryValue(set) : normalizedRir(set.rir)) ?? ''} onChange={e => updateSet(idx, si, 'rir', e.target.value)} aria-label={`Reps left for set ${si + 1} of ${ex.name}`}>
                                 <option value="">Not sure</option>{['0','1','2','3','4','5','6','7','8','9','10'].map(v => <option key={v} value={v}>{v}</option>)}
                               </select>
                             </label>
                             <label><span>Set status</span>
-                              <select value={completionLabel(set)} onChange={e => updateSet(idx, si, 'completion', e.target.value)} aria-label={`Status for set ${si + 1} of ${ex.name}`}>
+                              <select value={completionLabel(set)} onChange={e => e.target.value === 'skipped' && onSetSkipped ? onSetSkipped(idx, si) : updateSet(idx, si, 'completion', e.target.value)} aria-label={`Status for set ${si + 1} of ${ex.name}`}>
                                 <option value="unrecorded">Not recorded</option><option value="recorded">Recorded</option><option value="skipped">Skipped</option>
                               </select>
                             </label>

@@ -928,6 +928,16 @@ final class WorkoutStore: ObservableObject {
         pendingTemplate = nil
     }
 
+    func repeatFinishedWorkout(_ sourceID: String, planID: String) async throws {
+        if let active = activeWorkout(), active.id != planID { throw RepeatWorkoutError.activeWorkout }
+        guard let source = logs.first(where: { $0.id == sourceID }) else { throw RepeatWorkoutError.unfinished }
+        let plan = try source.repeatedPlan(exercises: exercises, today: DateHelpers.todayString(), id: planID)
+        _ = try await saveLog(plan)
+        editingLog = nil
+        pendingTemplate = nil
+        pendingWorkoutStart = nil
+    }
+
     func setEditingLog(_ log: WorkoutLog) {
         editingLog = log
     }

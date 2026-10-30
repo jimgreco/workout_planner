@@ -257,7 +257,13 @@ private struct ExerciseRow: View {
         let record = latestPersonalBest(exercise, logs: store.logs)
         if let best = personalBestLabel(record.best, usesTime: exercise.usesTime == true) {
             Button(action: record.contextual ? onDetail : onPB) {
-                Badge(text: (record.contextual ? "Setup PB: " : "") + best, icon: "star.fill", accent: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Badge(text: (record.contextual ? "Setup PB: " : "") + best, icon: "star.fill", accent: true)
+                    Text(record.equipment)
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

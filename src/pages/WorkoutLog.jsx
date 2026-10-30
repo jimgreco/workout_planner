@@ -1,3 +1,5 @@
+import { nextWorkoutSetPosition, skippingWorkoutSet } from '../setNavigation.js';
+import { prefillExerciseRir, recordingRirPrefill } from '../rememberRir.js';
 import { pauseWorkout, resumeWorkout, finishWorkoutTiming, formatWorkoutDuration } from '../workoutTiming.js';
 import { newWorkoutEquipment } from '../equipmentSetups.js';
 import { unfinishedWorkoutSets } from '../finishReview.js';
@@ -15,7 +17,7 @@ import { nextProgramWorkout as getNextProgramWorkout } from '../programs.js';
 import {
   bestPersonalBestSet,
   isPersonalBestImprovement,
-  personalBestLabel,
+  personalBestNotice,
   personalBestPayload,
   personalBestIdsForWorkout,
   hasPersonalBestContext,
@@ -227,6 +229,7 @@ export default function WorkoutLog({
   }
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [activeSetIdx, setActiveSetIdx] = useState(0);
+  const [skipFocus, setSkipFocus] = useState(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [finishModal, setFinishModal]       = useState(null); // null | { pbExercises }
@@ -295,7 +298,7 @@ export default function WorkoutLog({
       const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
       const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
       const weightType = lastItem?.weightType || item.weightType || 'weight';
-      return {
+      return prefillExerciseRir({
         exerciseId: item.exerciseId,
         targetRIR: item.targetRIR ?? null,
         weightType,
@@ -342,7 +345,7 @@ export default function WorkoutLog({
             placeholderWeightType: weightType,
           };
         }),
-      };
+      }, exercises.find(exercise => exercise.id === item.exerciseId), logs);
     });
     setName(initialTemplate.name);
     setItems(templateItems);
@@ -444,7 +447,7 @@ export default function WorkoutLog({
         }
         return { ...s, reps: '', repsLeft: '', repsRight: '', weight: '', placeholderReps: targetReps, placeholderWeight: '', placeholderWeightType: weightType };
       });
-      return { ...item, ...equipmentContext, sets, weightType };
+      return prefillExerciseRir({ ...item, ...equipmentContext, sets, weightType }, exercises.find(exercise => exercise.id === item.exerciseId), logs);
     });
 
     latestItemsRef.current = newItems;
@@ -519,7 +522,7 @@ export default function WorkoutLog({
       ...ex,
       sets: ex.sets.map((s, si) => {
         if (i === exIdx && si === setIdx) {
-          return { ...s, completion: 'recorded', restStartTime: now, restDuration: null };
+          return { ...(isEditing.current ? s : recordingRirPrefill(s)), completion: 'recorded', restStartTime: now, restDuration: null };
         }
         if (s.restStartTime && !s.restDuration) {
           return { ...s, restDuration: Math.floor((now - s.restStartTime) / 1000), restStartTime: null };
@@ -528,22 +531,33 @@ export default function WorkoutLog({
       }),
     }));
 
-    // Determine next active set
-    let nextEx = exIdx;
-    let nextSet = setIdx + 1;
-    if (nextSet >= newItems[exIdx].sets.length) {
-      nextEx = exIdx + 1;
-      nextSet = 0;
-    }
-
-    if (nextEx < newItems.length) {
-      setActiveExerciseIdx(nextEx);
-      setActiveSetIdx(nextSet);
+    const next = nextWorkoutSetPosition(newItems, exIdx, setIdx);
+    if (next) {
+      setActiveExerciseIdx(next.exerciseIndex);
+      setActiveSetIdx(next.setIndex);
     }
 
     setItems(newItems);
     const status = isEditing.current ? 'finished' : (startTime ? 'active' : 'planning');
     scheduleAutoSave(workoutId, { name, date, notes, readiness, items: newItems, startTime, status });
+  }
+
+  function handleSetSkipped(exIdx, setIdx) {
+    if (!workoutId || !startTime || isEditing.current || isPaused || saving || finishModal) return;
+    const current = latestItemsRef.current;
+    const skipped = skippingWorkoutSet(current, exIdx, setIdx);
+    if (!skipped) return;
+    blurActiveEditableElement();
+    if (current[exIdx].sets[setIdx].restStartTime != null) {
+      setRestAlert(null);
+      clearTimeout(restAlertTimer.current);
+    }
+    if (skipped.next) {
+      setActiveExerciseIdx(skipped.next.exerciseIndex);
+      setActiveSetIdx(skipped.next.setIndex);
+      setSkipFocus(skipped.next);
+    }
+    handleItemsChange(skipped.items);
   }
 
   function handleRestTargetReached(exIdx, setIdx) {
@@ -664,7 +678,7 @@ export default function WorkoutLog({
         const hitTarget = program ? exerciseHitTarget(item.sets, lastItem?.sets, settings.defaultReps) : false;
         const hitCap = program ? exerciseHitRepCap(item.sets, lastItem?.sets, program.progression?.maxReps || 12) : false;
         const weightType = lastItem?.weightType || item.weightType || 'weight';
-        return {
+        return prefillExerciseRir({
           exerciseId: item.exerciseId,
           targetRIR: item.targetRIR ?? null,
           weightType,
@@ -711,7 +725,7 @@ export default function WorkoutLog({
               placeholderWeightType: weightType,
             };
           }),
-        };
+        }, exercises.find(exercise => exercise.id === item.exerciseId), logs);
       });
 
     if (newItemsFromTemplate.length === 0) return;
@@ -772,7 +786,7 @@ export default function WorkoutLog({
         const ex = currentExercises.find((e) => e.id === item.exerciseId);
         if (!ex || !candidate) continue;
         const personalBest = personalBestPayload(candidate, date);
-        if (pbExerciseIds.includes(item.exerciseId)) pbExercises.push(`${ex.name} - ${personalBestLabel(personalBest, ex.usesTime)}`);
+        if (pbExerciseIds.includes(item.exerciseId)) pbExercises.push(personalBestNotice(ex.name, personalBest, item, ex.usesTime));
         if (!hasPersonalBestContext(item) && isPersonalBestImprovement(candidate, ex.personalBest)) {
           // Keep the manually editable, unscoped PB separate from setup records.
           const updated = await saveExercise({
@@ -1052,6 +1066,7 @@ export default function WorkoutLog({
         onExercisesChanged={onExercisesChanged}
         exercises={exercises}
         items={items}
+        allowRirPrefill={!isEditing.current}
         onChange={handleItemsChange}
         onTextChange={handleItemsTextChange}
         onTextBlur={handleItemsTextBlur}
@@ -1059,6 +1074,8 @@ export default function WorkoutLog({
         activeSetIdx={activeSetIdx}
         pausedAt={timing.pausedAt}
         onSetCompleted={handleSetCompleted}
+        onSetSkipped={!isEditing.current && startTime ? handleSetSkipped : undefined}
+        focusSetPosition={skipFocus}
         onRestTargetReached={handleRestTargetReached}
         onRestExtended={handleExtendRest}
         onEndRest={handleEndRest}
@@ -1188,7 +1205,7 @@ export default function WorkoutLog({
                 <Trophy size={16} fill="currentColor" /> <span>New Personal Bests!</span>
               </div>
               <ul style={{ margin: '0 0 0 24px', fontSize: 14 }}>
-                {finishModal.pbExercises.map((name) => <li key={name} style={{ marginBottom: 4 }}>{name}</li>)}
+                {finishModal.pbExercises.map((name) => <li key={name} style={{ marginBottom: 8, whiteSpace: 'pre-line' }}>{name}</li>)}
               </ul>
             </div>
           )}

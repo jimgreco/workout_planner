@@ -98,7 +98,9 @@ struct TemplatesView: View {
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case let .form(template):
-                TemplateFormSheet(template: template, isSaving: $isSaving)
+                TemplateFormSheet(template: template, isSaving: $isSaving, session: store.sessionIdentity)
+            case let .duplicate(template, session):
+                TemplateFormSheet(template: template, isSaving: $isSaving, session: session, isDuplicate: true)
             case let .view(template):
                 TemplateViewSheet(template: template) {
                     store.setStartTemplate(template)
@@ -295,6 +297,7 @@ struct TemplatesView: View {
                                 selectedPage = .log
                             },
                             onEdit: { sheet = .form(template) },
+                            onDuplicate: { sheet = .duplicate(template.duplicated(in: store.templates), store.sessionIdentity) },
                             onDelete: { deleteTarget = template }
                         )
                     }
@@ -496,6 +499,7 @@ private enum StarterTemplates {
 
 private enum TemplateSheet: Identifiable {
     case form(WorkoutTemplate)
+    case duplicate(WorkoutTemplate, UUID)
     case view(WorkoutTemplate)
     case settings
     case program(TrainingProgram)
@@ -505,6 +509,7 @@ private enum TemplateSheet: Identifiable {
     var id: String {
         switch self {
         case let .form(template): return "form-\(template.id)"
+        case let .duplicate(template, _): return "duplicate-\(template.id)"
         case let .view(template): return "view-\(template.id)"
         case .settings: return "settings"
         case let .program(program): return "program-\(program.id)"
@@ -1309,6 +1314,7 @@ private struct TemplateCard: View {
     let onView: () -> Void
     let onStart: () -> Void
     let onEdit: () -> Void
+    let onDuplicate: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -1368,6 +1374,13 @@ private struct TemplateCard: View {
                     }
                 }
 
+                Button(action: onDuplicate) {
+                    Label("Duplicate", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SecondaryButtonStyle(compact: true))
+                .accessibilityLabel("Duplicate \(template.name)")
+
                 HStack(spacing: 10) {
                     Button(action: onView) {
                         Label("View", systemImage: "eye")
@@ -1400,13 +1413,18 @@ private struct TemplateFormSheet: View {
     }
 
     @State private var form: WorkoutTemplate
+    @State private var draftSession: UUID
+    @State private var saveError: String?
+    let isDuplicate: Bool
     @Binding var isSaving: Bool
     @State private var showingGymBrief = false
     @State private var editingExercise: Exercise?
     @FocusState private var focusedTextField: FocusedTextField?
     @FocusState private var focusedBuilderField: WorkoutBuilderFocusedField?
 
-    init(template: WorkoutTemplate, isSaving: Binding<Bool>) {
+    init(template: WorkoutTemplate, isSaving: Binding<Bool>, session: UUID, isDuplicate: Bool = false) {
+        _draftSession = State(initialValue: session)
+        self.isDuplicate = isDuplicate
         _form = State(initialValue: template)
         _isSaving = isSaving
     }
@@ -1415,6 +1433,14 @@ private struct TemplateFormSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if isDuplicate {
+                        Text("Create a separate routine. Adjust the name and exercises before saving.")
+                            .font(.subheadline).foregroundStyle(Theme.muted)
+                    }
+                    if let saveError {
+                        Text(saveError).foregroundStyle(Theme.danger)
+                            .accessibilityAddTraits(.updatesFrequently)
+                    }
                     VStack(alignment: .leading, spacing: 6) {
                         FormLabel(text: "Routine Name *")
                         TextField("e.g. Push Day, Leg Day...", text: $form.name)
@@ -1480,7 +1506,7 @@ private struct TemplateFormSheet: View {
                 }
                 .padding(16)
             }
-            .navigationTitle(form.name.isEmpty ? "New Routine" : "Edit Routine")
+            .navigationTitle(isDuplicate ? "Duplicate Routine" : form.name.isEmpty ? "New Routine" : "Edit Routine")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -1500,6 +1526,8 @@ private struct TemplateFormSheet: View {
                 }
             }
         }
+        .interactiveDismissDisabled(isSaving)
+        .onChange(of: store.sessionIdentity) { _, _ in dismiss() }
         .sheet(isPresented: $showingGymBrief) {
             if let gym = store.gyms.first(where: { $0.id == form.gymId }) {
                 GymBriefSheet(text: gym.aiBrief(routine: form, exercises: store.exercises))
@@ -1511,14 +1539,19 @@ private struct TemplateFormSheet: View {
     }
 
     private func save() async {
+        guard !isSaving, store.sessionIdentity == draftSession,
+              !form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         isSaving = true
+        saveError = nil
+        form.name = form.name.trimmingCharacters(in: .whitespacesAndNewlines)
         defer { isSaving = false }
         do {
             try await store.saveTemplate(form)
+            guard store.sessionIdentity == draftSession else { return }
             dismiss()
         } catch {
-            if !isCancellationError(error) {
-                store.errorMessage = error.localizedDescription
+            if store.sessionIdentity == draftSession && !isCancellationError(error) {
+                saveError = error.localizedDescription
             }
         }
     }

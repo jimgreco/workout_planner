@@ -160,3 +160,18 @@ export function workoutSummary(log, exercises) {
   if (log.notes) lines.push('', `Notes: ${log.notes}`);
   return lines.join('\n');
 }
+
+export const HISTORY_DATE_RANGES = [
+  { days: 0, label: 'All time' },
+  { days: 7, label: 'Last 7 days' },
+  { days: 30, label: 'Last 30 days' },
+  { days: 90, label: 'Last 90 days' },
+];
+
+export function matchesHistoryDateRange(day, days, today) {
+  if (!days) return true;
+  // Date-only values use calendar arithmetic; elapsed hours would drift at DST.
+  const start = new Date(`${today}T12:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return day >= start.toISOString().slice(0, 10) && day <= today;
+}
