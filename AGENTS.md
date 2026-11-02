@@ -281,3 +281,7 @@ new defaults. Live Activity has no RIR input; its completion clears the unaccept
 hint without creating actual RIR. Run `RememberRIRCheck.swift` with `Models.swift`
 and `AccountOfflineSyncCheck.swift` for serialization/account durability. Deploy
 the optional API field before clients that send it.
+
+## Current takeover guide
+
+Read [the coding handoff](docs/AGENT_HANDOFF.md) for the verified source/release snapshot, setup, tests, active work and remaining gaps. Reconcile it with current Git state before editing; historical release receipts are not new authorization.
