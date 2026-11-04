@@ -229,7 +229,9 @@ Main pushes run web/backend verification and automatically run the current
 pushing main, and track that automatic run instead of dispatching a duplicate.
 Production web deployment requires a manual `Deploy to EC2` dispatch on main with
 `deploy_production=true`. A separate native dispatch is only for an explicitly
-reviewed retry when no upload occurred. Builds do not establish physical
+reviewed retry when no upload occurred. Uploaded builds are App Store-eligible
+(not internal-only); attaching one to an App Store version and submitting it for
+review is a separate manual App Store Connect step. Builds do not establish physical
 device acceptance or App Store availability.
 
 `scripts/safe-compose-release.py workouts <full-sha> --check` validates the running
