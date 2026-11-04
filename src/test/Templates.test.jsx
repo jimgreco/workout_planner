@@ -169,6 +169,30 @@ describe('Routines page', () => {
     expect(onProgramsUpdate).toHaveBeenCalled();
   });
 
+  it('shows when each routine was last finished', () => {
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    const twoDaysAgo = new Date(today);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    render(
+      <Templates
+        mode="routines"
+        templates={[
+          { id: 'push', name: 'Push Day', description: '', exerciseItems: [] },
+          { id: 'legs', name: 'Leg Day', description: '', exerciseItems: [] },
+        ]}
+        exercises={exercises}
+        logs={[{ id: 'log', name: 'Push Day', date: twoDaysAgo.toISOString().slice(0, 10), status: 'finished', exerciseItems: [] }]}
+        settings={{ defaultSets: 3, defaultReps: 10 }}
+        onUpdate={() => {}}
+        onSettingsUpdate={() => {}}
+        onStartWorkout={() => {}}
+      />,
+    );
+    expect(screen.getByText('Last done 2 days ago')).toBeVisible();
+    expect(screen.getByText('Not done yet')).toBeVisible();
+  });
+
   it('marks routine exercises that should increase weight next time', () => {
     render(
       <Templates

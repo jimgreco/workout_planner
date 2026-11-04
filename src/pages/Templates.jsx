@@ -41,7 +41,7 @@ import {
   swapProgramScheduleDays,
   upcomingProgramSchedule as buildUpcomingProgramSchedule,
 } from '../programs.js';
-import { lastWeightTypesByExerciseId, routineExerciseWeightAdvice } from '../workoutHistory.js';
+import { lastWeightTypesByExerciseId, routineExerciseWeightAdvice, routineLastDoneDate, routineLastDoneLabel } from '../workoutHistory.js';
 import { filterRoutines } from '../routineSearch.js';
 import { duplicateRoutine } from '../duplicateRoutine.js';
 import { getSessionEpoch } from '../auth.js';
@@ -1202,6 +1202,9 @@ export default function Templates({
             <div className="card-header">
               <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                 <h3>{t.name}</h3>
+                <p className={`text-muted routine-last-done${routineLastDoneDate(t, logs) ? '' : ' is-new'}`} style={{ fontSize: 13 }}>
+                  <CalendarDays size={13} aria-hidden="true" /> {routineLastDoneLabel(t, logs, localDateKey(new Date()))}
+                </p>
                 {t.gymId && <p className="text-muted">Gym: {gyms.find((gym) => gym.id === t.gymId)?.name ?? 'Unavailable gym'}</p>}
                 {t.description && <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>{t.description}</p>}
               </div>

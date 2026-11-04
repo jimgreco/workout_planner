@@ -4,6 +4,7 @@
 
 ### Recently Added
 
+- Web and iOS routine cards show when each routine was last finished, matched by workout name.
 - Web and iOS can store structured program progression rules for reps, weight, and double progression.
 - Web and iOS can mark the next planned program workout as skipped, and skipped workouts no longer block the next scheduled routine.
 - Web and iOS can store program deload cadence rules and show active or upcoming deload weeks.

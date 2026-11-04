@@ -3769,3 +3769,10 @@ input:focus, select:focus, textarea:focus {
   .has-live-weight .live-weight-entry { grid-template-columns: 44px minmax(0, 1fr) 44px; }
   .has-live-weight .live-weight-entry button, .has-live-weight input { min-height: 44px; }
 }
+
+.routine-last-done {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}

@@ -175,3 +175,37 @@ export function matchesHistoryDateRange(day, days, today) {
   start.setUTCDate(start.getUTCDate() - (days - 1));
   return day >= start.toISOString().slice(0, 10) && day <= today;
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DATE_KEY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function routineNameKey(value) {
+  return String(value ?? '').trim().toLocaleLowerCase();
+}
+
+// Logs do not store their source routine, so finished workouts are matched by name.
+export function routineLastDoneDate(template, logs = []) {
+  const name = routineNameKey(template?.name);
+  if (!name) return null;
+  let latest = null;
+  for (const log of logs) {
+    if (log?.status !== 'finished' || !DATE_KEY.test(log.date ?? '') || routineNameKey(log.name) !== name) continue;
+    if (!latest || log.date > latest) latest = log.date;
+  }
+  return latest;
+}
+
+export function routineLastDoneLabel(template, logs = [], today) {
+  const date = routineLastDoneDate(template, logs);
+  if (!date) return 'Not done yet';
+  const [, y, m, d] = DATE_KEY.exec(date).map(Number);
+  const todayMatch = DATE_KEY.exec(today ?? '');
+  if (todayMatch) {
+    const [, ty, tm, td] = todayMatch.map(Number);
+    const days = Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(y, m - 1, d)) / 86400000);
+    if (days === 0) return 'Last done today';
+    if (days === 1) return 'Last done yesterday';
+    if (days > 1 && days < 14) return `Last done ${days} days ago`;
+  }
+  return `Last done ${MONTHS[m - 1]} ${d}, ${y}`;
+}

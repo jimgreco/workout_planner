@@ -1306,6 +1306,15 @@ private struct ProgramDayPlannerSheet: View {
     }
 }
 
+private func routineTodayKey() -> String {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.string(from: Date())
+}
+
 private struct TemplateCard: View {
     @EnvironmentObject private var store: WorkoutStore
     let template: WorkoutTemplate
@@ -1327,6 +1336,8 @@ private struct TemplateCard: View {
                             .foregroundStyle(Theme.text)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
+                        Label(routineLastDoneLabel(template, logs: logs, today: routineTodayKey()), systemImage: "calendar")
+                            .font(.caption).foregroundStyle(Theme.muted)
                         if let gymId = template.gymId {
                             Label(store.gyms.first { $0.id == gymId }?.name ?? "Unavailable gym", systemImage: "building.2")
                                 .font(.caption).foregroundStyle(Theme.muted)

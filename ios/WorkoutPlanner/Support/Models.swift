@@ -56,6 +56,44 @@ func matchesHistorySearch(_ log: WorkoutLog, query: String, exercises: [Exercise
     return terms.allSatisfy { text.contains($0) }
 }
 
+private func routineNameKey(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+}
+
+private func routineDateParts(_ value: String) -> (year: Int, month: Int, day: Int)? {
+    let parts = value.split(separator: "-", omittingEmptySubsequences: false)
+    guard parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,
+          let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]),
+          (1...12).contains(month), (1...31).contains(day) else { return nil }
+    return (year, month, day)
+}
+
+/// Logs do not store their source routine, so finished workouts are matched by name.
+func routineLastDoneDate(_ template: WorkoutTemplate, logs: [WorkoutLog]) -> String? {
+    let name = routineNameKey(template.name)
+    guard !name.isEmpty else { return nil }
+    return logs
+        .filter { $0.status == "finished" && routineDateParts($0.date) != nil && routineNameKey($0.name) == name }
+        .map(\.date)
+        .max()
+}
+
+func routineLastDoneLabel(_ template: WorkoutTemplate, logs: [WorkoutLog], today: String?) -> String {
+    guard let date = routineLastDoneDate(template, logs: logs), let parts = routineDateParts(date) else { return "Not done yet" }
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC")!
+    if let today, let todayParts = routineDateParts(today),
+       let last = calendar.date(from: DateComponents(year: parts.year, month: parts.month, day: parts.day)),
+       let now = calendar.date(from: DateComponents(year: todayParts.year, month: todayParts.month, day: todayParts.day)),
+       let days = calendar.dateComponents([.day], from: last, to: now).day {
+        if days == 0 { return "Last done today" }
+        if days == 1 { return "Last done yesterday" }
+        if days > 1 && days < 14 { return "Last done \(days) days ago" }
+    }
+    let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return "Last done \(months[parts.month - 1]) \(parts.day), \(parts.year)"
+}
+
 func filterRoutines(_ templates: [WorkoutTemplate], query: String, exercises: [Exercise]) -> [WorkoutTemplate] {
     let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace })
     guard !terms.isEmpty else { return templates }

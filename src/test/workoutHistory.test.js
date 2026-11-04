@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesHistoryDateRange, routineExerciseNeedsWeightIncrease, routineExerciseWeightAdvice } from '../workoutHistory.js';
+import { matchesHistoryDateRange, routineExerciseNeedsWeightIncrease, routineExerciseWeightAdvice, routineLastDoneDate, routineLastDoneLabel } from '../workoutHistory.js';
 
 const rangeRoutineItem = {
   exerciseId: 'bench',
@@ -229,5 +229,32 @@ describe('history date range', () => {
     expect(matchesHistoryDateRange(before, days, today)).toBe(false);
     expect(matchesHistoryDateRange('2099-01-01', days, today)).toBe(false);
     expect(matchesHistoryDateRange(before, 0, today)).toBe(true);
+  });
+});
+
+describe('routine last done', () => {
+  const template = { id: 'push', name: 'Push Day' };
+  const logs = [
+    { id: 'a', name: 'push day ', date: '2026-10-20', status: 'finished' },
+    { id: 'b', name: 'Push Day', date: '2026-10-30', status: 'finished' },
+    { id: 'c', name: 'Push Day', date: '2026-11-02', status: 'planning' },
+    { id: 'd', name: 'Leg Day', date: '2026-11-03', status: 'finished' },
+    { id: 'e', name: 'Push Day', date: 'bad', status: 'finished' },
+  ];
+
+  it('uses the latest finished workout with the same name, ignoring case and spaces', () => {
+    expect(routineLastDoneDate(template, logs)).toBe('2026-10-30');
+    expect(routineLastDoneDate({ name: 'Pull Day' }, logs)).toBeNull();
+    expect(routineLastDoneDate({ name: '  ' }, logs)).toBeNull();
+  });
+
+  it('labels recent days relatively and older ones by date', () => {
+    expect(routineLastDoneLabel(template, logs, '2026-10-30')).toBe('Last done today');
+    expect(routineLastDoneLabel(template, logs, '2026-10-31')).toBe('Last done yesterday');
+    expect(routineLastDoneLabel(template, logs, '2026-11-12')).toBe('Last done 13 days ago');
+    expect(routineLastDoneLabel(template, logs, '2026-11-13')).toBe('Last done Oct 30, 2026');
+    expect(routineLastDoneLabel(template, logs, '2026-10-01')).toBe('Last done Oct 30, 2026');
+    expect(routineLastDoneLabel(template, logs)).toBe('Last done Oct 30, 2026');
+    expect(routineLastDoneLabel({ name: 'Pull Day' }, logs, '2026-11-03')).toBe('Not done yet');
   });
 });
