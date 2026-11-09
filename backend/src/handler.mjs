@@ -9,6 +9,7 @@ import { preservingTargetRIR } from './target-rir.mjs';
  *   POST   /auth/google
  *   POST   /auth/apple
  *   GET    /admin/feedback | /admin/overview | /admin/accounts (requires X-Admin-Support-Secret)
+ *   GET    /weekly-summary?week=YYYY-MM-DD (own bearer token; 404 unless configured)
  *
  * Authenticated routes require an app session token minted by the auth routes:
  *   GET    /exercises | /templates | /logs | /programs | /settings
@@ -40,6 +41,7 @@ import { encryptAppleToken, exchangeAppleCode, revokeAppleTokens } from './apple
 import { DEFAULT_EQUIPMENT, equipmentLibraryId } from './default-equipment.mjs';
 import { DEFAULT_EXERCISES, withDefaultEquipment } from './default-exercises.mjs';
 import { createAppSession, hashUserId, verifyAppSession } from './session.mjs';
+import { WEEK_ERROR, configuredTokenHash, parseWeek, previousWeek, sha256Hex, workoutsSummary } from './weekly-summary.mjs';
 import {
   MAX_BODY_BYTES,
   ValidationError,
@@ -1316,6 +1318,53 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
   return err(405, 'Method not allowed');
 }
 
+// Read-only summary for the weekly-review routine. It has its own bearer token
+// (stored only as a SHA-256 hash) that is checked on this route alone, and app
+// session tokens are never accepted here. Anything other than a configured,
+// matching token is a 404, as if the route did not exist. Only GetCommand and
+// QueryCommand are issued: no seeding, touches or audit writes.
+async function handleWeeklySummary(method, id, event, params, requestId) {
+  const expectedHash = configuredTokenHash();
+  if (!expectedHash || method !== 'GET' || id) return err(404, 'Not found');
+  const header = requestHeader(event.headers, 'authorization');
+  const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token || !secretMatches(sha256Hex(token), expectedHash)) return err(404, 'Not found');
+
+  const week = parseWeek(params.get('week'));
+  if (!week) return err(400, WEEK_ERROR);
+  const prev = previousWeek(week);
+
+  try {
+    const data = await readWorkoutsSummary(process.env.WEEKLY_SUMMARY_EMAIL, week, prev);
+    return ok({ version: 1, app: 'workouts', week, generatedAt: new Date().toISOString(), data });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'weekly_summary_error',
+      requestId,
+      message: error?.message ?? String(error),
+    }));
+    return err(500, 'internal');
+  }
+}
+
+async function readWorkoutsSummary(email, week, prev) {
+  const alias = await db.send(new GetCommand({
+    TableName: TABLE,
+    Key: { PK: emailAliasPk(normalizeEmail(email)), SK: 'ALIAS' },
+  }));
+  const accountSub = alias.Item?.accountSub;
+  if (!accountSub) return { status: 'no-account' };
+  const PK = `USER#${accountSub}`;
+  const account = await getAccountMetadata(PK);
+  if (account?.deletedAt) return { status: 'no-account' };
+  const [logs, exerciseItems, programs] = await Promise.all([
+    queryCollection(PK, SK_PREFIX.logs),
+    queryCollection(PK, SK_PREFIX.exercises),
+    queryCollection(PK, SK_PREFIX.programs),
+  ]);
+  return workoutsSummary({ logs, exerciseItems, programs, week, prev });
+}
+
 export const handler = async (event) => {
   const startedAt = Date.now();
   const requestId = requestIdFrom(event);
@@ -1374,6 +1423,10 @@ export const handler = async (event) => {
 
     if (resource === 'admin' && id) {
       return finish(await handleAdminRoute(method, id, event, params));
+    }
+
+    if (resource === 'weekly-summary') {
+      return finish(await handleWeeklySummary(method, id, event, params, requestId));
     }
 
     userId = await verifyRequestUser(event);

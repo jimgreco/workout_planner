@@ -11,6 +11,8 @@ Before inviting more testers:
    - `APPLE_CLIENT_IDS` includes `com.workoutplanner.ios`.
    - `ALLOWED_ORIGINS` includes only trusted web origins.
    - `ADMIN_SUPPORT_SECRET` is set to a 32+ character random value for support-only routes.
+   - Optional: `WEEKLY_SUMMARY_TOKEN_SHA256` and `WEEKLY_SUMMARY_EMAIL` enable the
+     read-only weekly-review summary route (see Weekly Summary Route). Leave both unset to keep it a 404.
 2. Run or confirm the `Deploy to EC2` workflow passed:
    - web lint, tests, build, and production audit
    - backend tests and production audit
@@ -175,6 +177,36 @@ curl -H "X-Admin-Support-Secret: $ADMIN_SUPPORT_SECRET" \
 
 Do not ask testers for provider tokens, app session tokens, or screenshots that
 show private workout notes unless they volunteer them.
+
+## Weekly Summary Route
+
+`GET /api/weekly-summary?week=YYYY-MM-DD` (a Monday) serves the weekly-review
+routine one account's week of workouts. It is read-only (DynamoDB Get/Query only,
+no exercise seeding or audit writes) and follows the weekly-review
+`weekly-summary-contract.md`.
+
+| Variable | Meaning |
+|---|---|
+| `WEEKLY_SUMMARY_TOKEN_SHA256` | Lowercase hex SHA-256 of the routine's bearer token. The plaintext token is never stored on the host. |
+| `WEEKLY_SUMMARY_EMAIL` | The one account reported, matched case-insensitively through the verified email alias. |
+
+If either is unset or empty, or the bearer token does not match, the route returns
+404. The token works only on this route, and app session tokens are never accepted
+there. Requests go through the same nginx `limit_req` zone and
+`RATE_LIMIT_PER_MINUTE` limiter as every other API route. An unknown or deleted
+account returns `200` with `data: {"status":"no-account"}`.
+
+To enable it, generate the token off-host, keep the plaintext only in the
+routine's environment, and add the hash and email to the existing on-host
+production environment for `workout_api`:
+
+```bash
+TOKEN=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-40)
+printf %s "$TOKEN" | shasum -a 256 | cut -d' ' -f1   # WEEKLY_SUMMARY_TOKEN_SHA256
+```
+
+Adding them changes the effective environment, so treat it as a reviewed
+configuration change under the release safety gate below, not part of an app release.
 
 ## Production build resources
 
