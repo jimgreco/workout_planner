@@ -1037,3 +1037,224 @@ test('workout setup choice round-trips and legacy saves retain it only in the sa
   assert.equal(response.statusCode, 200);
   assert.equal(JSON.parse(response.body).exerciseItems[0].setupSelectionMade, undefined);
 });
+
+// --- GET /weekly-summary ----------------------------------------------------
+
+const { createHash } = await import('node:crypto');
+const WEEKLY_TOKEN = 'weekly-review-test-token-0123456789abcdef';
+const WEEKLY_EMAIL = 'Lifter@Example.com';
+
+function weeklySeed() {
+  const PK = 'USER#acct-weekly';
+  const set = (fields) => fields;
+  return [
+    { PK: emailAliasPk('lifter@example.com'), SK: 'ALIAS', accountSub: 'acct-weekly' },
+    { PK, SK: 'ACCOUNT', createdAt: '2026-01-01T00:00:00Z' },
+    { PK, SK: 'EXERCISE#e1', id: 'e1', name: 'Bench', muscleGroup: 'Chest' },
+    { PK, SK: 'EXERCISE#e2', id: 'e2', name: 'Squat', muscleGroup: 'Legs' },
+    { PK, SK: 'PROGRAM#p1', id: 'p1', name: 'Old block', active: false, phases: [] },
+    { PK, SK: 'PROGRAM#p2', id: 'p2', name: 'Block 2', active: true, phases: [
+      { id: 'ph1', name: 'Accumulate', startDate: '2026-10-01', endDate: '2026-10-31' },
+      { id: 'ph2', name: 'Intensify', startDate: '2026-11-01', endDate: '2026-11-30' },
+    ] },
+    { PK, SK: 'LOG#l1', id: 'l1', date: '2026-11-03', status: 'finished', name: 'Upper A', readiness: 4,
+      startTime: '2026-11-03T10:00:00Z', endTime: '2026-11-03T11:10:00Z', pausedDurationMs: 600000,
+      pbExerciseIds: ['e1'], prescription: { templateName: 'Ignored', optional: false },
+      exerciseItems: [
+        { exerciseId: 'e1', sets: [
+          set({ reps: '8', setType: 'warmup', completion: 'recorded' }),
+          set({ reps: '8', completion: 'recorded' }),
+          set({ reps: '', completion: 'skipped' }),
+          set({ reps: '6' }),
+        ] },
+        { exerciseId: 'e2', sets: [
+          set({ reps: '5' }),
+          set({ reps: '5', completion: 'recorded' }),
+          set({ reps: '5', completion: 'unrecorded' }),
+          set({ repsLeft: '', repsRight: '' }),
+        ] },
+      ] },
+    { PK, SK: 'LOG#l2', id: 'l2', date: '2026-11-05', status: 'finished', hasPB: true,
+      prescription: { templateName: 'Lower B', optional: true },
+      exerciseItems: [{ exerciseId: 'e2', sets: [
+        { reps: '10', completion: 'recorded' }, { reps: '10', completion: 'recorded' }, { repsLeft: '10', completion: 'recorded' },
+      ] }] },
+    { PK, SK: 'LOG#l3', id: 'l3', date: '2026-11-06', status: 'skipped', exerciseItems: [] },
+    { PK, SK: 'LOG#l4', id: 'l4', date: '2026-11-07', status: 'active', exerciseItems: [{ exerciseId: 'e1', sets: [{ reps: '5' }] }] },
+    { PK, SK: 'LOG#l5', id: 'l5', date: '2026-10-28', status: 'finished', name: 'Prev',
+      exerciseItems: [{ exerciseId: 'e1', sets: [{ reps: '8' }] }, { exerciseId: 'deleted-ex', sets: [{ reps: '8' }] }] },
+    { PK, SK: 'LOG#l6', id: 'l6', date: '2026-10-01', status: 'finished', exerciseItems: [{ exerciseId: 'e1', sets: [{ reps: '8' }] }] },
+    { PK, SK: 'LOG#l7', id: 'l7', date: '2026-11-09', status: 'finished', exerciseItems: [{ exerciseId: 'e1', sets: [{ reps: '8' }] }] },
+    { PK: 'USER#someone-else', SK: 'LOG#x1', id: 'x1', date: '2026-11-04', status: 'finished',
+      exerciseItems: [{ exerciseId: 'e1', sets: [{ reps: '8' }] }] },
+  ];
+}
+
+function recordingDb(seed) {
+  const inner = fakeDb(seed);
+  const commands = [];
+  return {
+    commands,
+    items: inner.items,
+    async send(command) {
+      commands.push(command.constructor.name);
+      return inner.send(command);
+    },
+  };
+}
+
+function weeklyEvent(query, headers = { authorization: `Bearer ${WEEKLY_TOKEN}` }, method = 'GET', path = '/api/weekly-summary') {
+  return { ...event(method, path, undefined, headers), rawQueryString: query };
+}
+
+async function withWeeklyEnv(env, fn) {
+  const keys = ['WEEKLY_SUMMARY_TOKEN_SHA256', 'WEEKLY_SUMMARY_EMAIL'];
+  const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) {
+    if (env[key] === undefined) delete process.env[key];
+    else process.env[key] = env[key];
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const key of keys) {
+      if (original[key] === undefined) delete process.env[key];
+      else process.env[key] = original[key];
+    }
+  }
+}
+
+const WEEKLY_ENV = {
+  WEEKLY_SUMMARY_TOKEN_SHA256: createHash('sha256').update(WEEKLY_TOKEN).digest('hex'),
+  WEEKLY_SUMMARY_EMAIL: WEEKLY_EMAIL,
+};
+
+test('weekly summary is a 404 unless both env vars are configured', async () => {
+  const db = recordingDb(weeklySeed());
+  __setTestDb(db);
+  for (const env of [
+    {},
+    { WEEKLY_SUMMARY_TOKEN_SHA256: WEEKLY_ENV.WEEKLY_SUMMARY_TOKEN_SHA256 },
+    { WEEKLY_SUMMARY_EMAIL: WEEKLY_EMAIL },
+    { ...WEEKLY_ENV, WEEKLY_SUMMARY_TOKEN_SHA256: '' },
+    { ...WEEKLY_ENV, WEEKLY_SUMMARY_EMAIL: '  ' },
+  ]) {
+    const result = await withWeeklyEnv(env, () => handler(weeklyEvent('week=2026-11-02')));
+    assert.equal(result.statusCode, 404, JSON.stringify(env));
+  }
+  assert.deepEqual(db.commands, []);
+});
+
+test('weekly summary rejects missing, wrong and app session tokens with 404', async () => {
+  const db = recordingDb(weeklySeed());
+  __setTestDb(db);
+  const session = await createAppSession({ sub: 'acct-weekly', provider: 'google' });
+  await withWeeklyEnv(WEEKLY_ENV, async () => {
+    for (const headers of [
+      {},
+      { authorization: WEEKLY_TOKEN },
+      { authorization: 'Bearer ' },
+      { authorization: 'Bearer wrong-token' },
+      { authorization: `Bearer ${WEEKLY_ENV.WEEKLY_SUMMARY_TOKEN_SHA256}` },
+      { authorization: `Bearer ${session.token}` },
+      { authorization: 'Bearer dev-bypass-token' },
+      { 'x-admin-support-secret': WEEKLY_TOKEN },
+    ]) {
+      const result = await handler(weeklyEvent('week=2026-11-02', headers));
+      assert.equal(result.statusCode, 404, JSON.stringify(headers));
+    }
+    // Other methods and sub-paths do not exist either, even with the right token.
+    assert.equal((await handler(weeklyEvent('week=2026-11-02', undefined, 'POST'))).statusCode, 404);
+    assert.equal((await handler(weeklyEvent('week=2026-11-02', undefined, 'GET', '/api/weekly-summary/x'))).statusCode, 404);
+  });
+  assert.deepEqual(db.commands, []);
+});
+
+test('weekly summary token is not accepted on any other route', async () => {
+  __setTestDb(recordingDb(weeklySeed()));
+  await withWeeklyEnv(WEEKLY_ENV, async () => {
+    const headers = { authorization: `Bearer ${WEEKLY_TOKEN}` };
+    for (const path of ['/logs', '/exercises', '/programs', '/settings', '/export']) {
+      assert.equal((await handler(event('GET', path, undefined, headers))).statusCode, 401, path);
+    }
+    assert.equal((await handler(event('GET', '/admin/feedback', undefined, headers))).statusCode, 401);
+  });
+});
+
+test('weekly summary requires a Monday week parameter', async () => {
+  const db = recordingDb(weeklySeed());
+  __setTestDb(db);
+  await withWeeklyEnv(WEEKLY_ENV, async () => {
+    for (const query of ['', 'week=', 'week=2026-11-03', 'week=2026-11-08', 'week=2026-2-2', 'week=2026-02-30',
+      'week=2026-13-02', 'week=20261102', 'week=2026-11-02T00:00:00Z', 'week=nope']) {
+      const result = await handler(weeklyEvent(query));
+      assert.equal(result.statusCode, 400, query);
+      assert.equal(JSON.parse(result.body).error, 'week must be a Monday (YYYY-MM-DD)');
+    }
+  });
+  assert.deepEqual(db.commands, []);
+});
+
+test('weekly summary reports the configured account week without writing', async () => {
+  const db = recordingDb(weeklySeed());
+  const before = structuredClone([...db.items.entries()]);
+  __setTestDb(db);
+  const result = await withWeeklyEnv(WEEKLY_ENV, () => handler(weeklyEvent('week=2026-11-02')));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers['Content-Type'], 'application/json');
+  assert.equal(result.headers['Cache-Control'], 'no-store');
+  const body = JSON.parse(result.body);
+  assert.ok(!Number.isNaN(Date.parse(body.generatedAt)));
+  delete body.generatedAt;
+  assert.deepEqual(body, {
+    version: 1,
+    app: 'workouts',
+    week: { start: '2026-11-02', end: '2026-11-08' },
+    data: {
+      status: 'ok',
+      program: { name: 'Block 2', phase: 'Intensify' },
+      current: {
+        sessions: [
+          { date: '2026-11-03', name: 'Upper A', workingSets: 4, minutes: 60, readiness: 4, personalBests: ['Bench'], optional: false },
+          { date: '2026-11-05', name: 'Lower B', workingSets: 3, minutes: null, readiness: null, personalBests: [], optional: true },
+        ],
+        sessionCount: 2,
+        skippedCount: 1,
+        workingSets: 7,
+        personalBestCount: 2,
+        setsByMuscleGroup: { Legs: 5, Chest: 2 },
+      },
+      previous: { sessionCount: 1, workingSets: 2, setsByMuscleGroup: { Chest: 1, Other: 1 } },
+      change: { sessionCount: 1, workingSets: 5 },
+    },
+  });
+  assert.deepEqual(Object.keys(body.data.current.setsByMuscleGroup), ['Legs', 'Chest']);
+  assert.ok(db.commands.length > 0);
+  assert.deepEqual([...new Set(db.commands)].sort(), ['GetCommand', 'QueryCommand']);
+  assert.deepEqual([...db.items.entries()], before);
+});
+
+test('weekly summary returns no-account for an unknown email or a deleted account', async () => {
+  const seed = weeklySeed();
+  const db = recordingDb(seed);
+  __setTestDb(db);
+  const unknown = await withWeeklyEnv({ ...WEEKLY_ENV, WEEKLY_SUMMARY_EMAIL: 'nobody@example.com' },
+    () => handler(weeklyEvent('week=2026-11-02')));
+  assert.equal(unknown.statusCode, 200);
+  assert.deepEqual(JSON.parse(unknown.body).data, { status: 'no-account' });
+
+  db.items.set('USER#acct-weekly|ACCOUNT', { PK: 'USER#acct-weekly', SK: 'ACCOUNT', deletedAt: '2026-11-01T00:00:00Z' });
+  const deleted = await withWeeklyEnv(WEEKLY_ENV, () => handler(weeklyEvent('week=2026-11-02')));
+  assert.equal(deleted.statusCode, 200);
+  assert.deepEqual(JSON.parse(deleted.body).data, { status: 'no-account' });
+  assert.deepEqual([...new Set(db.commands)].sort(), ['GetCommand']);
+});
+
+test('weekly summary read failures return a generic 500', async () => {
+  __setTestDb({ async send() { throw new Error('ResourceNotFoundException: secret table detail'); } });
+  const result = await withWeeklyEnv(WEEKLY_ENV, () => handler(weeklyEvent('week=2026-11-02')));
+  assert.equal(result.statusCode, 500);
+  const body = JSON.parse(result.body);
+  assert.equal(body.error, 'internal');
+  assert.doesNotMatch(result.body, /secret table detail/);
+});
