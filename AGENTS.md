@@ -203,10 +203,10 @@ Contextual PBs come from finished workout history, keyed by exercise, technique 
 
 ## Release isolation
 
-Main pushes run verification and automatically upload TestFlight through the
-current `testflight.yml`; pushing main therefore requires release approval.
-Do not dispatch a second native upload for that commit. App deployment requires
-an explicit dispatch input (default false). Use the current Operations safety gate:
+Main pushes run verification, deploy production web/API once `verify` passes,
+and automatically upload TestFlight through the current `testflight.yml`; pushing
+main is therefore a release. Do not dispatch a second native upload for that
+commit. A manual `Deploy to EC2` dispatch on main only redeploys. Use the current Operations safety gate:
 verify live Compose labels/config hashes and preserve all effective environment
 settings. The app-local helper uses a shared host lock, rollback image tags and
 `--no-deps`; it never rewrites shared `.env`/overrides or transfers app credentials.
