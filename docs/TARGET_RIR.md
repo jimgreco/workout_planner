@@ -25,8 +25,8 @@ in force. Import/export and account-owned offline queues carry the field.
 
 1. Obtain authorization for this feature's publication, then commit/push and verify
    the exact SHA using the normal checks.
-2. Follow `OPERATIONS.md` for recovery/preflight and explicitly dispatch the
-   server/web release. Deploy the API first: the old API rejects the new key.
+2. Follow `OPERATIONS.md` for recovery/preflight before pushing main; the push
+   deploys the server/web release. Deploy the API first: the old API rejects the new key.
 3. Verify health/version and planned-target API round trips on an authorized test
    account, then explicitly dispatch TestFlight for the same SHA. Report Apple's
    upload result and tester availability separately.

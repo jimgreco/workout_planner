@@ -13,7 +13,7 @@ Before inviting more testers:
    - `ADMIN_SUPPORT_SECRET` is set to a 32+ character random value for support-only routes.
    - Optional: `WEEKLY_SUMMARY_TOKEN_SHA256` and `WEEKLY_SUMMARY_EMAIL` enable the
      read-only weekly-review summary route (see Weekly Summary Route). Leave both unset to keep it a 404.
-2. Run or confirm the `Deploy to EC2` workflow passed:
+2. Confirm the `Deploy to EC2` workflow (runs on every push to main) passed:
    - web lint, tests, build, and production audit
    - backend tests and production audit
    - live `/api/healthz` and `/api/version` smoke checks
@@ -259,8 +259,10 @@ for this destructive check. Automated mocks do not establish live Apple acceptan
 Main pushes run web/backend verification and automatically run the current
 `TestFlight` upload workflow. Obtain explicit distribution/profile approval before
 pushing main, and track that automatic run instead of dispatching a duplicate.
-Production web deployment requires a manual `Deploy to EC2` dispatch on main with
-`deploy_production=true`. A separate native dispatch is only for an explicitly
+Every push to main that passes `verify` deploys production web automatically
+(changed November 2026; previously a manual dispatch). A manual `Deploy to EC2`
+dispatch on main redeploys the current commit. `safe-compose-release.py` still
+refuses any release whose live configuration has drifted. A separate native dispatch is only for an explicitly
 reviewed retry when no upload occurred. Uploaded builds are App Store-eligible
 (not internal-only); attaching one to an App Store version and submitting it for
 review is a separate manual App Store Connect step. Builds do not establish physical
