@@ -6,16 +6,20 @@ The workflow imports this repository's existing signing identity into a temporar
 
 Ownership was cleared on 2026-10-03. Main pushes automatically run the guarded iOS upload path. Any new commit changes the source SHA and Git-count build, and the workflow rechecks current signing state, approved audience, and build availability before upload. Manual dispatch is also available with the existing upload input.
 
+The guards run in the shared engine `jimgreco/release-tools/ios` (`prepare`,
+`upload`, `cleanup`), pinned by commit in `testflight.yml`. This repository keeps
+only `.github/scripts/release-policy.json` and the Info.plist configure step.
+
 ## Local checks
 
 ```sh
-node --test .github/scripts/release-guard-tests.mjs
-PYTHONDONTWRITEBYTECODE=1 python3 .github/scripts/test_release.py
+python3 <release-tools>/ios/scripts/verify-release.py validate-policy --policy .github/scripts/release-policy.json
+node <release-tools>/ios/scripts/asc-readonly.mjs validate-policy --policy .github/scripts/release-policy.json
 actionlint .github/workflows/testflight.yml
 git diff --check
 ```
 
-Tests use synthetic in-memory responses and temporary files. They neither read real private keys nor contact Apple. Passing these tests does not prove current Apple validity, accepted version-train status, successful signing, successful upload, tester availability, or device acceptance. The actual authenticated GET checks and final artifact verification must pass during release. A successful uploader response is followed by a separate processing/internal-group availability check; if that times out, inspect the existing Apple build before retrying.
+The engine's own tests run in release-tools CI. They use synthetic in-memory responses and temporary files. They neither read real private keys nor contact Apple. Passing these tests does not prove current Apple validity, accepted version-train status, successful signing, successful upload, tester availability, or device acceptance. The actual authenticated GET checks and final artifact verification must pass during release. A successful uploader response is followed by a separate processing/internal-group availability check; if that times out, inspect the existing Apple build before retrying.
 
 ## Authentication and scope
 

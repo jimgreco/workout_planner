@@ -5,7 +5,9 @@
   "teamId": "V6JPQCD336",
   "certificateSha256": "7fb57dbf0cd7923f9ba97d8801824de79e1ba235dbe78d4a821f8195c30f0bf8",
   "certificateSha1": "963A7A5107DB8D4C141371C285F71CCAE84A5452",
-  "testerEmailSha256": "a46343858cf3e5e2fda6339f7063190f295ece10dea50979932e69ec57ea4baa",
+  "testerEmailSha256s": [
+    "a46343858cf3e5e2fda6339f7063190f295ece10dea50979932e69ec57ea4baa"
+  ],
   "groups": [
     {
       "id": "853ed696-8d15-4610-8d9f-c905caabce36",
@@ -41,6 +43,10 @@
   },
   "marketingVersion": "1.4",
   "apiOrigin": "https://repmixburn.com/api",
+  "mainInfoPlist": {
+    "API_BASE_URL": "{apiOrigin}",
+    "GIT_COMMIT_HASH": "{sha7}"
+  },
   "infoPlists": [
     "ios/WorkoutPlanner/Info.plist",
     "ios/WorkoutPlannerLiveActivity/Info.plist"
@@ -51,5 +57,6 @@
     "GIT_COMMIT_HASH",
     "CFBundleURLTypes",
     "ITSAppUsesNonExemptEncryption"
-  ]
+  ],
+  "allowApprovedIndividualTesters": true
 }

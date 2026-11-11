@@ -8,7 +8,8 @@ auth, and deployment. The active production path is EC2 + Docker Compose.
 - Frontend: React/Vite static build served by Nginx in Docker.
 - API: Node 22 backend container running `backend/local-server.mjs`.
 - Data: DynamoDB table keyed by `USER#<providerSub>`.
-- Deploy: GitHub Actions verifies, rsyncs to EC2, rebuilds Docker Compose, and
+- Deploy: GitHub Actions verifies, then the shared `jimgreco/release-tools`
+  server workflow publishes GHCR images and swaps them in on EC2, and CI
   smoke-tests `https://repmixburn.com/api/healthz`.
 
 ## Auth

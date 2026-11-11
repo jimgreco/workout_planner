@@ -55,7 +55,7 @@ DynamoDB
 | API | Node 22 ESM, `backend/src/handler.mjs` |
 | Auth | Google/Apple provider token exchange → signed app session |
 | Database | DynamoDB single-table |
-| Deploy | GitHub Actions → rsync to EC2 → Docker Compose rebuild/restart |
+| Deploy | GitHub Actions → shared `jimgreco/release-tools` server workflow → GHCR images → `release.py` on EC2 |
 | Tests | Vitest + Testing Library, Node built-in backend tests |
 
 ## Auth Contract
@@ -206,20 +206,24 @@ Contextual PBs come from finished workout history, keyed by exercise, technique 
 Main pushes run verification, deploy production web/API once `verify` passes,
 and automatically upload TestFlight through the current `testflight.yml`; pushing
 main is therefore a release. Do not dispatch a second native upload for that
-commit. A manual `Deploy to EC2` dispatch on main only redeploys. Use the current Operations safety gate:
-verify live Compose labels/config hashes and preserve all effective environment
-settings. The app-local helper uses a shared host lock, rollback image tags and
-`--no-deps`; it never rewrites shared `.env`/overrides or transfers app credentials.
-Missing live override files are a release blocker, not permission to replace them.
+commit. A manual `Deploy to EC2` dispatch on main only redeploys.
 
-Compose 2.26.1 may hash `--no-deps` releases without external dependency edges.
-The release helper accepts only the exact scoped hash after a lossless full JSON
-roundtrip; preserve internal app dependencies and the effective-environment guard.
+The server release is the shared, commit-pinned
+`jimgreco/release-tools/.github/workflows/server-release.yml`, driven by
+`.github/release/server.json`: it builds the `backend` (`-api`) and `frontend`
+(`-web`) stages as exact-commit ARM64 images in GHCR, then `release.py` on the
+host verifies live Compose labels/config hashes, swaps only `workout_api` and
+`workout` (image plus `GIT_COMMIT`/`BUILD_TIME`/`APP_VERSION`), health-checks the
+exact build and rolls back on failure. Nothing is built or rsynced on EC2, and
+shared `.env`/overrides are never rewritten. When bumping the version, update
+`package.json` and the three `1.4.0`-style values in `server.json` together (CI
+checks they match). The iOS upload uses `release-tools/ios/{prepare,upload,cleanup}`
+with `.github/scripts/release-policy.json`.
 
 Docker contexts must exclude root/nested `.env*`, PEM/key files, `.ssh`, and `.aws`,
 including backend and public-asset subdirectories. CI runs the synthetic fixture
-check against the frontend source stage, backend image, and production prebuilt
-frontend, using only a disposable clean Git archive.
+check against the frontend source stage, backend image, and production
+`frontend` image, using only a disposable clean Git archive.
 
 ## Legacy offline recovery
 
