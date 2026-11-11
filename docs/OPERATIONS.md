@@ -13,11 +13,10 @@ Before inviting more testers:
    - `ADMIN_SUPPORT_SECRET` is set to a 32+ character random value for support-only routes.
    - Optional: `WEEKLY_SUMMARY_TOKEN_SHA256` and `WEEKLY_SUMMARY_EMAIL` enable the
      read-only weekly-review summary route (see Weekly Summary Route). Leave both unset to keep it a 404.
-2. Confirm the `Deploy to EC2` workflow (runs on every push to main) passed:
-   - web lint, tests, build, and production audit
-   - backend tests and production audit
-   - live `/api/healthz` and `/api/version` smoke checks
-3. Run or confirm the `TestFlight` workflow uploaded successfully and Apple accepted the build.
+2. Confirm the `Release` workflow (runs on every push to main) passed:
+   - `verify`: web lint, tests, build, and production audit; backend tests and production audit
+   - `server`: the shared release-tools release, including its live public health/version check
+3. Confirm the `ios` job of that `Release` run uploaded successfully and Apple accepted the build.
 4. Run the recovery preflight and save the manifest path:
    - `cd backend && USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run recovery:check`
    - Confirm the output says point-in-time recovery is `ENABLED`.
@@ -210,18 +209,13 @@ configuration change under the release safety gate below, not part of an app rel
 
 ## Production build resources
 
-The production deployment builds web assets on the GitHub runner with the
-existing Google web client ID from the server configuration. It transfers
-`dist/` and selects the `frontend-prebuilt` Docker stage on EC2. The standard
-`frontend` stage remains available for local builds. Deployments are serialized
-and reuse Docker layers; they do not globally prune the shared host's images or
-build cache on each release.
-
-If a deployment loses SSH connectivity, confirm the remote build has stopped
-before retrying. A disconnected client can leave a build consuming memory and
-disk. Inspect memory, disk, and only the affected release's build processes;
-avoid restarting unrelated apps or deleting database volumes. The September
-2026 gym rollout exposed memory and disk pressure on the shared 2 GB / 8 GB host.
+Production images are built on a GitHub ARM64 runner by the shared
+`jimgreco/release-tools` server workflow from `.github/release/server.json`:
+`ghcr.io/jimgreco/workout_planner:<sha>-api` (`backend` stage) and
+`<sha>-web` (`frontend` stage, Vite build inside Docker with the public Google
+web client ID pinned in the manifest). Nothing is built on EC2, which keeps
+npm/Vite off the shared 2 GB / 8 GB host. Releases do not prune the host's
+images or build cache.
 
 ## Sign in with Apple account deletion
 
@@ -256,62 +250,40 @@ for this destructive check. Automated mocks do not establish live Apple acceptan
 
 ## Audited release safety gate (October 2026)
 
-Main pushes run web/backend verification and automatically run the current
-`TestFlight` upload workflow. Obtain explicit distribution/profile approval before
+Main pushes run web/backend verification and automatically run the
+`testflight.yml` upload (the `ios` job of the `Release` workflow). Obtain explicit distribution/profile approval before
 pushing main, and track that automatic run instead of dispatching a duplicate.
 Every push to main that passes `verify` deploys production web automatically
-(changed November 2026; previously a manual dispatch). A manual `Deploy to EC2`
-dispatch on main redeploys the current commit. `safe-compose-release.py` still
-refuses any release whose live configuration has drifted. A separate native dispatch is only for an explicitly
+(changed November 2026; previously a manual dispatch). A manual `Release`
+dispatch on main re-releases the current commit (server and/or iOS, per its checkboxes). The shared `release.py` refuses
+any release whose live configuration has drifted. A separate `Release` dispatch with only `ios` selected is only for an explicitly
 reviewed retry when no upload occurred. Uploaded builds are App Store-eligible
 (not internal-only); attaching one to an App Store version and submitting it for
 review is a separate manual App Store Connect step. Builds do not establish physical
 device acceptance or App Store availability.
 
-`scripts/safe-compose-release.py workouts <full-sha> --check` validates the running
-containers' exact Compose files, project, config hashes, and effective environment
-without building/restarting. If a historical temporary override is missing, the existing durable base and
-shared override may be used only when both service config hashes exactly match
-the running containers and every effective environment value matches. Any other
-missing input or drift blocks release and requires reconciliation. Never
-replace those settings with a fresh shared checkout. Credentials stay on-host;
-the workflow no longer copies app secrets, upserts `.env`, or rewrites the shared
-Compose override. The frontend build reads only the existing public OAuth client
-ID from the live API container.
-
-The release helper uses the shared host lock, retains rollback image tags, builds
-only `workout`/`workout_api`, and recreates those services with `--no-deps
---no-build`. A metadata-only overlay remains for the new live Compose labels.
-Preserve it and rollback images. Roll back using the retained images and exact
-config, never the historical workflow that overwrites shared settings.
+The release (`.github/workflows/release.yml` → `jimgreco/release-tools`
+`server-release.yml`, pinned by commit, configured by `.github/release/server.json`)
+takes the shared host locks, rebuilds the Compose invocation recorded on the
+running `workout_api`/`workout` containers and refuses unless every service
+config hash matches live. It writes `~/deploy/releases/workouts-image-<sha>.json`
+that sets only the GHCR image and `GIT_COMMIT`/`BUILD_TIME`/`APP_VERSION`, drops
+the old helper's `app-release-*.json` overlays, and proves the resulting model
+differs in nothing else. It tags the previous images as rollback images, recreates
+both services with `--no-deps --no-build`, and requires `/version` on the API and
+`/api/version` through the frontend's Nginx to report the new commit, rolling back
+otherwise. Records are kept in `~/deploy/release-records/`. A missing live Compose
+input or any drift blocks release and requires reconciliation. Credentials stay
+on-host; the workflow never copies app secrets, upserts `.env`, or rewrites shared
+Compose files. See `release-tools/server/README.md` for the full procedure.
 
 This client upgrade requires sign-in again. Unowned legacy queues stay preserved
 and quarantined, and users must not clear browser storage or uninstall before
 recovery. Never downgrade clients into the old unowned storage model as a recovery
 shortcut; preserve account-bound clients while investigating server issues.
 
-Optional CI deployment requires an already verified `EC2_SSH_KNOWN_HOSTS` secret
-and fails closed when it is absent. It never obtains fresh trust with
-`ssh-keyscan`. The coordinator may instead use the existing pinned local SSH
-connection for the authorized, serialized release; configuring new trust is
-a separate action. Base-image environment changes also fail the equality guard
-and require review instead of automatically changing effective app settings.
-
-Compose 2.26.1 records a scoped hash after `up --no-deps`: dependencies outside
-the selected app services are omitted. Preflight accepts that exact alternate
-only after hashing the full rendered JSON reproduces every original service
-hash. It then removes only external `depends_on` entries and requires every
-resulting hash to match live. Internal dependencies and all other configuration
-remain unchanged; full effective-environment comparison still runs. Resolved
-configuration stays in process memory/stdin and is never written or logged.
-
-After separate infrastructure recreations, Workouts may have different recorded
-input chains. The helper accepts only prefix extensions, preserving the selected
-service definition and every existing resource definition under the extended
-chain. It can also verify the exact dependency set recorded in each live
-container's Compose label, after the same lossless hash roundtrip. Missing labels,
-diverging chains, changed logging/networks/volumes, or any other hash/environment
-drift still block release. The retained isolation overlay remains authoritative.
+CI deployment requires an already verified `EC2_SSH_KNOWN_HOSTS` secret and
+fails closed when it is absent. It never obtains fresh trust with `ssh-keyscan`.
 
 ## Private build-context exclusions
 
@@ -319,7 +291,6 @@ Exclude root/nested `.env*`, private PEM/key files, `.ssh`, and `.aws` from Dock
 contexts, including backend/public subfolders. Existing host files are preserved.
 The verify job injects synthetic sentinels only into a disposable clean Git
 archive, then asserts their absence in the frontend source stage, backend image,
-and final prebuilt frontend. Public assets are taken only from that isolated
-frontend build. The trap cleans its temporary archive and inspection container;
+and final `frontend` image. The trap cleans its temporary archive;
 collisions fail without overwriting any source file. The fixture unit tests
 verify orchestration safety; real exclusion proof comes from the Docker CI run.

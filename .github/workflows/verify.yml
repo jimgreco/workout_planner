@@ -1,0 +1,87 @@
+name: Verify
+
+# The app's own checks. Called by release.yml on pull requests, pushes to
+# main and manual runs; releases wait for it.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Lint web app
+        run: npm run lint
+
+      - name: Test web app
+        run: npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Audit web production dependencies
+        run: npm audit --omit=dev
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Test backend
+        working-directory: backend
+        run: npm test
+
+      - name: Audit backend production dependencies
+        working-directory: backend
+        run: npm audit --omit=dev
+
+      - name: Verify private files are excluded from production images
+        run: |
+          set -euo pipefail
+          mkdir -p output/ci
+          python3 scripts/test-docker-context-fixtures.py
+          bash scripts/check-docker-context.sh workouts 2>&1 | tee output/ci/docker-context.log
+
+      - name: Upload Docker context diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-context-diagnostics
+          path: output/ci/docker-context.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Check release hardening config
+        run: |
+          set -euo pipefail
+          grep -q 'FROM node:22' Dockerfile
+          # server.json pins APP_VERSION literally (release metadata cannot read
+          # package.json); it must match the version this commit declares.
+          python3 - <<'PY'
+          import json
+          manifest = json.load(open('.github/release/server.json'))
+          version = json.load(open('package.json'))['version']
+          images = {image['tag_suffix']: image for image in manifest['images']}
+          found = {
+              'services.workout_api.metadata_env.APP_VERSION': manifest['services']['workout_api']['metadata_env']['APP_VERSION'],
+              'images[api].build_args.APP_VERSION': images['api']['build_args']['APP_VERSION'],
+              'images[web].build_args.VITE_APP_VERSION': images['web']['build_args']['VITE_APP_VERSION'],
+          }
+          wrong = [key for key, value in found.items() if value != version]
+          if wrong:
+              raise SystemExit('::error::server.json ' + ', '.join(wrong) + ' must equal package.json version ' + version)
+          print('server.json release version matches package.json:', version)
+          PY

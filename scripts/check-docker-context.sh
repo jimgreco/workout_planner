@@ -81,13 +81,8 @@ else
   assert_node_image "$image-frontend-source"
   docker build --target backend --tag "$image-backend" "$context"
   assert_node_image "$image-backend"
-  # Reuse only this isolated build's public assets for the actual production stage.
-  container_id="$(docker create "$image-frontend-source")"
-  mkdir "$context/dist"
-  docker cp "$container_id:/app/dist/." "$context/dist/"
-  docker rm "$container_id" >/dev/null
-  container_id=''
-  docker build --target frontend-prebuilt --tag "$image" "$context"
+  # The released web image is the self-contained `frontend` stage.
+  docker build --target frontend --tag "$image" "$context"
   docker run --rm --network none --entrypoint sh "$image" -c '
     for relative in .env.context-sentinel context-sentinel.pem context-sentinel.key; do
       if [ -e "/usr/share/nginx/html/$relative" ]; then

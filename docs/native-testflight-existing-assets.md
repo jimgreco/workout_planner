@@ -4,18 +4,22 @@ This path uploads only the iOS app and its approved extensions to the existing A
 
 The workflow imports this repository's existing signing identity into a temporary runner keychain. It downloads the pinned existing profiles, verifies live certificate/profile resources and decoded entitlements, preserves any cached profile with the same UUID, and signs/exports manually without provisioning-update flags. Export produces an App Store-eligible build (not TestFlight internal-only, so it can be attached to an App Store version), preserves the exact Git-count build number, and embeds the full source SHA. The exported app and all approved extensions must match the expected source, build, version, platform, signing identity, profiles, and required entitlements. Current signing state, audience, and build availability are rechecked immediately before the sole binary upload.
 
-Ownership was cleared on 2026-10-03. Main pushes automatically run the guarded iOS upload path. Any new commit changes the source SHA and Git-count build, and the workflow rechecks current signing state, approved audience, and build availability before upload. Manual dispatch is also available with the existing upload input.
+Ownership was cleared on 2026-10-03. Main pushes automatically run the guarded iOS upload path. Any new commit changes the source SHA and Git-count build, and the workflow rechecks current signing state, approved audience, and build availability before upload. A manual `Release` dispatch on main with the `ios` checkbox also uploads.
+
+The guards run in the shared engine `jimgreco/release-tools/ios` (`prepare`,
+`upload`, `cleanup`), pinned by commit in `testflight.yml`. This repository keeps
+only `.github/scripts/release-policy.json` and the Info.plist configure step.
 
 ## Local checks
 
 ```sh
-node --test .github/scripts/release-guard-tests.mjs
-PYTHONDONTWRITEBYTECODE=1 python3 .github/scripts/test_release.py
-actionlint .github/workflows/testflight.yml
+python3 <release-tools>/ios/scripts/verify-release.py validate-policy --policy .github/scripts/release-policy.json
+node <release-tools>/ios/scripts/asc-readonly.mjs validate-policy --policy .github/scripts/release-policy.json
+actionlint .github/workflows/release.yml .github/workflows/verify.yml .github/workflows/testflight.yml
 git diff --check
 ```
 
-Tests use synthetic in-memory responses and temporary files. They neither read real private keys nor contact Apple. Passing these tests does not prove current Apple validity, accepted version-train status, successful signing, successful upload, tester availability, or device acceptance. The actual authenticated GET checks and final artifact verification must pass during release. A successful uploader response is followed by a separate processing/internal-group availability check; if that times out, inspect the existing Apple build before retrying.
+The engine's own tests run in release-tools CI. They use synthetic in-memory responses and temporary files. They neither read real private keys nor contact Apple. Passing these tests does not prove current Apple validity, accepted version-train status, successful signing, successful upload, tester availability, or device acceptance. The actual authenticated GET checks and final artifact verification must pass during release. A successful uploader response is followed by a separate processing/internal-group availability check; if that times out, inspect the existing Apple build before retrying.
 
 ## Authentication and scope
 

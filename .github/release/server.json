@@ -1,0 +1,39 @@
+{
+  "app": "workouts",
+  "image": "ghcr.io/jimgreco/workout_planner",
+  "images": [
+    {
+      "tag_suffix": "api",
+      "context": ".",
+      "dockerfile": "Dockerfile",
+      "target": "backend",
+      "build_args": { "APP_VERSION": "1.4.0", "GIT_COMMIT": "{sha7}" }
+    },
+    {
+      "tag_suffix": "web",
+      "context": ".",
+      "dockerfile": "Dockerfile",
+      "target": "frontend",
+      "build_args": {
+        "VITE_API_URL": "/api",
+        "VITE_DEV_BYPASS_AUTH": "false",
+        "VITE_GIT_COMMIT": "{sha}",
+        "VITE_APP_VERSION": "1.4.0",
+        "VITE_GOOGLE_CLIENT_ID": "1018348991868-l4puul9nbl8pehb48v1bq7flt9ktjbme.apps.googleusercontent.com"
+      }
+    }
+  ],
+  "services": {
+    "workout_api": {
+      "tag_suffix": "api",
+      "metadata_env": { "GIT_COMMIT": "{sha7}", "BUILD_TIME": "{time}", "APP_VERSION": "1.4.0" },
+      "health": ["node", "-e", "fetch('http://127.0.0.1:3001/version').then(r=>r.ok?r.json():null).then(b=>process.exit(b&&b.commit==='{sha7}'?0:1)).catch(()=>process.exit(1))"]
+    },
+    "workout": {
+      "tag_suffix": "web",
+      "health": ["sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/ && wget -q -O - http://127.0.0.1:8080/api/version | grep -q '\"commit\":\"{sha7}\"'"]
+    }
+  },
+  "legacy_overrides": ["app-release-[a-z0-9_]+\\.json"],
+  "public": { "url": "https://repmixburn.com/api/version", "field": "commit", "length": 7 }
+}

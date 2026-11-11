@@ -33,14 +33,9 @@ ENV BUILD_TIME=$BUILD_TIME
 EXPOSE 3001
 CMD ["node", "backend/local-server.mjs"]
 
-# Production deploys compile assets on the GitHub runner, keeping npm/Vite off EC2.
-FROM nginx:alpine AS frontend-prebuilt
-COPY dist/ /usr/share/nginx/html/
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-
-# Stage 3: Final Production Image (Nginx for Frontend)
+# Stage 3: Final Production Image (Nginx for Frontend). CI builds this stage
+# (and `backend`) on an ARM64 runner and releases the images through
+# .github/release/server.json; nothing is built on EC2.
 FROM nginx:alpine AS frontend
 COPY --from=build-frontend /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

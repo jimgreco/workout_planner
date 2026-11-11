@@ -13,7 +13,7 @@ can sync workouts across devices.
 | Styling | Vanilla CSS in `src/index.css` |
 | API | Node 22 ESM handler behind the EC2 Docker backend container |
 | Database | DynamoDB single-table design |
-| Deploy | GitHub Actions rsync to EC2, then Docker Compose rebuild/restart |
+| Deploy | GitHub Actions → shared `jimgreco/release-tools` workflow → GHCR images → EC2 Docker Compose |
 | Tests | Vitest + Testing Library, Node built-in test runner for backend |
 
 ## Architecture
@@ -51,8 +51,9 @@ src/
 ios/
   WorkoutPlanner/       native SwiftUI app
 .github/workflows/
-  deploy.yml            verify → EC2 deploy → live smoke checks
-  testflight.yml        signed iOS archive upload
+  release.yml           standard release-tools template: verify → server release + TestFlight
+  verify.yml            web/backend lint, tests, build, audits, Docker context and version checks
+  testflight.yml        signed iOS upload via release-tools/ios actions (called by release.yml)
 ```
 
 ## Common Commands
