@@ -1,24 +1,15 @@
-name: Deploy to EC2
+name: Verify
 
+# The app's own checks. Called by release.yml on pull requests, pushes to
+# main and manual runs; releases wait for it.
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      deploy_production:
-        description: Deploy this main commit (pushes to main deploy automatically)
-        type: boolean
-        default: true
+  workflow_call:
 
 permissions:
   contents: read
 
-concurrency:
-  group: repmixburn-production-deploy
-  cancel-in-progress: false
-
 jobs:
-  verify:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -94,42 +85,3 @@ jobs:
               raise SystemExit('::error::server.json ' + ', '.join(wrong) + ' must equal package.json version ' + version)
           print('server.json release version matches package.json:', version)
           PY
-
-  release:
-    # Every verified push to main releases; a manual dispatch on main can re-release.
-    # The shared release-tools workflow builds exact-commit ARM64 api/web images,
-    # pushes them to GHCR and replaces only workout_api/workout on the host
-    # (drift-checked, health-checked, rolled back on failure).
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy_production)
-    needs: verify
-    permissions:
-      contents: read
-      packages: write
-    uses: jimgreco/release-tools/.github/workflows/server-release.yml@ff61f1c6a6eb51ea982246473203bcc903ce8153
-    with:
-      tools_ref: ff61f1c6a6eb51ea982246473203bcc903ce8153
-    secrets:
-      EC2_HOST: ${{ secrets.EC2_HOST }}
-      EC2_USER: ${{ secrets.EC2_USER }}
-      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-      EC2_SSH_KNOWN_HOSTS: ${{ secrets.EC2_SSH_KNOWN_HOSTS }}
-
-  smoke:
-    name: Smoke test live app
-    needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    env:
-      WEB_BASE_URL: ${{ vars.WEB_BASE_URL || 'https://repmixburn.com' }}
-    steps:
-      - name: Smoke test public endpoints
-        run: |
-          set -euo pipefail
-          smoke_curl() {
-            curl --fail --silent --show-error \
-              --retry 12 --retry-delay 5 --retry-max-time 120 \
-              --retry-connrefused --connect-timeout 5 --max-time 10 "$1"
-          }
-          smoke_curl "$WEB_BASE_URL/api/healthz"
-          smoke_curl "$WEB_BASE_URL/api/version"
-          smoke_curl "$WEB_BASE_URL" >/dev/null

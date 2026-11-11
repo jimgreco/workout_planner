@@ -13,11 +13,10 @@ Before inviting more testers:
    - `ADMIN_SUPPORT_SECRET` is set to a 32+ character random value for support-only routes.
    - Optional: `WEEKLY_SUMMARY_TOKEN_SHA256` and `WEEKLY_SUMMARY_EMAIL` enable the
      read-only weekly-review summary route (see Weekly Summary Route). Leave both unset to keep it a 404.
-2. Confirm the `Deploy to EC2` workflow (runs on every push to main) passed:
-   - web lint, tests, build, and production audit
-   - backend tests and production audit
-   - live `/api/healthz` and `/api/version` smoke checks
-3. Run or confirm the `TestFlight` workflow uploaded successfully and Apple accepted the build.
+2. Confirm the `Release` workflow (runs on every push to main) passed:
+   - `verify`: web lint, tests, build, and production audit; backend tests and production audit
+   - `server`: the shared release-tools release, including its live public health/version check
+3. Confirm the `ios` job of that `Release` run uploaded successfully and Apple accepted the build.
 4. Run the recovery preflight and save the manifest path:
    - `cd backend && USE_AWS=true AWS_REGION="$AWS_REGION" TABLE_NAME="$TABLE_NAME" npm run recovery:check`
    - Confirm the output says point-in-time recovery is `ENABLED`.
@@ -251,19 +250,19 @@ for this destructive check. Automated mocks do not establish live Apple acceptan
 
 ## Audited release safety gate (October 2026)
 
-Main pushes run web/backend verification and automatically run the current
-`TestFlight` upload workflow. Obtain explicit distribution/profile approval before
+Main pushes run web/backend verification and automatically run the
+`testflight.yml` upload (the `ios` job of the `Release` workflow). Obtain explicit distribution/profile approval before
 pushing main, and track that automatic run instead of dispatching a duplicate.
 Every push to main that passes `verify` deploys production web automatically
-(changed November 2026; previously a manual dispatch). A manual `Deploy to EC2`
-dispatch on main redeploys the current commit. The shared `release.py` refuses
-any release whose live configuration has drifted. A separate native dispatch is only for an explicitly
+(changed November 2026; previously a manual dispatch). A manual `Release`
+dispatch on main re-releases the current commit (server and/or iOS, per its checkboxes). The shared `release.py` refuses
+any release whose live configuration has drifted. A separate `Release` dispatch with only `ios` selected is only for an explicitly
 reviewed retry when no upload occurred. Uploaded builds are App Store-eligible
 (not internal-only); attaching one to an App Store version and submitting it for
 review is a separate manual App Store Connect step. Builds do not establish physical
 device acceptance or App Store availability.
 
-The release (`.github/workflows/deploy.yml` → `jimgreco/release-tools`
+The release (`.github/workflows/release.yml` → `jimgreco/release-tools`
 `server-release.yml`, pinned by commit, configured by `.github/release/server.json`)
 takes the shared host locks, rebuilds the Compose invocation recorded on the
 running `workout_api`/`workout` containers and refuses unless every service

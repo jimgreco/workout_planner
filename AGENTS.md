@@ -14,7 +14,7 @@
 | iPhone UI and shared models | `ios/WorkoutPlanner/Views/`, `ios/WorkoutPlanner/Support/Models.swift` |
 | API and request validation | `backend/src/handler.mjs`, `backend/src/validation.mjs` |
 | Training evidence | `src/setEvidence.js`, native `isRecordedWorkingSet`, Training evidence below |
-| Release or operations | `docs/OPERATIONS.md`, `.github/workflows/deploy.yml`, `.github/workflows/testflight.yml` |
+| Release or operations | `docs/OPERATIONS.md`, `.github/workflows/release.yml`, `.github/workflows/verify.yml`, `.github/workflows/testflight.yml` |
 
 - Pick validation for the affected surface: web tests/lint/build for web work,
   backend tests for API work, and a relevant native build plus screen inspection
@@ -203,10 +203,12 @@ Contextual PBs come from finished workout history, keyed by exercise, technique 
 
 ## Release isolation
 
-Main pushes run verification, deploy production web/API once `verify` passes,
-and automatically upload TestFlight through the current `testflight.yml`; pushing
-main is therefore a release. Do not dispatch a second native upload for that
-commit. A manual `Deploy to EC2` dispatch on main only redeploys.
+`release.yml` (the standard release-tools template) runs `verify.yml` on pull
+requests, pushes to main and manual runs. Main pushes deploy production web/API
+once `verify` passes and automatically upload TestFlight through `testflight.yml`;
+pushing main is therefore a release. Do not dispatch a second native upload for
+that commit. A manual `Release` dispatch on main releases only what its `server`
+and `ios` checkboxes select.
 
 The server release is the shared, commit-pinned
 `jimgreco/release-tools/.github/workflows/server-release.yml`, driven by

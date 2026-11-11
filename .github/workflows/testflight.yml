@@ -3,27 +3,16 @@ name: TestFlight
 # Guarded TestFlight upload through the shared engine in jimgreco/release-tools
 # (ios/prepare, ios/upload, ios/cleanup), pinned by commit. The app keeps only
 # .github/scripts/release-policy.json and its own Info.plist configure step.
+# Called by release.yml after verify passes on a push to main or a manual run.
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      upload_testflight:
-        description: Upload this main commit after explicit distribution approval
-        type: boolean
-        default: false
+  workflow_call:
 
 permissions:
   contents: read
 
-concurrency:
-  group: workouts-testflight
-  cancel-in-progress: false
-
 jobs:
   build:
-    if: (github.event_name == 'push' || inputs.upload_testflight) && github.ref == 'refs/heads/main'
     runs-on: macos-latest
     timeout-minutes: 45
     permissions:

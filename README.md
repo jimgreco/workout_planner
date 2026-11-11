@@ -51,8 +51,9 @@ src/
 ios/
   WorkoutPlanner/       native SwiftUI app
 .github/workflows/
-  deploy.yml            verify → shared server release (release/server.json) → live smoke checks
-  testflight.yml        signed iOS upload via release-tools/ios actions
+  release.yml           standard release-tools template: verify → server release + TestFlight
+  verify.yml            web/backend lint, tests, build, audits, Docker context and version checks
+  testflight.yml        signed iOS upload via release-tools/ios actions (called by release.yml)
 ```
 
 ## Common Commands
