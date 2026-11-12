@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Gyms from '../pages/Gyms.jsx';
 import { saveGym, deleteGym } from '../api.js';
-import { gymBrief } from '../gyms.js';
+import { gymBrief, routineItemDetails } from '../gyms.js';
 
 vi.mock('../api.js', () => ({ saveGym: vi.fn(), deleteGym: vi.fn(), getEquipment: () => [{ id: 'eq-dumbbells', name: 'Dumbbells', category: 'Free weights', details: '' }], getGyms: () => [] }));
 const gym = { id: 'home', name: 'Home', notes: 'Garage', equipment: [{ id: 'db', name: 'Dumbbells', category: 'Free weights', details: '5–50 lb per hand' }] };
@@ -44,8 +44,24 @@ describe('gym inventory', () => {
     expect(text).toContain('5–50 lb per hand');
     expect(text).toContain('Routine to adapt: Push');
     expect(text).toContain('Bench press');
-    expect(text).toContain('setup-1');
+    expect(text).toContain('Technique: Pause');
+    expect(text).not.toContain('setup-1');
+    expect(text).not.toContain('{');
     expect(text).toContain('Do not assume unlisted');
     expect(gymBrief({ ...gym, equipment: [] })).toContain('No equipment recorded');
+  });
+  it('describes routine sets in plain sets, reps and load', () => {
+    const details = routineItemDetails({ weightType: 'double', restTargetSeconds: 90, targetRIR: 2, setupProfile: { machine: 'Flat bench', grip: 'neutral' }, sets: [
+      { setType: 'warmup', placeholderReps: '12', placeholderWeight: '20' },
+      { placeholderReps: '8-10', placeholderWeight: '40' }, { placeholderReps: '8-10', placeholderWeight: '40' },
+      { repsLeft: '10', repsRight: '9', weight: '35', rir: '1' },
+    ] });
+    expect(details).toEqual([
+      'Sets: 1 × warm-up: 12 reps @ 20 lb each side; 2 × 8-10 reps @ 40 lb each side; 1 × 10 left / 9 right reps @ 35 lb each side (RIR 1)',
+      'Plan: target 2 reps in reserve on working sets, rest 90s',
+      'Setup: Flat bench, grip neutral',
+    ]);
+    expect(routineItemDetails({ weightType: 'none', sets: [{ reps: '15' }] })[0]).toBe('Sets: 1 × 15 reps @ bodyweight');
+    expect(routineItemDetails({ sets: [] })[0]).toBe('Sets: none prescribed yet');
   });
 });
