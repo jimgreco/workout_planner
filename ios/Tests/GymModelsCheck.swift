@@ -33,6 +33,19 @@ struct GymModelsCheck {
         precondition(restored.templates?.first?.gymId == restored.gyms?.first?.id)
         precondition(gym.aiBrief(routine: routine).contains("5–50 lb"))
         precondition(gym.aiBrief(routine: routine).contains("Equipment entries are alternatives"))
+        precondition(!gym.aiBrief(routine: routine).contains("{"))
+        let briefItem = ExerciseItem(exerciseId: "bench", weightType: "double", restTargetSeconds: 90, sets: [
+            WorkoutSet(placeholderReps: "12", placeholderWeight: "20", setType: "warmup"),
+            WorkoutSet(placeholderReps: "8-10", placeholderWeight: "40"), WorkoutSet(placeholderReps: "8-10", placeholderWeight: "40"),
+            WorkoutSet(repsLeft: "10", repsRight: "9", weight: "35", rir: "1"),
+        ], techniqueNote: "Pause", setupProfile: EquipmentSetup(machine: "Flat bench", grip: "neutral"), targetRIR: 2)
+        precondition(briefItem.briefDetails == [
+            "Sets: 1 × warm-up: 12 reps @ 20 lb each side; 2 × 8-10 reps @ 40 lb each side; 1 × 10 left / 9 right reps @ 35 lb each side (RIR 1)",
+            "Plan: target 2 reps in reserve on working sets, rest 90s",
+            "Setup: Flat bench, grip neutral",
+            "Technique: Pause",
+        ])
+        precondition(ExerciseItem(exerciseId: "pushup", weightType: "none", sets: [WorkoutSet(reps: "15")]).briefDetails == ["Sets: 1 × 15 reps @ bodyweight"])
         precondition(gym.isValid)
         precondition(!Gym(name: " ").isValid)
         precondition(!Gym(name: "Home", equipment: [GymEquipment()]).isValid)

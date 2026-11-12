@@ -2582,17 +2582,64 @@ struct Gym: Codable, Identifiable, Equatable {
             lines += ["", "Routine to adapt: \(routine.name)"]
             if let description = routine.description, !description.isEmpty { lines.append(description) }
             for item in routine.exerciseItems {
-                let name = exercises.first { $0.id == item.exerciseId }?.name ?? item.exerciseId
-                let data = try? JSONEncoder().encode(item)
-                let details = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                lines.append("- \(name): \(details)")
-                let summary = exercises.first { $0.id == item.exerciseId }?.equipmentSummary(at: self) ?? "No equipment requirement recorded"
-                lines.append("  Equipment: \(summary)")
+                let exercise = exercises.first { $0.id == item.exerciseId }
+                lines.append("- \(exercise?.name ?? item.exerciseId)")
+                lines += item.briefDetails.map { "  \($0)" }
+                lines.append("  Equipment: \(exercise?.equipmentSummary(at: self) ?? "No equipment requirement recorded")")
             }
             lines.append("Equipment entries are alternatives: any one listed option can be used. If no requirement is recorded, ask rather than assuming the exercise needs no equipment.")
             lines.append("Suggest changes before replacing any exercise. Preserve the intent of the routine.")
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+// Plain sets and reps for the copy-paste AI brief, matching src/gyms.js
+// routineItemDetails. Internal ids and timer state are left out on purpose.
+extension ExerciseItem {
+    var briefDetails: [String] {
+        func clean(_ value: String?) -> String { (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+        func load(_ weight: String) -> String {
+            if weightType == "none" { return "bodyweight" }
+            if weight.isEmpty { return "" }
+            switch weightType {
+            case "double": return "\(weight) lb each side"
+            case "bar_double": return "\(weight) lb per side on a 45 lb bar"
+            case "smith_double": return "\(weight) lb per side on the Smith machine"
+            default: return "\(weight) lb"
+            }
+        }
+        func label(_ set: WorkoutSet) -> String {
+            let left = clean(set.repsLeft).isEmpty ? clean(set.placeholderRepsLeft) : clean(set.repsLeft)
+            let right = clean(set.repsRight).isEmpty ? clean(set.placeholderRepsRight) : clean(set.repsRight)
+            let plain = clean(set.reps).isEmpty ? clean(set.placeholderReps) : clean(set.reps)
+            let reps = !left.isEmpty || !right.isEmpty
+                ? "\(left.isEmpty ? "?" : left) left / \(right.isEmpty ? "?" : right) right reps"
+                : (plain.isEmpty ? "reps not set" : "\(plain) reps")
+            let weight = load(clean(set.weight).isEmpty ? clean(set.placeholderWeight) : clean(set.weight))
+            let effort = [clean(set.rir).isEmpty ? "" : "RIR \(clean(set.rir))", clean(set.rpe).isEmpty ? "" : "RPE \(clean(set.rpe))"]
+                .filter { !$0.isEmpty }.joined(separator: ", ")
+            let text = [reps, weight.isEmpty ? "" : "@ \(weight)", effort.isEmpty ? "" : "(\(effort))"].filter { !$0.isEmpty }.joined(separator: " ")
+            return (set.setType == "warmup" ? "warm-up: " : "") + text
+        }
+        var groups: [(label: String, count: Int)] = []
+        for set in sets {
+            let text = label(set)
+            if groups.last?.label == text { groups[groups.count - 1].count += 1 } else { groups.append((text, 1)) }
+        }
+        var details = [groups.isEmpty ? "Sets: none prescribed yet" : "Sets: " + groups.map { "\($0.count) × \($0.label)" }.joined(separator: "; ")]
+        var plan: [String] = []
+        if let targetRIR { plan.append("target \(targetRIR) reps in reserve on working sets") }
+        if let rest = restTargetSeconds, rest > 0 { plan.append("rest \(rest)s") }
+        if !clean(supersetGroup).isEmpty { plan.append("superset \(clean(supersetGroup))") }
+        if !plan.isEmpty { details.append("Plan: " + plan.joined(separator: ", ")) }
+        if let setup = setupProfile {
+            let parts = [clean(setup.machine), clean(setup.seat).isEmpty ? "" : "seat \(clean(setup.seat))", clean(setup.grip).isEmpty ? "" : "grip \(clean(setup.grip))"].filter { !$0.isEmpty }
+            if !parts.isEmpty { details.append("Setup: " + parts.joined(separator: ", ")) }
+        }
+        if !clean(techniqueNote).isEmpty { details.append("Technique: \(clean(techniqueNote))") }
+        if !clean(description).isEmpty { details.append("Notes: \(clean(description))") }
+        return details
     }
 }
 
