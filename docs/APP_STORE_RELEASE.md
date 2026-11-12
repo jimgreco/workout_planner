@@ -5,7 +5,7 @@ SpringBoard display name: Rep Mix Burn.
 
 ## Listing
 
-- Version: 1.1; iPhone-only; free; manual release after approval.
+- Version: 1.1; iPhone-only; free; automatic release after approval (set "Automatically release this version" on each new App Store version).
 - Category: Health & Fitness.
 - Subtitle: Workout planner & strength log.
 - Age rating: 9+, including health or wellness topics; no social content,
