@@ -35,5 +35,5 @@
     }
   },
   "legacy_overrides": ["app-release-[a-z0-9_]+\\.json"],
-  "public": { "url": "https://repmixburn.com/api/version", "field": "commit", "length": 7 }
+  "refuse_backwards": true
 }

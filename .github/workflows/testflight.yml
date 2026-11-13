@@ -24,7 +24,7 @@ jobs:
     - uses: actions/setup-node@v5
       with:
         node-version: 22
-    - uses: jimgreco/release-tools/ios/prepare@082f38d35995b50526c43da11fa6a9e73300fd4d
+    - uses: jimgreco/release-tools/ios/prepare@bfd9d14bb12907b74bceaa28b7c0382fb3549ea6
       with:
         policy: .github/scripts/release-policy.json
         app-store-connect-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -55,12 +55,12 @@ jobs:
         /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 $GOOGLE_IOS_REVERSED_CLIENT_ID" "$PLIST"
         /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" "$PLIST" 2>/dev/null || true
         /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
-    - uses: jimgreco/release-tools/ios/upload@082f38d35995b50526c43da11fa6a9e73300fd4d
+    - uses: jimgreco/release-tools/ios/upload@bfd9d14bb12907b74bceaa28b7c0382fb3549ea6
       with:
         project: ios/WorkoutPlanner.xcodeproj
         scheme: WorkoutPlanner
         extra-build-settings: |
           IOS_PROFILE_NAME=@PROFILE_UUID:app@
           IOS_LIVE_ACTIVITY_PROFILE_NAME=@PROFILE_UUID:extension@
-    - uses: jimgreco/release-tools/ios/cleanup@082f38d35995b50526c43da11fa6a9e73300fd4d
+    - uses: jimgreco/release-tools/ios/cleanup@bfd9d14bb12907b74bceaa28b7c0382fb3549ea6
       if: always()
