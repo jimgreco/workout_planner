@@ -58,23 +58,23 @@ export function clearComparisonHints(set) {
 
 const teachesEquipment = entry => entry.setupSelectionMade === true || entry.sets?.some(hasRecordedReps);
 
+// Each finished session saves the routine's prescription, so compare this
+// exercise against that snapshot instead of the routine's overall edit time:
+// editing other exercises, sets or note wording must not discard the machine
+// chosen last time. Only a changed setup or baseline is a new prescription.
 function routineEquipmentOverride(item, template, finishedLogs) {
   if (!template?.id || (!item.setupProfile && !item.baselineId)) return undefined;
   const previous = finishedLogs.find(log => log.prescription?.templateId === template.id
     && log.exerciseItems?.some(entry => entry.exerciseId === item.exerciseId && teachesEquipment(entry)));
   const prescribed = previous?.prescription?.exerciseItems?.find(entry => entry.exerciseId === item.exerciseId);
   if (!prescribed || prescribed.setupProfile?.id !== item.setupProfile?.id
-    || (prescribed.baselineId ?? undefined) !== (item.baselineId ?? undefined)
-    || (prescribed.techniqueNote ?? undefined) !== (item.techniqueNote ?? undefined)) return undefined;
-  // A routine edited since that workout began is a new prescription. The saved
-  // prescription also fences legacy routines without an updatedAt timestamp.
-  if (template.updatedAt != null) {
-    const editedAt = Date.parse(template.updatedAt), startedAt = Date.parse(previous.startTime);
-    if (!Number.isFinite(editedAt) || !Number.isFinite(startedAt) || editedAt > startedAt) return undefined;
-  }
+    || (prescribed.baselineId ?? undefined) !== (item.baselineId ?? undefined)) return undefined;
   const selected = previous.exerciseItems.find(entry => entry.exerciseId === item.exerciseId && teachesEquipment(entry));
   // A technique-only change must not erase an explicit routine baseline.
-  return selected.setupProfile?.id !== prescribed.setupProfile?.id ? selected : undefined;
+  if (selected.setupProfile?.id === prescribed.setupProfile?.id) return undefined;
+  // Show the routine's current note when it was reworded since that session.
+  return (prescribed.techniqueNote ?? undefined) === (item.techniqueNote ?? undefined)
+    ? selected : { ...selected, techniqueNote: item.techniqueNote };
 }
 
 // Call only when creating a new session item, never when rendering/resuming it.

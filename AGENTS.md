@@ -242,11 +242,14 @@ true`, which the workout picker sets for an explicit choice, including
 Unspecified. Untouched/skipped defaults, plans and active/discarded sessions do
 not teach a preference. Session time orders usage; editing an old log does not
 promote its `updatedAt`. An unchanged routine may restore the latest eligible
-finished equipment override from that same routine: its saved prescription must
-match the current setup/baseline/technique, and the routine must not have been
-edited after that session began. Missing provenance or a newer prescription keeps
-the routine's explicit constraint. A technique-only change on the same equipment
-does not override an explicit routine baseline. Explicit Unspecified and deleted
+finished equipment override from that same routine: that session's saved
+prescription for the exercise must match the routine's current setup and
+baseline. Compare per exercise against that snapshot, never the routine's
+`updatedAt`: bulk edits to other exercises, sets or note wording must not drop the
+machine chosen last time (that blanked last-time prefills in Nov 2026). When only
+the note was reworded, show the routine's current note. Missing provenance or a
+changed setup/baseline keeps the routine's explicit constraint. A technique-only
+change on the same equipment does not override an explicit routine baseline. Explicit Unspecified and deleted
 overrides must not fall back to the old routine machine. Resolve only on new-item
 creation, never resume/render. Deletion tombstones block defaults
 without rewriting historical snapshots. Current library details win, and changed
