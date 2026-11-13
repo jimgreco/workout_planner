@@ -688,6 +688,10 @@ private func teachesEquipment(_ item: ExerciseItem) -> Bool {
     item.setupSelectionMade == true || item.sets.contains(where: hasRecordedWorkoutReps)
 }
 
+// Each finished session saves the routine's prescription, so compare this
+// exercise against that snapshot instead of the routine's overall edit time:
+// editing other exercises, sets or note wording must not discard the machine
+// chosen last time. Only a changed setup or baseline is a new prescription.
 private func routineEquipmentOverride(_ item: ExerciseItem, template: WorkoutTemplate?, finishedLogs: [WorkoutLog]) -> ExerciseItem? {
     guard let template, item.setupProfile != nil || item.baselineId != nil,
           let previous = finishedLogs.first(where: { log in
@@ -696,16 +700,14 @@ private func routineEquipmentOverride(_ item: ExerciseItem, template: WorkoutTem
           }),
           let prescribed = previous.prescription?.exerciseItems.first(where: { $0.exerciseId == item.exerciseId }),
           prescribed.setupProfile?.id == item.setupProfile?.id,
-          prescribed.baselineId == item.baselineId, prescribed.techniqueNote == item.techniqueNote
+          prescribed.baselineId == item.baselineId,
+          var selected = previous.exerciseItems.first(where: { $0.exerciseId == item.exerciseId && teachesEquipment($0) }),
+          // A technique-only change must not erase an explicit routine baseline.
+          selected.setupProfile?.id != prescribed.setupProfile?.id
     else { return nil }
-    // A later routine edit is a new prescription; the snapshot also fences
-    // legacy routines without an updatedAt timestamp.
-    if let updatedAt = template.updatedAt {
-        guard let editedAt = workoutTimestamp(updatedAt), let startedAt = workoutTimestamp(previous.startTime), editedAt <= startedAt else { return nil }
-    }
-    let selected = previous.exerciseItems.first { $0.exerciseId == item.exerciseId && teachesEquipment($0) }
-    // Changing technique alone must not erase an explicit routine baseline.
-    return selected?.setupProfile?.id != prescribed.setupProfile?.id ? selected : nil
+    // Show the routine's current note when it was reworded since that session.
+    if prescribed.techniqueNote != item.techniqueNote { selected.techniqueNote = item.techniqueNote }
+    return selected
 }
 
 // Resolve once, at new-item creation. The account's finished logs are the durable

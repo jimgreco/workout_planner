@@ -86,11 +86,19 @@ import Foundation
         precondition(remember([completed]).setupProfile == gym && remember([completed]).baselineId == gym.id)
         precondition(remember([completed]).lastItem == completed.exerciseItems[0])
         var edited = routine; edited.updatedAt = "2026-10-06T14:00:00.001Z"
-        precondition(remember([completed], edited).setupProfile == home)
+        precondition(remember([completed], edited).setupProfile == gym)
         edited = routine; edited.exerciseItems[0].baselineId = "new-technique"
         precondition(remember([completed], edited).baselineId == "new-technique" && remember([completed], edited).setupProfile == home)
-        edited = routine; edited.exerciseItems[0].techniqueNote = "New depth"
-        precondition(remember([completed], edited).setupProfile == home)
+        edited = routine; edited.updatedAt = "2026-10-07T08:00:00.000Z"; edited.exerciseItems[0].techniqueNote = "New depth"
+        edited.exerciseItems[0].sets = [WorkoutSet(reps: "10-12")]
+        precondition(remember([completed], edited).setupProfile == gym && remember([completed], edited).techniqueNote == "New depth")
+        precondition(remember([completed], edited).lastItem == completed.exerciseItems[0])
+        var legacyItem = item; legacyItem.baselineId = "2026-09-21_legacy"
+        let legacyRoutine = WorkoutTemplate(id: "routine", name: "Synthetic routine", exerciseItems: [legacyItem], updatedAt: "2026-10-01T08:00:00.000Z")
+        var legacySession = completed; legacySession.prescription = .make(template: legacyRoutine, program: nil, day: completed.date)
+        var bulkEdited = legacyRoutine; bulkEdited.updatedAt = "2026-10-08T17:52:02.000Z"; bulkEdited.exerciseItems[0].techniqueNote = "New cue"
+        precondition(remember([legacySession], bulkEdited).setupProfile == gym && remember([legacySession], bulkEdited).baselineId == gym.id)
+        precondition(remember([legacySession], bulkEdited).lastItem == legacySession.exerciseItems[0])
         edited = routine; edited.exerciseItems[0].setupProfile = EquipmentSetup(id: "new-machine")
         precondition(remember([completed], edited).setupProfile?.id == "new-machine")
         var wrongSource = completed; wrongSource.prescription?.templateId = "other-routine"
@@ -98,9 +106,9 @@ import Foundation
         wrongSource = completed; wrongSource.prescription = nil
         precondition(remember([wrongSource]).setupProfile == home)
         wrongSource = completed; wrongSource.startTime = nil
-        precondition(remember([wrongSource]).setupProfile == home)
+        precondition(remember([wrongSource]).setupProfile == gym)
         edited = routine; edited.updatedAt = "invalid"
-        precondition(remember([completed], edited).setupProfile == home)
+        precondition(remember([completed], edited).setupProfile == gym)
         edited.updatedAt = nil
         precondition(remember([completed], edited).setupProfile == gym)
         var newer = completed; newer.endTime = "2026-10-06T18:00:00Z"
@@ -131,7 +139,7 @@ import Foundation
         precondition(remember([completed]).setupProfile == nil && remember([completed]).baselineId == nil)
         precondition(newWorkoutEquipment(routineItem, exercise: nil, logs: [completed], template: routine).setupProfile == nil)
         precondition(completed == original && routine.exerciseItems[0] == routineItem)
-        print("PASS routine equipment: finished override, edited prescription fencing, baseline, unspecified, deletion, missing library/exercise, Smith and unchanged history")
+        print("PASS routine equipment: finished override, per-exercise prescription fencing, bulk routine edits, baseline, unspecified, deletion, missing library/exercise, Smith and unchanged history")
         print("PASS remembered setup: chronology, prescriptions/baselines, unspecified/deleted, latest library/Smith, stable identity, drafts, serialization and unchanged history/RIR")
     }
 }
