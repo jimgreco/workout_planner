@@ -12,7 +12,8 @@ Before inviting more testers:
    - `ALLOWED_ORIGINS` includes only trusted web origins.
    - `ADMIN_SUPPORT_SECRET` is set to a 32+ character random value for support-only routes.
    - Optional: `WEEKLY_SUMMARY_TOKEN_SHA256` and `WEEKLY_SUMMARY_EMAIL` enable the
-     read-only weekly-review summary route (see Weekly Summary Route). Leave both unset to keep it a 404.
+     read-only weekly-review summary and check-in evidence routes (see Weekly Summary Route).
+     Leave both unset to keep them 404s.
 2. Confirm the `Release` workflow (runs on every push to main) passed:
    - `verify`: web lint, tests, build, and production audit; backend tests and production audit
    - `server`: the shared release-tools release, including its live public health/version check
@@ -206,6 +207,30 @@ printf %s "$TOKEN" | shasum -a 256 | cut -d' ' -f1   # WEEKLY_SUMMARY_TOKEN_SHA2
 
 Adding them changes the effective environment, so treat it as a reviewed
 configuration change under the release safety gate below, not part of an app release.
+
+### Check-in evidence route
+
+`GET /api/checkin-evidence?start=YYYY-MM-DD&end=YYYY-MM-DD` gives the cloud
+check-in coaching routine set-by-set evidence for the same account. It
+deliberately reuses the weekly-summary token and variables: that token opens
+exactly these two read-only routes and nothing else, and app session tokens are
+never accepted on either. The auth rules above apply unchanged (404 when unset or
+on a wrong token, constant-time hash compare, same rate limiters, `no-account`
+for an unknown or deleted account). Rotating the weekly-summary token rotates both.
+
+- `start`/`end` are valid calendar dates, `start <= end`, 1-31 days inclusive;
+  anything else is `400`.
+- Reads are DynamoDB Get/Query only on the account's partition, with bounded
+  pagination (more than 100 pages or 10,000 items per collection is a `500`).
+- A log belongs to the local day of `startTime` in `America/New_York` (or a valid
+  stored account timezone), falling back to its stored `date`. Logs of any status
+  are returned with `status`; deleted, provider-imported (`source`/`provider`
+  marked) and Oura-mentioning records are excluded.
+- The response holds only allow-listed fields (logs with exercise items, setup
+  snapshots, raw sets and the historical prescription; programs with schedule and
+  phases). Entered loads, side reps and `rir: null` pass through unchanged; no
+  totals, estimated maxes or PRs are computed. The shape is defined in
+  `backend/src/checkin-evidence.mjs`.
 
 ## Production build resources
 

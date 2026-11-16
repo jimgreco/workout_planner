@@ -10,6 +10,7 @@ import { preservingTargetRIR } from './target-rir.mjs';
  *   POST   /auth/apple
  *   GET    /admin/feedback | /admin/overview | /admin/accounts (requires X-Admin-Support-Secret)
  *   GET    /weekly-summary?week=YYYY-MM-DD (own bearer token; 404 unless configured)
+ *   GET    /checkin-evidence?start=YYYY-MM-DD&end=YYYY-MM-DD (weekly-summary token; 404 unless configured)
  *
  * Authenticated routes require an app session token minted by the auth routes:
  *   GET    /exercises | /templates | /logs | /programs | /settings
@@ -41,6 +42,7 @@ import { encryptAppleToken, exchangeAppleCode, revokeAppleTokens } from './apple
 import { DEFAULT_EQUIPMENT, equipmentLibraryId } from './default-equipment.mjs';
 import { DEFAULT_EXERCISES, withDefaultEquipment } from './default-exercises.mjs';
 import { createAppSession, hashUserId, verifyAppSession } from './session.mjs';
+import { RANGE_ERROR, checkinEvidence, parseRange, resolveTimezone } from './checkin-evidence.mjs';
 import { WEEK_ERROR, configuredTokenHash, parseWeek, previousWeek, sha256Hex, workoutsSummary } from './weekly-summary.mjs';
 import {
   MAX_BODY_BYTES,
@@ -1323,12 +1325,16 @@ async function handleAuthenticatedRoute(method, resource, id, event, PK, params,
 // session tokens are never accepted here. Anything other than a configured,
 // matching token is a 404, as if the route did not exist. Only GetCommand and
 // QueryCommand are issued: no seeding, touches or audit writes.
-async function handleWeeklySummary(method, id, event, params, requestId) {
+function weeklySummaryTokenAccepted(method, id, event) {
   const expectedHash = configuredTokenHash();
-  if (!expectedHash || method !== 'GET' || id) return err(404, 'Not found');
+  if (!expectedHash || method !== 'GET' || id) return false;
   const header = requestHeader(event.headers, 'authorization');
   const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token || !secretMatches(sha256Hex(token), expectedHash)) return err(404, 'Not found');
+  return Boolean(token) && secretMatches(sha256Hex(token), expectedHash);
+}
+
+async function handleWeeklySummary(method, id, event, params, requestId) {
+  if (!weeklySummaryTokenAccepted(method, id, event)) return err(404, 'Not found');
 
   const week = parseWeek(params.get('week'));
   if (!week) return err(400, WEEK_ERROR);
@@ -1363,6 +1369,73 @@ async function readWorkoutsSummary(email, week, prev) {
     queryCollection(PK, SK_PREFIX.programs),
   ]);
   return workoutsSummary({ logs, exerciseItems, programs, week, prev });
+}
+
+// Set-by-set workout evidence for the check-in coaching routine. It accepts the
+// weekly-summary token (same env vars, same 404 rules, same account) and nothing
+// else; this is the only other route that token opens. Read-only: Get/Query.
+async function handleCheckinEvidence(method, id, event, params, requestId) {
+  if (!weeklySummaryTokenAccepted(method, id, event)) return err(404, 'Not found');
+  const range = parseRange(params.get('start'), params.get('end'));
+  if (!range) return err(400, RANGE_ERROR);
+  try {
+    const { timezone, data } = await readCheckinEvidence(process.env.WEEKLY_SUMMARY_EMAIL, range);
+    return ok({ version: 1, app: 'workouts', range, timezone, generatedAt: new Date().toISOString(), data });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'checkin_evidence_error',
+      requestId,
+      message: error?.message ?? String(error),
+    }));
+    return err(500, 'internal');
+  }
+}
+
+const EVIDENCE_QUERY_PAGE = 250;
+const EVIDENCE_MAX_PAGES = 100;
+const EVIDENCE_MAX_ITEMS = 10_000;
+
+async function boundedQueryCollection(PK, prefix) {
+  const items = [];
+  let ExclusiveStartKey;
+  let pages = 0;
+  do {
+    if (++pages > EVIDENCE_MAX_PAGES) throw new Error(`checkin evidence exceeded ${EVIDENCE_MAX_PAGES} pages`);
+    const result = await db.send(new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+      ExpressionAttributeValues: { ':pk': PK, ':prefix': `${prefix}#` },
+      Limit: EVIDENCE_QUERY_PAGE,
+      ExclusiveStartKey,
+    }));
+    for (const item of result.Items ?? []) {
+      if (item.PK !== PK || !String(item.SK ?? '').startsWith(`${prefix}#`)) throw new Error('checkin evidence crossed a partition');
+      items.push(item);
+    }
+    if (items.length > EVIDENCE_MAX_ITEMS) throw new Error(`checkin evidence exceeded ${EVIDENCE_MAX_ITEMS} items`);
+    ExclusiveStartKey = result.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
+}
+
+async function readCheckinEvidence(email, range) {
+  const alias = await db.send(new GetCommand({
+    TableName: TABLE,
+    Key: { PK: emailAliasPk(normalizeEmail(email)), SK: 'ALIAS' },
+  }));
+  const accountSub = alias.Item?.accountSub;
+  if (!accountSub) return { timezone: resolveTimezone(), data: { status: 'no-account' } };
+  const PK = `USER#${accountSub}`;
+  const account = await getAccountMetadata(PK);
+  if (account?.deletedAt) return { timezone: resolveTimezone(), data: { status: 'no-account' } };
+  const [settings, logs, exerciseItems, programs] = await Promise.all([
+    db.send(new GetCommand({ TableName: TABLE, Key: { PK, SK: 'SETTINGS' } })),
+    boundedQueryCollection(PK, SK_PREFIX.logs),
+    boundedQueryCollection(PK, SK_PREFIX.exercises),
+    boundedQueryCollection(PK, SK_PREFIX.programs),
+  ]);
+  const timezone = resolveTimezone(settings.Item?.timezone, account?.timezone);
+  return { timezone, data: checkinEvidence({ logs, exerciseItems, programs, range, timezone }) };
 }
 
 export const handler = async (event) => {
@@ -1427,6 +1500,10 @@ export const handler = async (event) => {
 
     if (resource === 'weekly-summary') {
       return finish(await handleWeeklySummary(method, id, event, params, requestId));
+    }
+
+    if (resource === 'checkin-evidence') {
+      return finish(await handleCheckinEvidence(method, id, event, params, requestId));
     }
 
     userId = await verifyRequestUser(event);
