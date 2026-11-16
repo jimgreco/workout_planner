@@ -1258,3 +1258,170 @@ test('weekly summary read failures return a generic 500', async () => {
   assert.equal(body.error, 'internal');
   assert.doesNotMatch(result.body, /secret table detail/);
 });
+
+// --- GET /checkin-evidence --------------------------------------------------
+
+function evidenceSeed() {
+  const PK = 'USER#acct-weekly';
+  const setup = { id: 'smith-1', name: 'Home Smith', gym: 'Home', machine: 'Smith', seat: '3', grip: 'wide',
+    loadConvention: 'smith_double', smithBarWeight: 0, secretInternal: 'x' };
+  return [
+    ...weeklySeed().filter((item) => !item.SK.startsWith('LOG#')),
+    { PK, SK: 'PROGRAM#p2', id: 'p2', name: 'Block 2', active: true, startDate: '2026-10-01', endDate: '2026-12-31',
+      revision: 9, updatedAt: '2026-10-01T00:00:00Z', internal: 'drop',
+      schedule: [{ id: 's1', templateId: 't1', optional: false, extra: 1 }],
+      phases: [{ id: 'ph2', name: 'Intensify', startDate: '2026-11-01', endDate: '2026-11-30', setsPerExercise: 3,
+        targetRir: 2, allowOptional: true, notes: 'drop' }] },
+    // 2026-11-09T03:30Z is 22:30 on Nov 8 in New York: belongs to Nov 8 despite date.
+    { PK, SK: 'LOG#late', id: 'late', name: 'Late Upper', date: '2026-11-09', status: 'finished',
+      startTime: '2026-11-09T03:30:00Z', endTime: '2026-11-09T04:30:00Z', pausedDurationMs: 0, notes: 'felt ok',
+      readiness: 4, hasPB: true, pbExerciseIds: ['e1'], revision: 3, updatedAt: '2026-11-09T05:00:00Z',
+      exerciseItems: [{ exerciseId: 'e1', weightType: 'smith_double', baselineId: 'b1', techniqueNote: 'pause',
+        targetRIR: 2, useIndividualReps: false, setupSelectionMade: true, restTargetSeconds: 120, setupProfile: setup,
+        sets: [
+          { weight: '45', reps: '8', rir: null, setType: 'working', completion: 'recorded', restDuration: 90,
+            restStartTime: 1, placeholderReps: '8', id: 'set-1' },
+          { weight: '45', repsLeft: '7', repsRight: '6', rir: '0', rpe: '9', repMode: 'sides', completion: 'recorded' },
+        ] }],
+      prescription: { templateId: 't1', templateName: 'Upper', programId: 'p2', programName: 'Block 2',
+        phaseName: 'Intensify', optional: false, targetRir: 2, day: 1, internal: 'drop',
+        exerciseItems: [{ exerciseId: 'e1', targetRIR: 2, sets: [{ reps: '8', weight: '45' }] }] } },
+    // 2026-11-10T04:30Z is 23:30 on Nov 9 in New York: outside a range ending Nov 8.
+    { PK, SK: 'LOG#next', id: 'next', name: 'Next', date: '2026-11-08', status: 'finished',
+      startTime: '2026-11-10T04:30:00Z', exerciseItems: [] },
+    // No startTime: falls back to the stored date.
+    { PK, SK: 'LOG#planned', id: 'planned', name: 'Planned', date: '2026-11-03', status: 'planning',
+      exerciseItems: [{ exerciseId: 'gone', sets: [] }] },
+    // 04:59Z on Nov 2 is 23:59 on Nov 1 in New York (EST): excluded despite its date.
+    { PK, SK: 'LOG#early', id: 'early', date: '2026-11-02', status: 'finished', startTime: '2026-11-02T04:59:00Z', exerciseItems: [] },
+    { PK, SK: 'LOG#midnight', id: 'midnight', date: '2026-11-01', status: 'finished', startTime: '2026-11-02T05:00:00Z', exerciseItems: [] },
+    { PK, SK: 'LOG#deleted', id: 'deleted', date: '2026-11-04', status: 'finished', deleted: true, exerciseItems: [] },
+    { PK, SK: 'LOG#deletedAt', id: 'deletedAt', date: '2026-11-04', status: 'finished', deletedAt: '2026-11-05T00:00:00Z', exerciseItems: [] },
+    { PK, SK: 'LOG#imported', id: 'imported', date: '2026-11-04', status: 'finished', source: 'apple_health', exerciseItems: [] },
+    { PK, SK: 'LOG#oura', id: 'oura', date: '2026-11-04', status: 'finished', notes: 'Oura readiness 61', exerciseItems: [] },
+    { PK: 'USER#someone-else', SK: 'LOG#x1', id: 'x1', date: '2026-11-04', status: 'finished', exerciseItems: [] },
+  ];
+}
+
+function evidenceEvent(query, headers, method = 'GET', path = '/api/checkin-evidence') {
+  return weeklyEvent(query, headers, method, path);
+}
+
+test('checkin evidence is a 404 unless configured and the weekly token is presented', async () => {
+  const db = recordingDb(evidenceSeed());
+  __setTestDb(db);
+  const query = 'start=2026-11-02&end=2026-11-08';
+  for (const env of [{}, { WEEKLY_SUMMARY_TOKEN_SHA256: WEEKLY_ENV.WEEKLY_SUMMARY_TOKEN_SHA256 }, { WEEKLY_SUMMARY_EMAIL: WEEKLY_EMAIL }]) {
+    assert.equal((await withWeeklyEnv(env, () => handler(evidenceEvent(query)))).statusCode, 404);
+  }
+  const session = await createAppSession({ sub: 'acct-weekly', provider: 'google' });
+  await withWeeklyEnv(WEEKLY_ENV, async () => {
+    for (const headers of [{}, { authorization: WEEKLY_TOKEN }, { authorization: 'Bearer wrong-token' },
+      { authorization: `Bearer ${WEEKLY_ENV.WEEKLY_SUMMARY_TOKEN_SHA256}` }, { authorization: `Bearer ${session.token}` },
+      { authorization: 'Bearer dev-bypass-token' }]) {
+      assert.equal((await handler(evidenceEvent(query, headers))).statusCode, 404, JSON.stringify(headers));
+    }
+    assert.equal((await handler(evidenceEvent(query, undefined, 'POST'))).statusCode, 404);
+    assert.equal((await handler(evidenceEvent(query, undefined, 'GET', '/api/checkin-evidence/x'))).statusCode, 404);
+  });
+  assert.deepEqual(db.commands, []);
+});
+
+test('checkin evidence rejects invalid ranges with 400', async () => {
+  const db = recordingDb(evidenceSeed());
+  __setTestDb(db);
+  await withWeeklyEnv(WEEKLY_ENV, async () => {
+    for (const query of ['', 'start=2026-11-02', 'end=2026-11-08', 'start=2026-11-08&end=2026-11-02',
+      'start=2026-02-30&end=2026-03-02', 'start=2026-11-2&end=2026-11-08', 'start=2026-11-01&end=2026-12-02',
+      'start=2026-11-02T00:00:00Z&end=2026-11-08', 'start=nope&end=2026-11-08']) {
+      const result = await handler(evidenceEvent(query));
+      assert.equal(result.statusCode, 400, query);
+      assert.match(JSON.parse(result.body).error, /start and end/);
+    }
+    // 1 and 31 days inclusive are both allowed.
+    assert.equal((await handler(evidenceEvent('start=2026-11-02&end=2026-11-02'))).statusCode, 200);
+    assert.equal((await handler(evidenceEvent('start=2026-11-01&end=2026-12-01'))).statusCode, 200);
+  });
+});
+
+test('checkin evidence projects the account logs by New York startTime day without writing', async () => {
+  const db = recordingDb(evidenceSeed());
+  const before = structuredClone([...db.items.entries()]);
+  __setTestDb(db);
+  const result = await withWeeklyEnv(WEEKLY_ENV, () => handler(evidenceEvent('start=2026-11-02&end=2026-11-08')));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers['Cache-Control'], 'no-store');
+  const body = JSON.parse(result.body);
+  assert.ok(!Number.isNaN(Date.parse(body.generatedAt)));
+  delete body.generatedAt;
+  const setupProfile = { id: 'smith-1', name: 'Home Smith', gym: 'Home', machine: 'Smith', seat: '3', grip: 'wide',
+    loadConvention: 'smith_double', smithBarWeight: 0 };
+  assert.deepEqual(body, {
+    version: 1,
+    app: 'workouts',
+    range: { start: '2026-11-02', end: '2026-11-08' },
+    timezone: 'America/New_York',
+    data: {
+      status: 'ok',
+      logs: [
+        { id: 'midnight', day: '2026-11-02', date: '2026-11-01', status: 'finished', startTime: '2026-11-02T05:00:00Z',
+          exerciseItems: [], prescription: null },
+        { id: 'planned', name: 'Planned', day: '2026-11-03', date: '2026-11-03', status: 'planning',
+          exerciseItems: [{ exerciseId: 'gone', name: null, muscleGroup: null, setupProfile: {}, sets: [] }], prescription: null },
+        { id: 'late', name: 'Late Upper', day: '2026-11-08', date: '2026-11-09', startTime: '2026-11-09T03:30:00Z',
+          endTime: '2026-11-09T04:30:00Z', pausedDurationMs: 0, status: 'finished', notes: 'felt ok',
+          exerciseItems: [{ exerciseId: 'e1', name: 'Bench', muscleGroup: 'Chest', weightType: 'smith_double', baselineId: 'b1',
+            techniqueNote: 'pause', targetRIR: 2, useIndividualReps: false, setupProfile,
+            sets: [
+              { weight: '45', reps: '8', rir: null, setType: 'working', completion: 'recorded', restDuration: 90 },
+              { weight: '45', repsLeft: '7', repsRight: '6', rir: '0', rpe: '9', repMode: 'sides', completion: 'recorded' },
+            ] }],
+          prescription: { templateId: 't1', templateName: 'Upper', programId: 'p2', programName: 'Block 2',
+            phaseName: 'Intensify', optional: false, targetRir: 2, day: 1,
+            exerciseItems: [{ exerciseId: 'e1', name: 'Bench', muscleGroup: 'Chest', targetRIR: 2, setupProfile: {},
+              sets: [{ reps: '8', weight: '45' }] }] } },
+      ],
+      programs: [
+        { id: 'p1', name: 'Old block', active: false, schedule: [], phases: [] },
+        { id: 'p2', name: 'Block 2', active: true, startDate: '2026-10-01', endDate: '2026-12-31',
+          schedule: [{ id: 's1', templateId: 't1', optional: false }],
+          phases: [{ id: 'ph2', name: 'Intensify', startDate: '2026-11-01', endDate: '2026-11-30', setsPerExercise: 3,
+            targetRir: 2, allowOptional: true }] },
+      ],
+    },
+  });
+  // Raw null RIR survives serialization rather than being dropped or zeroed.
+  assert.match(result.body, /"rir":null/);
+  assert.deepEqual([...new Set(db.commands)].sort(), ['GetCommand', 'QueryCommand']);
+  assert.deepEqual([...db.items.entries()], before);
+});
+
+test('checkin evidence uses a stored account timezone when present', async () => {
+  const seed = evidenceSeed();
+  seed.push({ PK: 'USER#acct-weekly', SK: 'SETTINGS', timezone: 'Asia/Tokyo' });
+  __setTestDb(recordingDb(seed));
+  const body = JSON.parse((await withWeeklyEnv(WEEKLY_ENV, () => handler(evidenceEvent('start=2026-11-09&end=2026-11-09')))).body);
+  assert.equal(body.timezone, 'Asia/Tokyo');
+  // 03:30Z on Nov 9 is 12:30 on Nov 9 in Tokyo.
+  assert.deepEqual(body.data.logs.map((log) => log.id), ['late']);
+});
+
+test('checkin evidence returns no-account for an unknown email or a deleted account', async () => {
+  const db = recordingDb(evidenceSeed());
+  __setTestDb(db);
+  const unknown = await withWeeklyEnv({ ...WEEKLY_ENV, WEEKLY_SUMMARY_EMAIL: 'nobody@example.com' },
+    () => handler(evidenceEvent('start=2026-11-02&end=2026-11-08')));
+  assert.deepEqual(JSON.parse(unknown.body).data, { status: 'no-account' });
+  db.items.set('USER#acct-weekly|ACCOUNT', { PK: 'USER#acct-weekly', SK: 'ACCOUNT', deletedAt: '2026-11-01T00:00:00Z' });
+  const deleted = await withWeeklyEnv(WEEKLY_ENV, () => handler(evidenceEvent('start=2026-11-02&end=2026-11-08')));
+  assert.equal(deleted.statusCode, 200);
+  assert.deepEqual(JSON.parse(deleted.body).data, { status: 'no-account' });
+  assert.deepEqual([...new Set(db.commands)].sort(), ['GetCommand']);
+});
+
+test('checkin evidence read failures return a generic 500', async () => {
+  __setTestDb({ async send() { throw new Error('secret table detail'); } });
+  const result = await withWeeklyEnv(WEEKLY_ENV, () => handler(evidenceEvent('start=2026-11-02&end=2026-11-08')));
+  assert.equal(result.statusCode, 500);
+  assert.doesNotMatch(result.body, /secret table detail/);
+});
