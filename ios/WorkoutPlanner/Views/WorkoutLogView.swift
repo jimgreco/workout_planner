@@ -632,7 +632,10 @@ struct WorkoutLogView: View {
     private func startWorkout() {
         guard workoutId != nil else { return }
         promotePlanningRepsToPlaceholders()
-        startTime = ISO8601DateFormatter().string(from: Date())
+        let now = Date()
+        // The view (or a saved plan) can be older than today; a workout belongs to the day it starts.
+        date = now
+        startTime = ISO8601DateFormatter().string(from: now)
         updateExternalLiveActivityNow()
         saveNow(status: "active")
     }

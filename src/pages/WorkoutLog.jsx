@@ -413,8 +413,11 @@ export default function WorkoutLog({
     blurActiveEditableElement();
     clearTimeout(saveTimer.current);
     const now = new Date().toISOString();
+    // The page (or a saved plan) can be older than today; a workout belongs to the day it starts.
+    const startDate = localDateKey(new Date());
     setStartTime(now);
-    autoSave(workoutId, { name, date, notes, readiness, items: latestItemsRef.current, startTime: now, status: 'active' });
+    setDate(startDate);
+    autoSave(workoutId, { name, date: startDate, notes, readiness, items: latestItemsRef.current, startTime: now, status: 'active' });
   }
 
   function handleTogglePause() {

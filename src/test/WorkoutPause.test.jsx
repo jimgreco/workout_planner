@@ -34,6 +34,14 @@ describe('Pause/Resume workout control', () => {
     expect(saveLog).toHaveBeenCalledOnce();
   });
 
+  it('dates a workout planned on an earlier day to the day it is started', async () => {
+    render(<WorkoutLog {...props} logs={[{ ...activeLog, date: '2026-10-04', startTime: null, status: 'planning' }]} />);
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Start Workout', exact: true })[0]));
+    expect(lastSaved()).toMatchObject({ status: 'active', date: '2026-10-05' });
+    await tick(1000);
+    expect(lastSaved().date).toBe('2026-10-05');
+  });
+
   it('toggles one control, freezes rest/elapsed, restores, and finishes while paused', async () => {
     const view = render(<WorkoutLog {...props} logs={[activeLog]} />);
     await tick(0);
